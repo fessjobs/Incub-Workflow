@@ -1,0 +1,343 @@
+// incubWorkflow – Datenmodell (Spec Abschnitt 10)
+// Alle Tabellen von Tag 1 angelegt, auch die erst in späteren Sprints befüllten.
+// Jede fachliche Tabelle trägt organizationId für die Mandantentrennung.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Mandanten-Ebene ────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  // Branding pro Mandant (SaaS-Vorbereitung); Default = INCUB-LIVE-Theme
+  brandName    String  @default("incub:workflow")
+  tagline      String  @default("Belege. Erledigt.")
+  primaryColor String  @default("#0B1220")
+  logoUrl      String?
+  // Wurzelpfad der Datei-Ablage (Spec Abschnitt 7), pro Mandant konfigurierbar
+  storagePath  String  @default("./incubWorkflow-Ablage")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]
+  companies        Company[]
+  categories       Category[]
+  receipts         Receipt[]
+  bankAccounts     BankAccount[]
+  bankTransactions BankTransaction[]
+  matchRules       MatchRule[]
+  auditLogs        AuditLog[]
+
+  @@map("organizations")
+}
+
+// ─── Nutzer & Rollen ────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String   @unique
+  passwordHash   String
+  name           String
+  role           UserRole @default(MEMBER)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization        @relation(fields: [organizationId], references: [id])
+  // Optional einschränkbar, für welche Firmen der Nutzer Belege einreichen darf.
+  // Keine Einträge = alle Firmen erlaubt.
+  companyAccess   UserCompanyAccess[]
+  receipts        Receipt[]
+  receiptVersions ReceiptVersion[]
+  auditLogs       AuditLog[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model UserCompanyAccess {
+  userId    String
+  companyId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, companyId])
+  @@map("user_company_access")
+}
+
+// ─── Firmen: Marke ≠ Rechtsträger (Spec Abschnitt 4) ───────────────────────
+
+model Company {
+  id             String  @id @default(cuid())
+  organizationId String
+  // Marke (UI-Ebene)
+  brandName String
+  logoUrl   String?
+  color     String?
+  location  String?
+  // Rechtsträger (erscheint auf dem Beiblatt)
+  legalName String?
+  address   String?
+  // Kürzel für den Belegnummernkreis, z. B. "FJ" → FJ-2026-0001
+  shortCode String
+  // "Privat" ist eine Pseudo-Firma für private Ausgaben
+  isPrivate Boolean @default(false)
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  userAccess     UserCompanyAccess[]
+  receipts       Receipt[]
+  bankAccounts   BankAccount[]
+  numberCounters ReceiptNumberCounter[]
+
+  @@unique([organizationId, shortCode])
+  @@index([organizationId])
+  @@map("companies")
+}
+
+// ─── Kategorien (pflegbar, pro Organization) ────────────────────────────────
+
+model Category {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  // Steuert Sonderfall-Logik (z. B. Bewirtungsbeleg-Block auf dem Beiblatt)
+  isHospitality Boolean @default(false)
+  active        Boolean @default(true)
+  sortOrder     Int     @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  receipts     Receipt[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("categories")
+}
+
+// ─── Belege (Kern, wird ab Sprint 2 befüllt) ───────────────────────────────
+
+enum ReceiptKind {
+  AUSLAGE // privat verauslagt, Erstattung erwartet
+  FIRMENZAHLUNG
+  PRIVAT
+}
+
+enum PaymentMethod {
+  BAR
+  PRIVATE_KARTE
+  FIRMENKARTE
+  UNBEKANNT
+}
+
+enum ReceiptStatus {
+  ENTWURF
+  ABGELEGT
+}
+
+enum ReimbursementStatus {
+  OFFEN
+  EINGEREICHT
+  ERSTATTET
+}
+
+model Receipt {
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String
+  companyId      String
+  categoryId     String?
+
+  // Belegnummer: {Firmenkürzel}-{Jahr}-{laufende Nr.}, Nummernkreis pro Firma+Jahr
+  receiptNumber String @unique
+  numberYear    Int
+  numberSeq     Int
+
+  // Ausgelesene / bestätigte Belegdaten
+  receiptDate   DateTime
+  vendor        String
+  grossAmount   Decimal @db.Decimal(12, 2)
+  netAmount     Decimal? @db.Decimal(12, 2)
+  // Gemischte USt-Sätze auf einem Bon: [{rate: 19, vat: 1.90, net: 10.00}, ...]
+  vatLines      Json?
+  paymentMethod PaymentMethod @default(UNBEKANNT)
+  kind          ReceiptKind
+  // Geschäftlicher Anlass/Zweck (prüfungsrelevant)
+  purpose       String?
+  // Kreuz "geprüft/freigegeben" hinter dem Namen des Einreichers
+  approved      Boolean @default(false)
+
+  // Sonderfall Bewirtung
+  hospitalityGuests   String?
+  hospitalityOccasion String?
+  hospitalityLocation String?
+
+  // Sonderfall Eigenbeleg
+  isSelfReceipt     Boolean @default(false)
+  selfReceiptReason String?
+
+  status              ReceiptStatus       @default(ENTWURF)
+  reimbursementStatus ReimbursementStatus @default(OFFEN)
+  reimbursedAt        DateTime?
+
+  // Dateiablage (Spec Abschnitt 7)
+  originalPath String?
+  pdfPath      String?
+
+  currentVersion Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  user         User             @relation(fields: [userId], references: [id])
+  company      Company          @relation(fields: [companyId], references: [id])
+  category     Category?        @relation(fields: [categoryId], references: [id])
+  versions     ReceiptVersion[]
+  transactions BankTransaction[]
+
+  @@index([organizationId])
+  @@index([organizationId, userId])
+  @@index([organizationId, companyId])
+  @@index([organizationId, receiptDate])
+  // Dubletten-Check: Betrag + Datum + Aussteller
+  @@index([organizationId, grossAmount, receiptDate, vendor])
+  @@map("receipts")
+}
+
+// Versionshistorie: bei jeder Änderung wird der vorherige Stand als Snapshot
+// abgelegt, alte PDF-Versionen bleiben referenziert (Audit-Anforderung).
+model ReceiptVersion {
+  id          String   @id @default(cuid())
+  receiptId   String
+  versionNo   Int
+  data        Json
+  pdfPath     String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@unique([receiptId, versionNo])
+  @@map("receipt_versions")
+}
+
+// Nummernkreis pro Firma und Jahr
+model ReceiptNumberCounter {
+  companyId  String
+  year       Int
+  lastNumber Int    @default(0)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, year])
+  @@map("receipt_number_counters")
+}
+
+// ─── Bank-Abgleich (wird in Sprint 4 befüllt) ──────────────────────────────
+
+model BankAccount {
+  id             String  @id @default(cuid())
+  organizationId String
+  // Zuordnung Konto → Firma; null + isPrivate = privates Konto
+  companyId String?
+  name      String
+  iban      String?
+  isPrivate Boolean @default(false)
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  company      Company?          @relation(fields: [companyId], references: [id])
+  transactions BankTransaction[]
+
+  @@index([organizationId])
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id             String   @id @default(cuid())
+  organizationId String
+  bankAccountId  String
+  bookingDate    DateTime
+  amount         Decimal  @db.Decimal(12, 2)
+  counterparty   String?
+  purpose        String?
+  // Rohdaten der Import-Zeile (CSV/PDF-Extraktion)
+  raw            Json?
+
+  matchedReceiptId String?
+  ignored          Boolean @default(false)
+  // Merkregel, durch die dieser Posten automatisch behandelt wurde
+  matchRuleId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  bankAccount    BankAccount  @relation(fields: [bankAccountId], references: [id])
+  matchedReceipt Receipt?     @relation(fields: [matchedReceiptId], references: [id])
+  matchRule      MatchRule?   @relation(fields: [matchRuleId], references: [id])
+
+  @@index([organizationId])
+  @@index([bankAccountId, bookingDate])
+  @@map("bank_transactions")
+}
+
+// Merkregeln für wiederkehrende Buchungen (z. B. Miete, Gehälter → ignorieren)
+model MatchRule {
+  id             String  @id @default(cuid())
+  organizationId String
+  // Muster auf Gegenpartei/Verwendungszweck
+  pattern String
+  action  String  @default("IGNORE")
+  note    String?
+  active  Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  transactions BankTransaction[]
+
+  @@index([organizationId])
+  @@map("match_rules")
+}
+
+// ─── Audit-Log ──────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String // z. B. company.create, user.update, receipt.update
+  entityType     String
+  entityId       String?
+  data           Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@map("audit_log")
+}
