@@ -6,6 +6,15 @@ Belege fotografieren → automatisch auslesen → Firma & Kategorie wählen → 
 Beiblatt generieren → Beleg + Beiblatt als eine PDF sauber abgelegt. Mit Kontoauszug-Abgleich,
 Auswertungen und Mehrbenutzer-Betrieb. Mandantenfähig von Tag 1 (SaaS-Vorbereitung).
 
+## Online stellen (Railway)
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/new)
+
+Schritt-für-Schritt-Anleitung: **[SETUP.md](./SETUP.md)** – bringt die App über Railway
+in ~10 Minuten online (App + PostgreSQL, automatische Migrationen und Grunddaten, echte
+URL auch fürs Handy). Für den rein lokalen Betrieb siehe „Schnellstart (Docker Compose)“
+weiter unten.
+
 ## Stand: Sprint 1 (Fundament) ✅
 
 - Login (E-Mail/Passwort) mit Rollen **Admin** (sieht alles) / **Mitglied** (sieht nur eigene Belege)

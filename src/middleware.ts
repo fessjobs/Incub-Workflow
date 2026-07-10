@@ -35,6 +35,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Alles außer statischen Assets und Next-Internals
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|icons|manifest).*)"],
+  // Alles außer statischen Assets, Next-Internals und dem Healthcheck
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|icons|manifest|api/health).*)"],
 };

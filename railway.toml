@@ -1,0 +1,13 @@
+# Railway-Konfiguration für incub:workflow
+# Railway baut das Image über das vorhandene Dockerfile. Der Entrypoint
+# (docker-entrypoint.sh) wendet beim Start automatisch die DB-Migrationen an
+# und legt Grunddaten an (Admin, Firmen, Kategorien).
+[build]
+builder = "dockerfile"
+
+[deploy]
+# Healthcheck wartet, bis der Server nach Migration + Seed erreichbar ist
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
