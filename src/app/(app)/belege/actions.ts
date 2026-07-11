@@ -267,6 +267,8 @@ export type ReceiptInput = {
   vehicleName?: string | null;
   odometerKm?: string | number | null;
   notes?: string | null;
+  // Nur Admin: Beleg einem anderen Mitarbeiter zuordnen (Einreicher/Name)
+  submitterUserId?: string | null;
   vatLines?: string;
 };
 
@@ -291,6 +293,16 @@ export async function saveReceipt(
 
   const allowed = await assertCompanyAllowed(user, v.companyId);
   if (!allowed) return { ok: false, error: "Für diese Firma nicht freigegeben." };
+
+  // Nur Admin darf den Einreicher ändern (Beleg für anderen Mitarbeiter erfassen)
+  let submitterUserId: string | undefined;
+  if (data.submitterUserId && user.role === "ADMIN") {
+    const target = await db.user.findFirst({
+      where: { id: data.submitterUserId, organizationId: user.organizationId },
+    });
+    if (!target) return { ok: false, error: "Mitarbeiter nicht gefunden." };
+    submitterUserId = target.id;
+  }
 
   const receiptDate = new Date(v.receiptDate);
 
@@ -355,6 +367,7 @@ export async function saveReceipt(
         vehicleId,
         odometerKm: v.odometerKm ?? null,
         notes: v.notes || null,
+        ...(submitterUserId ? { userId: submitterUserId } : {}),
         status: "ABGELEGT",
         ...(numberFields ?? {}),
         ...(bumpVersion ? { currentVersion: { increment: 1 } } : {}),

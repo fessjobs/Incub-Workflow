@@ -42,6 +42,15 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
     orderBy: { name: "asc" },
     select: { name: true },
   });
+  // Admin darf den Einreicher auf einen anderen Mitarbeiter setzen
+  const orgUsers =
+    user.role === "ADMIN"
+      ? await db.user.findMany({
+          where: { organizationId: user.organizationId, active: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        })
+      : [];
 
   const hasPdf = receipt.files.some((f) => f.kind === "PDF");
   const hasOriginal = receipt.files.some((f) => f.kind === "ORIGINAL");
@@ -87,11 +96,14 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               vehicleName: receipt.vehicle?.name ?? null,
               odometerKm: receipt.odometerKm,
               notes: receipt.notes,
+              submitterUserId: receipt.userId,
               status: receipt.status,
             }}
             companies={allowedCompanies.map((c) => ({ id: c.id, brandName: c.brandName, color: c.color }))}
             categories={categories.map((c) => ({ id: c.id, name: c.name, isHospitality: c.isHospitality, isFuel: c.isFuel }))}
             vehicles={vehicles.map((v) => v.name)}
+            users={orgUsers}
+            isAdmin={user.role === "ADMIN"}
             canDelete={isDraft || user.role === "ADMIN"}
           />
 

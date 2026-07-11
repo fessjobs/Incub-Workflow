@@ -27,6 +27,7 @@ type ReceiptData = {
   vehicleName: string | null;
   odometerKm: number | null;
   notes: string | null;
+  submitterUserId: string;
   status: string;
 };
 
@@ -42,12 +43,16 @@ export function ReceiptEditor({
   companies,
   categories,
   vehicles,
+  users,
+  isAdmin,
   canDelete,
 }: {
   receipt: ReceiptData;
   companies: { id: string; brandName: string; color: string | null }[];
   categories: { id: string; name: string; isHospitality: boolean; isFuel: boolean }[];
   vehicles: string[];
+  users: { id: string; name: string }[];
+  isAdmin: boolean;
   canDelete: boolean;
 }) {
   const router = useRouter();
@@ -70,6 +75,7 @@ export function ReceiptEditor({
     vehicleName: receipt.vehicleName ?? "",
     odometerKm: receipt.odometerKm !== null ? String(receipt.odometerKm) : "",
     notes: receipt.notes ?? "",
+    submitterUserId: receipt.submitterUserId,
   });
   const [vatLines, setVatLines] = useState<VatLine[]>(receipt.vatLines);
   const [saving, setSaving] = useState(false);
@@ -108,6 +114,7 @@ export function ReceiptEditor({
         vehicleName: f.vehicleName || null,
         odometerKm: f.odometerKm ? Number(f.odometerKm) : null,
         notes: f.notes || null,
+        submitterUserId: isAdmin ? f.submitterUserId : null,
         vatLines: JSON.stringify(vatLines),
       },
       { ignoreDuplicate }
@@ -136,6 +143,28 @@ export function ReceiptEditor({
 
   return (
     <div className="space-y-6">
+      {/* Einreicher (nur Admin) – Beleg für anderen Mitarbeiter erfassen */}
+      {isAdmin && users.length > 0 && (
+        <section className="card space-y-3 p-5">
+          <p className="eyebrow">Einreicher</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              className="input max-w-xs"
+              value={f.submitterUserId}
+              onChange={(e) => set({ submitterUserId: e.target.value })}
+            >
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-navy-400">
+              Als Admin kannst du den Beleg für einen anderen Mitarbeiter erfassen – der Name
+              erscheint auf dem Beiblatt und der Beleg zählt zu dessen Auswertung.
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* Firma */}
       <section className="card space-y-3 p-5">
         <p className="eyebrow">Firma *</p>
