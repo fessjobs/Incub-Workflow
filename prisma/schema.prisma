@@ -164,23 +164,25 @@ model Receipt {
   id             String @id @default(cuid())
   organizationId String
   userId         String
-  companyId      String
+  // Firma wird beim schnellen Zuordnen gewählt; im Entwurf noch leer
+  companyId      String?
   categoryId     String?
 
-  // Belegnummer: {Firmenkürzel}-{Jahr}-{laufende Nr.}, Nummernkreis pro Firma+Jahr
-  receiptNumber String @unique
-  numberYear    Int
-  numberSeq     Int
+  // Belegnummer: {Firmenkürzel}-{Jahr}-{laufende Nr.}, Nummernkreis pro Firma+Jahr.
+  // Erst beim Ablegen vergeben – im Entwurf noch leer.
+  receiptNumber String? @unique
+  numberYear    Int?
+  numberSeq     Int?
 
   // Ausgelesene / bestätigte Belegdaten
   receiptDate   DateTime
-  vendor        String
-  grossAmount   Decimal @db.Decimal(12, 2)
+  vendor        String  @default("")
+  grossAmount   Decimal @default(0) @db.Decimal(12, 2)
   netAmount     Decimal? @db.Decimal(12, 2)
   // Gemischte USt-Sätze auf einem Bon: [{rate: 19, vat: 1.90, net: 10.00}, ...]
   vatLines      Json?
   paymentMethod PaymentMethod @default(UNBEKANNT)
-  kind          ReceiptKind
+  kind          ReceiptKind   @default(AUSLAGE)
   // Geschäftlicher Anlass/Zweck (prüfungsrelevant)
   purpose       String?
   // Kreuz "geprüft/freigegeben" hinter dem Namen des Einreichers
@@ -210,10 +212,11 @@ model Receipt {
 
   organization Organization     @relation(fields: [organizationId], references: [id])
   user         User             @relation(fields: [userId], references: [id])
-  company      Company          @relation(fields: [companyId], references: [id])
+  company      Company?         @relation(fields: [companyId], references: [id])
   category     Category?        @relation(fields: [categoryId], references: [id])
   versions     ReceiptVersion[]
   transactions BankTransaction[]
+  files        ReceiptFile[]
 
   @@index([organizationId])
   @@index([organizationId, userId])
@@ -240,6 +243,31 @@ model ReceiptVersion {
 
   @@unique([receiptId, versionNo])
   @@map("receipt_versions")
+}
+
+// Datei-Ablage als Bytes in der DB (funktioniert auch auf Hostern mit
+// flüchtigem Dateisystem wie Railway; ist die verlässliche Quelle). Die
+// Ordnerstruktur/Dateinamen aus Spec Abschnitt 7 stehen in receipts.pdfPath /
+// originalPath und werden beim Export materialisiert.
+enum ReceiptFileKind {
+  ORIGINAL // unverändertes Original (Foto/PDF)
+  PDF      // generierte PDF (Beiblatt + Beleg)
+}
+
+model ReceiptFile {
+  id        String          @id @default(cuid())
+  receiptId String
+  kind      ReceiptFileKind
+  filename  String
+  mimeType  String
+  bytes     Bytes
+  size      Int
+  createdAt DateTime        @default(now())
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId, kind])
+  @@map("receipt_files")
 }
 
 // Nummernkreis pro Firma und Jahr

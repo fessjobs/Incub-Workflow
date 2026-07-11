@@ -33,6 +33,7 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-Maik Janke}
       STORAGE_PATH: /data/incubWorkflow-Ablage
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-4-8}
     volumes:
       # Beleg-Ablage auf dem Host, damit die PDFs direkt im Dateisystem liegen
       - ./incubWorkflow-Ablage:/data/incubWorkflow-Ablage

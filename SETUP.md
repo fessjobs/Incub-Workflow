@@ -53,6 +53,7 @@ und lege diese drei an:
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` ← genau so eintippen, das verbindet die Datenbank |
 | `AUTH_SECRET` | eine lange Zufallszeichenkette – erzeuge sie auf <https://generate-secret.vercel.app/32> und füge sie ein |
 | `COOKIE_SECURE` | `true` |
+| `ANTHROPIC_API_KEY` | dein Claude-API-Schlüssel – schaltet das **automatische Auslesen** der Belege frei. Ohne ihn läuft alles, die Felder werden dann manuell erfasst. Schlüssel unter <https://console.anthropic.com> erstellen. |
 
 Optional kannst du zusätzlich setzen, um das Erst-Login zu ändern:
 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`.

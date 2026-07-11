@@ -15,6 +15,26 @@ in ~10 Minuten online (App + PostgreSQL, automatische Migrationen und Grunddaten
 URL auch fürs Handy). Für den rein lokalen Betrieb siehe „Schnellstart (Docker Compose)“
 weiter unten.
 
+## Stand: Sprint 2 (Kern-Flow) ✅
+
+- **Belege erfassen** – Foto, Handy-Kamera/Scanner, Datei-Upload und Drag&Drop,
+  auch **mehrere Belege als Batch** (werden als Warteschlange abgearbeitet)
+- **Automatisches Auslesen** per Claude Vision (Datum, Aussteller, Brutto/Netto,
+  USt-Sätze inkl. gemischter Sätze, Zahlungsart, Kategorie- und Zweck-Vorschlag) –
+  optional; ohne API-Schlüssel greift die manuelle Erfassung
+- **Schnelle Zuordnung** – Firma per Ein-Tap-Chip, Kategorie, Art, geprüft-Kreuz
+- **Beiblatt-PDF** im incub:workflow-Design mit Firmenlogo/Rechtsträger, inkl.
+  Sonderfälle **Bewirtung** (gesetzliche Zusatzfelder) und **Eigenbeleg**
+- **Eine PDF** aus Beiblatt (Seite 1) + Beleg (Seite 2), Original bleibt separat
+- **Belegnummernkreis** `{Kürzel}-{Jahr}-{lfd. Nr.}` pro Firma und Jahr
+- **Belegliste** mit Volltextsuche und Filtern (Firma, Kategorie, Art, Erstattung,
+  Einreicher, Zeitraum), Status-Badges, PDF-/Original-Download
+- **Nachbearbeitung** jederzeit → PDF wird neu erzeugt, alte Version bleibt in der
+  **Versionshistorie**; **Dubletten-Check** (Betrag + Datum + Aussteller)
+- **Erstattungsstatus** (offen / eingereicht / erstattet) pro Auslage
+- Dateien liegen verlässlich in der Datenbank (hosting-tauglich) und werden im
+  lokalen Betrieb zusätzlich in die Ordnerstruktur (Abschnitt 7) gespiegelt
+
 ## Stand: Sprint 1 (Fundament) ✅
 
 - Login (E-Mail/Passwort) mit Rollen **Admin** (sieht alles) / **Mitglied** (sieht nur eigene Belege)
@@ -84,8 +104,8 @@ prisma/                     Schema, Migrationen, Seed
 ## Roadmap (Spec Abschnitt 12)
 
 1. ✅ Fundament
-2. Kern-Flow: Upload/Foto → Claude-Extraktion → Beiblatt-PDF → Ablage → Nummernkreis
-3. Editieren, Versionierung, Dubletten-Check, Batch-Upload
+2. ✅ Kern-Flow: Upload/Foto → Claude-Extraktion → Beiblatt-PDF → Ablage → Nummernkreis
+3. ✅ Editieren, Versionierung, Dubletten-Check, Batch-Upload (mit Sprint 2 umgesetzt)
 4. Kontoauszug-Abgleich
 5. Dashboards, Auswertungen, Excel-Exporte
 6. Polish: PWA/Kamera-Flow, Onboarding, Demo-Daten
