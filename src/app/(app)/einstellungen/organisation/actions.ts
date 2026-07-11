@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { loadDemoData, clearDemoData } from "@/lib/demo";
 
 export type OrgFormState = { error?: string; success?: boolean };
 
@@ -44,4 +45,28 @@ export async function updateOrganization(
   });
   revalidatePath("/einstellungen/organisation");
   return { success: true };
+}
+
+export async function toggleDemoData(load: boolean): Promise<{ ok: boolean; count?: number }> {
+  const admin = await requireAdmin();
+  if (load) {
+    await clearDemoData(admin.organizationId); // erst alte Demo weg, dann neu
+    const count = await loadDemoData(admin.organizationId, admin.id);
+    await logAudit({ organizationId: admin.organizationId, userId: admin.id, action: "demo.load", entityType: "organization" });
+    revalidatePath("/einstellungen/organisation");
+    revalidatePath("/dashboard");
+    return { ok: true, count };
+  }
+  await clearDemoData(admin.organizationId);
+  await logAudit({ organizationId: admin.organizationId, userId: admin.id, action: "demo.clear", entityType: "organization" });
+  revalidatePath("/einstellungen/organisation");
+  revalidatePath("/dashboard");
+  return { ok: true, count: 0 };
+}
+
+export async function completeOnboarding(): Promise<{ ok: boolean }> {
+  const admin = await requireAdmin();
+  await db.organization.update({ where: { id: admin.organizationId }, data: { onboarded: true } });
+  revalidatePath("/dashboard");
+  return { ok: true };
 }

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { demoCount } from "@/lib/demo";
 import { OrgForm } from "./org-form";
+import { DemoControls } from "./demo-controls";
 
 export const metadata: Metadata = { title: "Organisation" };
 
@@ -10,6 +12,7 @@ export default async function OrganizationPage() {
   const org = await db.organization.findUniqueOrThrow({
     where: { id: admin.organizationId },
   });
+  const demos = await demoCount(admin.organizationId);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -29,6 +32,7 @@ export default async function OrganizationPage() {
           storagePath: org.storagePath,
         }}
       />
+      <DemoControls demoCount={demos} />
     </div>
   );
 }

@@ -15,7 +15,21 @@ in ~10 Minuten online (App + PostgreSQL, automatische Migrationen und Grunddaten
 URL auch fürs Handy). Für den rein lokalen Betrieb siehe „Schnellstart (Docker Compose)“
 weiter unten.
 
-## Stand: Sprint 2 (Kern-Flow) ✅
+## Stand: Alle Sprints abgeschlossen ✅
+
+**Sprint 4 – Kontoauszug-Abgleich:** Bankkonten (mehrere pro Firma + privat),
+CSV-/PDF-Import mit robustem Parser, automatisches Matching (Betrag + Datum ±3 +
+Fuzzy), drei Ansichten (Zahlung ohne Beleg / Beleg ohne Zahlung / Auslagen offen),
+Ignorieren mit Merkregeln, Erstattungs-Automatik.
+
+**Sprint 5 – Auswertungen:** Dashboards (Gruppe/persönlich), Charts (Kategorie-Donut,
+Monatsverlauf, Verteilungen nach Firma/Einreicher), Excel-Export gefilterter Ansichten
+(Summen je Kategorie), Steuerberater-Monats-ZIP (alle PDFs + Excel).
+
+**Sprint 6 – Polish:** PWA/installierbar (Service Worker, Manifest), Onboarding-
+Assistent, Demo-Daten-Schalter, Erinnerungs-Widget, Dashboard-Feinschliff.
+
+## Sprint 2 (Kern-Flow) ✅
 
 - **Belege erfassen** – Foto, Handy-Kamera/Scanner, Datei-Upload und Drag&Drop,
   auch **mehrere Belege als Batch** (werden als Warteschlange abgearbeitet)

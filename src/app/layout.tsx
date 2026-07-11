@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { PwaRegister } from "@/components/pwa-register";
 
 export const metadata: Metadata = {
   title: {
@@ -8,6 +9,8 @@ export const metadata: Metadata = {
   },
   description: "Belege. Erledigt. – Auslagen- & Beleg-Tool der incub:live-Unternehmensgruppe",
   applicationName: "incub:workflow",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "incub:workflow" },
 };
 
 export const viewport: Viewport = {
@@ -32,7 +35,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        {children}
+        <PwaRegister />
+      </body>
     </html>
   );
 }
