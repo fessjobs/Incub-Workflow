@@ -20,7 +20,7 @@ const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/gif", "applica
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
 export type UploadResult =
-  | { ok: true; id: string; vendor: string | null; extracted: boolean; learned: number }
+  | { ok: true; id: string; vendor: string | null; extracted: boolean; learned: number; extractionError: string | null }
   | { ok: false; error: string };
 
 // Extraktion + Mitlern-Vorschläge auf einen Beleg anwenden.
@@ -31,7 +31,7 @@ async function runExtraction(
   organizationId: string,
   bytes: Buffer,
   mime: string
-): Promise<{ extracted: boolean; vendor: string | null; learned: number }> {
+): Promise<{ extracted: boolean; vendor: string | null; learned: number; error: string | null }> {
   const categories = await db.category.findMany({
     where: { organizationId, active: true },
     orderBy: { sortOrder: "asc" },
@@ -78,7 +78,7 @@ async function runExtraction(
     });
   }
 
-  return { extracted, vendor, learned: history?.matchCount ?? 0 };
+  return { extracted, vendor, learned: history?.matchCount ?? 0, error: extraction.error };
 }
 
 // Ein Beleg-Foto/PDF hochladen: sofort als Entwurf anlegen, Original speichern,
@@ -129,13 +129,16 @@ export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
   let extractedOk = false;
   let vendor: string | null = null;
   let learned = 0;
+  let extractionError: string | null = null;
   try {
     const result = await runExtraction(draft.id, user.organizationId, bytes, mime);
     extractedOk = result.extracted;
     vendor = result.vendor;
     learned = result.learned;
+    extractionError = result.error;
   } catch (err) {
     console.error("Auto-Extraktion fehlgeschlagen:", err);
+    extractionError = err instanceof Error ? err.message.slice(0, 200) : "Unbekannter Fehler";
   }
 
   await logAudit({
@@ -146,7 +149,7 @@ export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
     entityId: draft.id,
   });
   revalidatePath("/belege");
-  return { ok: true, id: draft.id, vendor, extracted: extractedOk, learned };
+  return { ok: true, id: draft.id, vendor, extracted: extractedOk, learned, extractionError };
 }
 
 // Erneut auslesen (z. B. nachdem der API-Schlüssel gesetzt wurde)
@@ -172,6 +175,7 @@ export async function reExtract(receiptId: string): Promise<{ ok: boolean; extra
       original.mimeType
     );
     revalidatePath("/belege");
+    if (result.error) return { ok: false, error: `Auslesen fehlgeschlagen: ${result.error}` };
     return { ok: true, extracted: result.extracted };
   } catch (err) {
     console.error("Erneutes Auslesen fehlgeschlagen:", err);

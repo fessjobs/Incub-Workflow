@@ -12,6 +12,7 @@ type Item = {
   vendor?: string | null;
   extracted?: boolean;
   learned?: number;
+  extractionError?: string | null;
   error?: string;
   id?: string;
 };
@@ -91,7 +92,7 @@ export function Uploader({ autoRead }: { autoRead: boolean }) {
             prev.map((it) =>
               it.key === key
                 ? res.ok
-                  ? { ...it, status: "done", vendor: res.vendor, extracted: res.extracted, learned: res.learned, id: res.id }
+                  ? { ...it, status: "done", vendor: res.vendor, extracted: res.extracted, learned: res.learned, extractionError: res.extractionError, id: res.id }
                   : { ...it, status: "error", error: res.error }
                 : it
             )
@@ -184,9 +185,11 @@ export function Uploader({ autoRead }: { autoRead: boolean }) {
               <StatusIcon status={it.status} />
               <span className="min-w-0 flex-1 truncate">{it.name}</span>
               {it.status === "done" && (
-                <span className="text-xs text-navy-400">
+                <span className={`text-xs ${it.extracted ? "text-navy-400" : "text-amber-600 dark:text-amber-400"}`}>
                   {it.extracted
                     ? `${it.vendor || "ausgelesen"}${it.learned ? ` · zugeordnet wie ${it.learned}× zuvor` : ""}`
+                    : it.extractionError
+                    ? `Auslesen fehlgeschlagen: ${it.extractionError}`
                     : autoRead
                     ? "nicht lesbar – bitte manuell prüfen"
                     : "hochgeladen (Auslesen inaktiv)"}
