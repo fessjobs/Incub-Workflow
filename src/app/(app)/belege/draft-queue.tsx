@@ -82,6 +82,9 @@ function DraftCard({ draft, companies, categories }: { draft: Draft; companies: 
         hospitalityGuests: null,
         hospitalityOccasion: null,
         hospitalityLocation: null,
+        vehicleName: null,
+        odometerKm: null,
+        notes: null,
         vatLines: "",
       },
       { ignoreDuplicate }
@@ -112,7 +115,9 @@ function DraftCard({ draft, companies, categories }: { draft: Draft; companies: 
     else router.refresh();
   }
 
-  const hospitalitySelected = categories.find((c) => c.id === categoryId)?.name.toLowerCase() === "bewirtung";
+  const selectedCategoryName = categories.find((c) => c.id === categoryId)?.name.toLowerCase() ?? "";
+  const hospitalitySelected = selectedCategoryName === "bewirtung";
+  const fuelSelected = selectedCategoryName.includes("tank") || selectedCategoryName.includes("fahrt");
 
   return (
     <div className="card p-4">
@@ -214,7 +219,12 @@ function DraftCard({ draft, companies, categories }: { draft: Draft; companies: 
 
           {hospitalitySelected && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              Bewirtung gewählt – für die gesetzlichen Zusatzangaben (Personen, Anlass, Ort) bitte „Details“ öffnen.
+              Bewirtung gewählt – für die gesetzlichen Zusatzangaben (bewirtete Personen, Anlass, Ort) bitte „Details“ öffnen.
+            </p>
+          )}
+          {fuelSelected && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              Tank-/Fahrtkosten gewählt – Fahrzeug und Kilometerstand trägst du unter „Details“ ein.
             </p>
           )}
 

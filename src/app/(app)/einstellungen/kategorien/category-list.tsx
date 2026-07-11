@@ -13,6 +13,7 @@ type Category = {
   id: string;
   name: string;
   isHospitality: boolean;
+  isFuel: boolean;
   active: boolean;
   receiptCount: number;
 };
@@ -44,6 +45,10 @@ export function CategoryList({ categories }: { categories: Category[] }) {
         <label className="flex items-center gap-2 pb-2 text-sm text-navy-500 dark:text-navy-300">
           <input type="checkbox" name="isHospitality" className="h-4 w-4 rounded accent-navy-900" />
           Bewirtungs-Zusatzfelder
+        </label>
+        <label className="flex items-center gap-2 pb-2 text-sm text-navy-500 dark:text-navy-300">
+          <input type="checkbox" name="isFuel" className="h-4 w-4 rounded accent-navy-900" />
+          Fahrzeug &amp; km-Stand
         </label>
         <button type="submit" disabled={creating} className="btn-primary">
           {creating ? "…" : "Hinzufügen"}
@@ -87,6 +92,11 @@ function CategoryRow({ category }: { category: Category }) {
             {category.isHospitality && (
               <span className="badge ml-2 bg-navy-100 text-navy-500 dark:bg-navy-800 dark:text-navy-300">
                 Bewirtung
+              </span>
+            )}
+            {category.isFuel && (
+              <span className="badge ml-2 bg-navy-100 text-navy-500 dark:bg-navy-800 dark:text-navy-300">
+                Fahrzeug
               </span>
             )}
             {!category.active && (

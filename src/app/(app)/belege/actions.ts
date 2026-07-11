@@ -226,6 +226,9 @@ const fullSchema = z.object({
   hospitalityGuests: z.string().trim().optional().nullable(),
   hospitalityOccasion: z.string().trim().optional().nullable(),
   hospitalityLocation: z.string().trim().optional().nullable(),
+  vehicleName: z.string().trim().optional().nullable(),
+  odometerKm: z.coerce.number().int().min(0).optional().nullable(),
+  notes: z.string().trim().optional().nullable(),
   vatLines: z.string().optional(), // JSON-String
 });
 
@@ -261,6 +264,9 @@ export type ReceiptInput = {
   hospitalityGuests?: string | null;
   hospitalityOccasion?: string | null;
   hospitalityLocation?: string | null;
+  vehicleName?: string | null;
+  odometerKm?: string | number | null;
+  notes?: string | null;
   vatLines?: string;
 };
 
@@ -311,6 +317,20 @@ export async function saveReceipt(
       numberFields = await nextReceiptNumber(tx, company, receiptDate.getFullYear());
     }
 
+    // Fahrzeug auflösen: bestehendes wiederverwenden, neues automatisch anlegen
+    let vehicleId: string | null = null;
+    const vehicleName = v.vehicleName?.trim();
+    if (vehicleName) {
+      const vehicle = await tx.vehicle.upsert({
+        where: {
+          organizationId_name: { organizationId: user.organizationId, name: vehicleName },
+        },
+        create: { organizationId: user.organizationId, name: vehicleName },
+        update: { active: true },
+      });
+      vehicleId = vehicle.id;
+    }
+
     const bumpVersion = receipt.status === "ABGELEGT";
 
     await tx.receipt.update({
@@ -332,6 +352,9 @@ export async function saveReceipt(
         hospitalityGuests: v.hospitalityGuests || null,
         hospitalityOccasion: v.hospitalityOccasion || null,
         hospitalityLocation: v.hospitalityLocation || null,
+        vehicleId,
+        odometerKm: v.odometerKm ?? null,
+        notes: v.notes || null,
         status: "ABGELEGT",
         ...(numberFields ?? {}),
         ...(bumpVersion ? { currentVersion: { increment: 1 } } : {}),
@@ -342,7 +365,7 @@ export async function saveReceipt(
   // PDF erzeugen (außerhalb der Transaktion – kann etwas dauern)
   const full = await db.receipt.findUniqueOrThrow({
     where: { id: receiptId },
-    include: { company: true, category: true, user: true },
+    include: { company: true, category: true, user: true, vehicle: true },
   });
   await generateAndStorePdf(full, org.brandName, user.id);
 

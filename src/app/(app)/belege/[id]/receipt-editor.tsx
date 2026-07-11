@@ -24,6 +24,9 @@ type ReceiptData = {
   hospitalityGuests: string | null;
   hospitalityOccasion: string | null;
   hospitalityLocation: string | null;
+  vehicleName: string | null;
+  odometerKm: number | null;
+  notes: string | null;
   status: string;
 };
 
@@ -38,11 +41,13 @@ export function ReceiptEditor({
   receipt,
   companies,
   categories,
+  vehicles,
   canDelete,
 }: {
   receipt: ReceiptData;
   companies: { id: string; brandName: string; color: string | null }[];
-  categories: { id: string; name: string; isHospitality: boolean }[];
+  categories: { id: string; name: string; isHospitality: boolean; isFuel: boolean }[];
+  vehicles: string[];
   canDelete: boolean;
 }) {
   const router = useRouter();
@@ -62,6 +67,9 @@ export function ReceiptEditor({
     hospitalityGuests: receipt.hospitalityGuests ?? "",
     hospitalityOccasion: receipt.hospitalityOccasion ?? "",
     hospitalityLocation: receipt.hospitalityLocation ?? "",
+    vehicleName: receipt.vehicleName ?? "",
+    odometerKm: receipt.odometerKm !== null ? String(receipt.odometerKm) : "",
+    notes: receipt.notes ?? "",
   });
   const [vatLines, setVatLines] = useState<VatLine[]>(receipt.vatLines);
   const [saving, setSaving] = useState(false);
@@ -70,7 +78,9 @@ export function ReceiptEditor({
   const [saved, setSaved] = useState(false);
 
   const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }));
-  const isHospitality = categories.find((c) => c.id === f.categoryId)?.isHospitality ?? false;
+  const selectedCategory = categories.find((c) => c.id === f.categoryId);
+  const isHospitality = selectedCategory?.isHospitality ?? false;
+  const isFuel = selectedCategory?.isFuel ?? false;
 
   async function submit(ignoreDuplicate = false) {
     setError(null);
@@ -95,6 +105,9 @@ export function ReceiptEditor({
         hospitalityGuests: f.hospitalityGuests || null,
         hospitalityOccasion: f.hospitalityOccasion || null,
         hospitalityLocation: f.hospitalityLocation || null,
+        vehicleName: f.vehicleName || null,
+        odometerKm: f.odometerKm ? Number(f.odometerKm) : null,
+        notes: f.notes || null,
         vatLines: JSON.stringify(vatLines),
       },
       { ignoreDuplicate }
@@ -271,6 +284,41 @@ export function ReceiptEditor({
         </label>
       </section>
 
+      {/* Sonderfall Tank-/Fahrtkostenbeleg */}
+      {isFuel && (
+        <section className="card space-y-4 p-5">
+          <p className="eyebrow">Fahrzeug &amp; Kilometerstand</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="label">Fahrzeug</label>
+              <input
+                className="input"
+                list="vehicle-list"
+                value={f.vehicleName}
+                onChange={(e) => set({ vehicleName: e.target.value })}
+                placeholder="wählen oder neu eintippen, z. B. VW Passat · MZ-AB 123"
+              />
+              <datalist id="vehicle-list">
+                {vehicles.map((v) => (
+                  <option key={v} value={v} />
+                ))}
+              </datalist>
+              <p className="mt-1 text-xs text-navy-400">Neue Fahrzeuge werden automatisch gemerkt.</p>
+            </div>
+            <div>
+              <label className="label">Kilometerstand</label>
+              <input
+                className="input tabular-nums"
+                inputMode="numeric"
+                value={f.odometerKm}
+                onChange={(e) => set({ odometerKm: e.target.value.replace(/[^0-9]/g, "") })}
+                placeholder="z. B. 84210"
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Sonderfall Bewirtung */}
       {isHospitality && (
         <section className="card space-y-4 p-5">
@@ -291,6 +339,17 @@ export function ReceiptEditor({
           </div>
         </section>
       )}
+
+      {/* Freitext / Bemerkungen */}
+      <section className="card space-y-3 p-5">
+        <p className="eyebrow">Bemerkungen</p>
+        <textarea
+          className="input min-h-20"
+          value={f.notes}
+          onChange={(e) => set({ notes: e.target.value })}
+          placeholder="Freitext – erscheint auf dem Belegbeiblatt (z. B. Projekt, Kostenstelle, Hinweise für die Buchhaltung)"
+        />
+      </section>
 
       {/* Sonderfall Eigenbeleg */}
       <section className="card space-y-3 p-5">

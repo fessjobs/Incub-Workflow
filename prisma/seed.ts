@@ -23,9 +23,9 @@ const COMPANIES: Array<{
   { brandName: "Privat", shortCode: "PRIV", isPrivate: true },
 ];
 
-const CATEGORIES = [
+const CATEGORIES: Array<{ name: string; isHospitality?: boolean; isFuel?: boolean }> = [
   { name: "Bewirtung", isHospitality: true },
-  { name: "Fahrtkosten/Tanken" },
+  { name: "Fahrtkosten/Tanken", isFuel: true },
   { name: "Material/Equipment" },
   { name: "Büro" },
   { name: "Porto/Versand" },
@@ -90,6 +90,7 @@ async function main() {
         organizationId: org.id,
         name: cat.name,
         isHospitality: cat.isHospitality ?? false,
+        isFuel: cat.isFuel ?? false,
         sortOrder: i,
       },
     });

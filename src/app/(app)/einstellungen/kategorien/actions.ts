@@ -34,6 +34,7 @@ export async function createCategory(
       organizationId: admin.organizationId,
       name: parsed.data,
       isHospitality: formData.get("isHospitality") === "on",
+      isFuel: formData.get("isFuel") === "on",
       sortOrder: (maxSort._max.sortOrder ?? 0) + 1,
     },
   });

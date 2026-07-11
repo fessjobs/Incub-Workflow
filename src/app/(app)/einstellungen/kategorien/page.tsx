@@ -26,6 +26,7 @@ export default async function CategoriesPage() {
           id: c.id,
           name: c.name,
           isHospitality: c.isHospitality,
+          isFuel: c.isFuel,
           active: c.active,
           receiptCount: c._count.receipts,
         }))}

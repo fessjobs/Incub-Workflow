@@ -126,6 +126,9 @@ export type BeiblattData = {
   isSelfReceipt: boolean;
   selfReceiptReason: string | null;
   hospitality: { guests: string | null; occasion: string | null; location: string | null } | null;
+  vehicleName: string | null;
+  odometerKm: number | null;
+  notes: string | null;
   createdAt: Date;
 };
 
@@ -223,6 +226,15 @@ function BeiblattDocument({ data }: { data: BeiblattData }) {
         <Field label="Geschäftlicher Anlass / Zweck" value={data.purpose || "–"} />
         <Field label="Zahlungsart" value={PAYMENT_LABELS[data.paymentMethod] ?? data.paymentMethod} />
         <Field label="Erstattungsstatus" value={reimburse} />
+        {data.vehicleName || data.odometerKm !== null ? (
+          <>
+            <Field label="Fahrzeug" value={data.vehicleName || "–"} />
+            <Field
+              label="Kilometerstand"
+              value={data.odometerKm !== null ? `${data.odometerKm.toLocaleString("de-DE")} km` : "–"}
+            />
+          </>
+        ) : null}
 
         {/* Sonderfall Bewirtung */}
         {data.hospitality ? (
@@ -239,6 +251,14 @@ function BeiblattDocument({ data }: { data: BeiblattData }) {
           <View style={styles.banner}>
             <Text style={styles.bannerTitle}>Eigenbeleg – kein Originalbeleg vorhanden</Text>
             <Field label="Begründung" value={data.selfReceiptReason || "–"} />
+          </View>
+        ) : null}
+
+        {/* Freitext / Bemerkungen */}
+        {data.notes ? (
+          <View style={styles.banner}>
+            <Text style={styles.bannerTitle}>Bemerkungen</Text>
+            <Text>{data.notes}</Text>
           </View>
         ) : null}
 

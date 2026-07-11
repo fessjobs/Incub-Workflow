@@ -32,7 +32,9 @@ export function snapshot(receipt: Record<string, unknown>): Prisma.InputJsonValu
   return JSON.parse(JSON.stringify(receipt, (_k, v) => (typeof v === "bigint" ? Number(v) : v)));
 }
 
-type FullReceipt = Prisma.ReceiptGetPayload<{ include: { company: true; category: true; user: true } }>;
+type FullReceipt = Prisma.ReceiptGetPayload<{
+  include: { company: true; category: true; user: true; vehicle: true };
+}>;
 
 // Erzeugt Beiblatt + gemergte PDF und legt beide Dateien (DB + Dateisystem) ab.
 export async function generateAndStorePdf(
@@ -77,6 +79,9 @@ export async function generateAndStorePdf(
           location: receipt.hospitalityLocation,
         }
       : null,
+    vehicleName: receipt.vehicle?.name ?? null,
+    odometerKm: receipt.odometerKm,
+    notes: receipt.notes,
     createdAt: new Date(),
   };
 

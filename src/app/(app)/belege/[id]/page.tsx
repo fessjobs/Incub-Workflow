@@ -20,6 +20,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       company: true,
       category: true,
       user: true,
+      vehicle: true,
       versions: { orderBy: { versionNo: "desc" }, include: { createdBy: true } },
       files: { select: { kind: true } },
     },
@@ -35,6 +36,11 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
   const categories = await db.category.findMany({
     where: { organizationId: user.organizationId, active: true },
     orderBy: { sortOrder: "asc" },
+  });
+  const vehicles = await db.vehicle.findMany({
+    where: { organizationId: user.organizationId, active: true },
+    orderBy: { name: "asc" },
+    select: { name: true },
   });
 
   const hasPdf = receipt.files.some((f) => f.kind === "PDF");
@@ -78,10 +84,14 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               hospitalityGuests: receipt.hospitalityGuests,
               hospitalityOccasion: receipt.hospitalityOccasion,
               hospitalityLocation: receipt.hospitalityLocation,
+              vehicleName: receipt.vehicle?.name ?? null,
+              odometerKm: receipt.odometerKm,
+              notes: receipt.notes,
               status: receipt.status,
             }}
             companies={allowedCompanies.map((c) => ({ id: c.id, brandName: c.brandName, color: c.color }))}
-            categories={categories.map((c) => ({ id: c.id, name: c.name, isHospitality: c.isHospitality }))}
+            categories={categories.map((c) => ({ id: c.id, name: c.name, isHospitality: c.isHospitality, isFuel: c.isFuel }))}
+            vehicles={vehicles.map((v) => v.name)}
             canDelete={isDraft || user.role === "ADMIN"}
           />
 

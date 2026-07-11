@@ -31,6 +31,7 @@ model Organization {
   companies        Company[]
   categories       Category[]
   receipts         Receipt[]
+  vehicles         Vehicle[]
   bankAccounts     BankAccount[]
   bankTransactions BankTransaction[]
   matchRules       MatchRule[]
@@ -121,6 +122,8 @@ model Category {
   name           String
   // Steuert Sonderfall-Logik (z. B. Bewirtungsbeleg-Block auf dem Beiblatt)
   isHospitality Boolean @default(false)
+  // Blendet Fahrzeug + Kilometerstand ein (Tank-/Fahrtkostenbelege)
+  isFuel        Boolean @default(false)
   active        Boolean @default(true)
   sortOrder     Int     @default(0)
   createdAt     DateTime @default(now())
@@ -193,6 +196,13 @@ model Receipt {
   hospitalityOccasion String?
   hospitalityLocation String?
 
+  // Sonderfall Tank-/Fahrtkostenbeleg
+  vehicleId  String?
+  odometerKm Int?
+
+  // Freitext/Bemerkungen – erscheint auf dem Beiblatt
+  notes String?
+
   // Sonderfall Eigenbeleg
   isSelfReceipt     Boolean @default(false)
   selfReceiptReason String?
@@ -214,6 +224,7 @@ model Receipt {
   user         User             @relation(fields: [userId], references: [id])
   company      Company?         @relation(fields: [companyId], references: [id])
   category     Category?        @relation(fields: [categoryId], references: [id])
+  vehicle      Vehicle?         @relation(fields: [vehicleId], references: [id])
   versions     ReceiptVersion[]
   transactions BankTransaction[]
   files        ReceiptFile[]
@@ -268,6 +279,23 @@ model ReceiptFile {
 
   @@index([receiptId, kind])
   @@map("receipt_files")
+}
+
+// Fahrzeuge (für Tank-/Fahrtkostenbelege) – werden beim Erfassen automatisch
+// angelegt, wenn ein neuer Name eingetippt wird
+model Vehicle {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String // z. B. "VW Passat · MZ-AB 123"
+  active         Boolean @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  receipts     Receipt[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("vehicles")
 }
 
 // Nummernkreis pro Firma und Jahr
