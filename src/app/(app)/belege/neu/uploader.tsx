@@ -11,11 +11,50 @@ type Item = {
   status: "queued" | "uploading" | "done" | "error";
   vendor?: string | null;
   extracted?: boolean;
+  learned?: number;
   error?: string;
   id?: string;
 };
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,application/pdf";
+
+// Fotos vor dem Upload verkleinern: schnellerer Upload und sichere Größe für
+// das automatische Auslesen (max. Kantenlänge 2576px, JPEG). PDFs unverändert.
+const MAX_EDGE = 2576;
+const RESIZE_THRESHOLD_BYTES = 2.5 * 1024 * 1024;
+
+async function prepareFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const { width, height } = bitmap;
+    const needsResize = Math.max(width, height) > MAX_EDGE || file.size > RESIZE_THRESHOLD_BYTES;
+    if (!needsResize) {
+      bitmap.close();
+      return file;
+    }
+    const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.85)
+    );
+    if (!blob) return file;
+    const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], name || "beleg.jpg", { type: "image/jpeg" });
+  } catch {
+    // z. B. nicht dekodierbares Format – Original hochladen, Server entscheidet
+    return file;
+  }
+}
 
 export function Uploader({ autoRead }: { autoRead: boolean }) {
   const [items, setItems] = useState<Item[]>([]);
@@ -44,14 +83,15 @@ export function Uploader({ autoRead }: { autoRead: boolean }) {
         const key = newItems[i].key;
         setItems((prev) => prev.map((it) => (it.key === key ? { ...it, status: "uploading" } : it)));
         try {
+          const prepared = await prepareFile(list[i]);
           const fd = new FormData();
-          fd.append("file", list[i]);
+          fd.append("file", prepared);
           const res = await uploadReceipt(fd);
           setItems((prev) =>
             prev.map((it) =>
               it.key === key
                 ? res.ok
-                  ? { ...it, status: "done", vendor: res.vendor, extracted: res.extracted, id: res.id }
+                  ? { ...it, status: "done", vendor: res.vendor, extracted: res.extracted, learned: res.learned, id: res.id }
                   : { ...it, status: "error", error: res.error }
                 : it
             )
@@ -145,7 +185,11 @@ export function Uploader({ autoRead }: { autoRead: boolean }) {
               <span className="min-w-0 flex-1 truncate">{it.name}</span>
               {it.status === "done" && (
                 <span className="text-xs text-navy-400">
-                  {it.extracted ? (it.vendor || "ausgelesen") : autoRead ? "nicht lesbar – manuell" : "hochgeladen"}
+                  {it.extracted
+                    ? `${it.vendor || "ausgelesen"}${it.learned ? ` · zugeordnet wie ${it.learned}× zuvor` : ""}`
+                    : autoRead
+                    ? "nicht lesbar – bitte manuell prüfen"
+                    : "hochgeladen (Auslesen inaktiv)"}
                 </span>
               )}
               {it.status === "error" && <span className="text-xs text-red-600">{it.error}</span>}

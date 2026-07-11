@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { extractReceipt, isExtractionAvailable, type VatLine } from "@/lib/claude";
+import { suggestFromHistory } from "@/lib/suggestions";
 import {
   receiptScope,
   assertCompanyAllowed,
@@ -19,8 +20,66 @@ const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/gif", "applica
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
 export type UploadResult =
-  | { ok: true; id: string; vendor: string | null; extracted: boolean }
+  | { ok: true; id: string; vendor: string | null; extracted: boolean; learned: number }
   | { ok: false; error: string };
+
+// Extraktion + Mitlern-Vorschläge auf einen Beleg anwenden.
+// Historie (frühere Zuordnungen desselben Ausstellers) schlägt den
+// Claude-Vorschlag; Claude füllt die reinen Belegdaten.
+async function runExtraction(
+  receiptId: string,
+  organizationId: string,
+  bytes: Buffer,
+  mime: string
+): Promise<{ extracted: boolean; vendor: string | null; learned: number }> {
+  const categories = await db.category.findMany({
+    where: { organizationId, active: true },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, name: true },
+  });
+
+  const extraction = await extractReceipt(bytes, mime, categories.map((c) => c.name));
+  const vendor = extraction.vendor;
+  const extracted = Boolean(extraction.vendor || extraction.grossAmount);
+
+  // Kategorie-Vorschlag von Claude auf echte Kategorie mappen
+  let categoryId: string | null = null;
+  if (extraction.categorySuggestion) {
+    const match = categories.find(
+      (c) => c.name.toLowerCase() === extraction.categorySuggestion!.toLowerCase()
+    );
+    categoryId = match?.id ?? null;
+  }
+
+  // Mitlernen: Historie desselben Ausstellers hat Vorrang
+  const history = vendor ? await suggestFromHistory(organizationId, vendor) : null;
+  if (history) {
+    if (history.categoryId) categoryId = history.categoryId;
+  }
+
+  if (extracted || history) {
+    await db.receipt.update({
+      where: { id: receiptId },
+      data: {
+        ...(extraction.receiptDate ? { receiptDate: new Date(extraction.receiptDate) } : {}),
+        ...(vendor ? { vendor } : {}),
+        ...(extraction.grossAmount !== null ? { grossAmount: extraction.grossAmount } : {}),
+        ...(extraction.netAmount !== null ? { netAmount: extraction.netAmount } : {}),
+        ...(extraction.vatLines.length > 0
+          ? { vatLines: extraction.vatLines as unknown as object }
+          : {}),
+        paymentMethod: (history?.paymentMethod ??
+          (extraction.paymentMethod !== "UNBEKANNT" ? extraction.paymentMethod : undefined)) as never,
+        purpose: history?.purpose ?? extraction.purposeSuggestion ?? undefined,
+        categoryId: categoryId ?? undefined,
+        companyId: history?.companyId ?? undefined,
+        kind: (history?.kind ?? undefined) as never,
+      },
+    });
+  }
+
+  return { extracted, vendor, learned: history?.matchCount ?? 0 };
+}
 
 // Ein Beleg-Foto/PDF hochladen: sofort als Entwurf anlegen, Original speichern,
 // automatisch auslesen. Für Batch-Upload ruft der Client dies je Datei auf.
@@ -66,46 +125,15 @@ export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
     },
   });
 
-  // Automatisch auslesen (falls API-Key vorhanden)
+  // Automatisch auslesen + Mitlern-Vorschläge (falls API-Key vorhanden)
   let extractedOk = false;
   let vendor: string | null = null;
+  let learned = 0;
   try {
-    const categories = await db.category.findMany({
-      where: { organizationId: user.organizationId, active: true },
-      orderBy: { sortOrder: "asc" },
-      select: { name: true, isHospitality: true },
-    });
-    const extraction = await extractReceipt(bytes, mime, categories.map((c) => c.name));
-    if (extraction.vendor || extraction.grossAmount) {
-      extractedOk = true;
-      vendor = extraction.vendor;
-      // passende Kategorie finden
-      let categoryId: string | null = null;
-      if (extraction.categorySuggestion) {
-        const match = categories.find(
-          (c) => c.name.toLowerCase() === extraction.categorySuggestion!.toLowerCase()
-        );
-        if (match) {
-          const cat = await db.category.findFirst({
-            where: { organizationId: user.organizationId, name: match.name },
-          });
-          categoryId = cat?.id ?? null;
-        }
-      }
-      await db.receipt.update({
-        where: { id: draft.id },
-        data: {
-          receiptDate: extraction.receiptDate ? new Date(extraction.receiptDate) : new Date(),
-          vendor: extraction.vendor ?? "",
-          grossAmount: extraction.grossAmount ?? 0,
-          netAmount: extraction.netAmount ?? undefined,
-          vatLines: extraction.vatLines as unknown as object,
-          paymentMethod: extraction.paymentMethod,
-          purpose: extraction.purposeSuggestion ?? undefined,
-          categoryId,
-        },
-      });
-    }
+    const result = await runExtraction(draft.id, user.organizationId, bytes, mime);
+    extractedOk = result.extracted;
+    vendor = result.vendor;
+    learned = result.learned;
   } catch (err) {
     console.error("Auto-Extraktion fehlgeschlagen:", err);
   }
@@ -118,7 +146,37 @@ export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
     entityId: draft.id,
   });
   revalidatePath("/belege");
-  return { ok: true, id: draft.id, vendor, extracted: extractedOk };
+  return { ok: true, id: draft.id, vendor, extracted: extractedOk, learned };
+}
+
+// Erneut auslesen (z. B. nachdem der API-Schlüssel gesetzt wurde)
+export async function reExtract(receiptId: string): Promise<{ ok: boolean; extracted?: boolean; error?: string }> {
+  const user = await requireUser();
+  if (!isExtractionAvailable()) {
+    return { ok: false, error: "Automatisches Auslesen inaktiv – ANTHROPIC_API_KEY fehlt." };
+  }
+  const receipt = await db.receipt.findFirst({
+    where: { id: receiptId, ...receiptScope(user), status: "ENTWURF" },
+  });
+  if (!receipt) return { ok: false, error: "Entwurf nicht gefunden." };
+  const original = await db.receiptFile.findFirst({
+    where: { receiptId, kind: "ORIGINAL" },
+  });
+  if (!original) return { ok: false, error: "Kein Original vorhanden." };
+
+  try {
+    const result = await runExtraction(
+      receiptId,
+      user.organizationId,
+      Buffer.from(original.bytes),
+      original.mimeType
+    );
+    revalidatePath("/belege");
+    return { ok: true, extracted: result.extracted };
+  } catch (err) {
+    console.error("Erneutes Auslesen fehlgeschlagen:", err);
+    return { ok: false, error: "Auslesen fehlgeschlagen." };
+  }
 }
 
 // Schnelle Zuordnung im Batch: Firma / Kategorie / Art per Ein-Tap setzen.

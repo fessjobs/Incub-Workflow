@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { saveReceipt, deleteReceipt, type SaveResult } from "./actions";
+import { saveReceipt, deleteReceipt, reExtract, type SaveResult } from "./actions";
 
 type Draft = {
   id: string;
@@ -101,6 +101,15 @@ function DraftCard({ draft, companies, categories }: { draft: Draft; companies: 
     setSaving(true);
     await deleteReceipt(draft.id);
     router.refresh();
+  }
+
+  async function rerun() {
+    setSaving(true);
+    setError(null);
+    const res = await reExtract(draft.id);
+    setSaving(false);
+    if (!res.ok) setError(res.error ?? "Auslesen fehlgeschlagen.");
+    else router.refresh();
   }
 
   const hospitalitySelected = categories.find((c) => c.id === categoryId)?.name.toLowerCase() === "bewirtung";
@@ -230,6 +239,9 @@ function DraftCard({ draft, companies, categories }: { draft: Draft; companies: 
             <Link href={`/belege/${draft.id}`} className="text-sm text-navy-500 underline underline-offset-2">
               Details
             </Link>
+            <button type="button" disabled={saving} className="text-sm text-navy-500 underline underline-offset-2" onClick={rerun} title="Beleg erneut automatisch auslesen">
+              Neu auslesen
+            </button>
             <button type="button" className="ml-auto text-sm text-red-600 hover:underline" onClick={remove}>
               Verwerfen
             </button>

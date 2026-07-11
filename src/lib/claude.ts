@@ -33,8 +33,9 @@ export function isExtractionAvailable(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
-// Claude akzeptiert diese Bildtypen für Vision
+// Claude akzeptiert diese Bildtypen für Vision; PDFs gehen als Dokument-Block
 const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const PDF_TYPE = "application/pdf";
 
 const SCHEMA = {
   type: "object",
@@ -96,14 +97,28 @@ export async function extractReceipt(
   categories: string[]
 ): Promise<ExtractedReceipt> {
   if (!isExtractionAvailable()) return { ...EMPTY_EXTRACTION };
-  if (!VISION_TYPES.has(mimeType)) {
-    // PDF und andere Typen kann Claude Vision hier nicht direkt lesen –
-    // manuelle Erfassung. (PDF-Extraktion kann später ergänzt werden.)
+  if (!VISION_TYPES.has(mimeType) && mimeType !== PDF_TYPE) {
     return { ...EMPTY_EXTRACTION };
   }
 
   const client = new Anthropic();
   const today = new Date().toISOString().slice(0, 10);
+
+  // Bild als Vision-Block, PDF als Dokument-Block
+  const mediaBlock =
+    mimeType === PDF_TYPE
+      ? ({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: bytes.toString("base64") },
+        } as const)
+      : ({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+            data: bytes.toString("base64"),
+          },
+        } as const);
 
   try {
     const response = await client.messages.create({
@@ -113,17 +128,7 @@ export async function extractReceipt(
       messages: [
         {
           role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: bytes.toString("base64"),
-              },
-            },
-            { type: "text", text: buildPrompt(categories, today) },
-          ],
+          content: [mediaBlock, { type: "text", text: buildPrompt(categories, today) }],
         },
       ],
     });
