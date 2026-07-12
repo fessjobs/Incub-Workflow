@@ -12,6 +12,7 @@ export function OrgForm({
     tagline: string;
     primaryColor: string;
     storagePath: string;
+    allowSelfRegistration: boolean;
   };
 }) {
   const [state, formAction, pending] = useActionState<OrgFormState, FormData>(
@@ -70,9 +71,18 @@ export function OrgForm({
             className="input font-mono text-xs"
           />
           <p className="mt-1 text-xs text-navy-400">
-            Ab Sprint 2: {"{Firma}/{Jahr}/{MM-Monat}/{Belegnummer}_{Aussteller}_{Betrag}.pdf"}
+            {"{Firma}/{Jahr}/{MM-Monat}/{Belegnummer}_{Aussteller}_{Betrag}.pdf"}
           </p>
         </div>
+        <label className="flex items-center gap-2 pt-1 text-sm sm:col-span-2">
+          <input
+            type="checkbox"
+            name="allowSelfRegistration"
+            defaultChecked={initial.allowSelfRegistration}
+            className="h-4 w-4 rounded accent-navy-900"
+          />
+          Selbst-Registrierung erlauben (neue Nutzer können sich selbst als Mitglied anlegen)
+        </label>
       </div>
 
       {state.error && (

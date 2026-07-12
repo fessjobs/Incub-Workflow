@@ -77,6 +77,15 @@ App: <http://localhost:3000> – im lokalen Netz (Handy!): `http://<Rechner-IP>:
 **Erster Login:** `admin@incub.live` / `incub2026!` (bzw. die Werte aus `.env`).
 Passwort nach dem ersten Login unter *Einstellungen → Nutzer* ändern.
 
+**Konten:**
+- **Admin** – sieht und verwaltet alles.
+- **Selbst-Registrierung** – neue Nutzer legen unter „Konto erstellen" ein
+  Mitglieds-Konto an (unter *Einstellungen → Organisation* abschaltbar).
+- **fess-Kiosk** – vereinfachtes Mitarbeiter-Konto: `team@fess.jobs` /
+  `fess123`. Nach dem Login nur *ein* Bildschirm: Beleg fotografieren, Name und
+  Auftrag eingeben, ablegen – fest auf fess.jobs beschränkt. Weitere Kiosk-Konten
+  legt der Admin über die Rolle „Kiosk" an.
+
 Die Beleg-Ablage landet auf dem Host unter `./incubWorkflow-Ablage/` (ab Sprint 2 befüllt).
 
 ## Entwicklung ohne Docker

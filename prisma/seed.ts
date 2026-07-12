@@ -80,6 +80,30 @@ async function main() {
     });
   }
 
+  // Vereinfachtes fess-Kiosk-Konto (Passwort fess123): nur Belege für fess.jobs
+  const fess = await prisma.company.findFirst({
+    where: { organizationId: org.id, shortCode: "FJ" },
+  });
+  if (fess) {
+    const kiosk = await prisma.user.upsert({
+      where: { email: "team@fess.jobs" },
+      update: {},
+      create: {
+        organizationId: org.id,
+        email: "team@fess.jobs",
+        name: "fess.jobs Team",
+        role: "EINREICHER",
+        passwordHash: await bcrypt.hash("fess123", 12),
+      },
+    });
+    // Auf fess.jobs beschränken
+    await prisma.userCompanyAccess.upsert({
+      where: { userId_companyId: { userId: kiosk.id, companyId: fess.id } },
+      update: {},
+      create: { userId: kiosk.id, companyId: fess.id },
+    });
+  }
+
   for (const [i, cat] of CATEGORIES.entries()) {
     await prisma.category.upsert({
       where: {

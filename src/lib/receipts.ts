@@ -57,7 +57,7 @@ export async function generateAndStorePdf(
       color: receipt.company.color,
     },
     receiptNumber: receipt.receiptNumber,
-    submitterName: receipt.user.name,
+    submitterName: receipt.submittedByName || receipt.user.name,
     approved: receipt.approved,
     receiptDate: receipt.receiptDate,
     vendor: receipt.vendor,

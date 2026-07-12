@@ -15,6 +15,7 @@ const orgSchema = z.object({
   tagline: z.string().trim().max(80, "Tagline: max. 80 Zeichen."),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Farbe: Hex-Format #RRGGBB."),
   storagePath: z.string().trim().min(1, "Ablagepfad fehlt."),
+  allowSelfRegistration: z.boolean(),
 });
 
 export async function updateOrganization(
@@ -28,6 +29,7 @@ export async function updateOrganization(
     tagline: formData.get("tagline"),
     primaryColor: formData.get("primaryColor"),
     storagePath: formData.get("storagePath"),
+    allowSelfRegistration: formData.get("allowSelfRegistration") === "on",
   });
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 

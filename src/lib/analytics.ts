@@ -11,7 +11,7 @@ export function currentYear(): number {
   return new Date().getFullYear();
 }
 
-type ScopeInput = { organizationId: string; id: string; role: "ADMIN" | "MEMBER" };
+type ScopeInput = { organizationId: string; id: string; role: "ADMIN" | "MEMBER" | "EINREICHER" };
 
 // Belegdaten-Scope: Org + (Member → nur eigene). Optional weitere Filter.
 export function scope(user: ScopeInput, extra?: Prisma.ReceiptWhereInput): Prisma.ReceiptWhereInput {

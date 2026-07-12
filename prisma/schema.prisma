@@ -22,6 +22,8 @@ model Organization {
   tagline      String  @default("Belege. Erledigt.")
   primaryColor String  @default("#0B1220")
   logoUrl      String?
+  // Selbst-Registrierung erlaubt? (Mitglieder können sich selbst anlegen)
+  allowSelfRegistration Boolean @default(true)
   // Wurzelpfad der Datei-Ablage (Spec Abschnitt 7), pro Mandant konfigurierbar
   storagePath  String  @default("./incubWorkflow-Ablage")
   // Onboarding-Assistent abgeschlossen?
@@ -47,6 +49,9 @@ model Organization {
 enum UserRole {
   ADMIN
   MEMBER
+  // Vereinfachtes Kiosk-Konto: nur Belege erfassen (eine Firma), kein Zugriff
+  // auf Listen/Auswertungen/Einstellungen. Name wird pro Upload eingegeben.
+  EINREICHER
 }
 
 model User {
@@ -192,6 +197,9 @@ model Receipt {
   purpose       String?
   // Kreuz "geprüft/freigegeben" hinter dem Namen des Einreichers
   approved      Boolean @default(false)
+  // Freitext-Name des Einreichers (Kiosk/geteiltes Konto) – überschreibt auf
+  // dem Beiblatt den Kontonamen, wenn gesetzt
+  submittedByName String?
 
   // Sonderfall Bewirtung
   hospitalityGuests   String?

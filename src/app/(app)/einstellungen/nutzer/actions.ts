@@ -13,7 +13,7 @@ export type UserFormState = { error?: string };
 const baseUserSchema = z.object({
   name: z.string().trim().min(1, "Name fehlt."),
   email: z.string().trim().toLowerCase().email("Ungültige E-Mail."),
-  role: z.enum(["ADMIN", "MEMBER"]),
+  role: z.enum(["ADMIN", "MEMBER", "EINREICHER"]),
 });
 
 function readCompanyIds(formData: FormData): string[] {

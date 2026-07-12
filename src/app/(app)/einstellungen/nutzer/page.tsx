@@ -62,7 +62,7 @@ export default async function UsersPage() {
                   : "bg-navy-100 text-navy-500 dark:bg-navy-800 dark:text-navy-300"
               }`}
             >
-              {u.role === "ADMIN" ? "Admin" : "Mitglied"}
+              {u.role === "ADMIN" ? "Admin" : u.role === "EINREICHER" ? "Kiosk" : "Mitglied"}
             </span>
             {!u.active && (
               <span className="badge bg-navy-100 text-navy-500 dark:bg-navy-800 dark:text-navy-300">

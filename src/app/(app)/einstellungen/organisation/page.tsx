@@ -30,6 +30,7 @@ export default async function OrganizationPage() {
           tagline: org.tagline,
           primaryColor: org.primaryColor,
           storagePath: org.storagePath,
+          allowSelfRegistration: org.allowSelfRegistration,
         }}
       />
       <DemoControls demoCount={demos} />

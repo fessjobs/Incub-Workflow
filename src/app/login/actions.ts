@@ -39,7 +39,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     organizationId: user.organizationId,
     role: user.role,
   });
-  redirect("/dashboard");
+  // Kiosk-Konten landen direkt im vereinfachten Erfassen-Bildschirm
+  redirect(user.role === "EINREICHER" ? "/erfassen" : "/dashboard");
 }
 
 export async function logout() {

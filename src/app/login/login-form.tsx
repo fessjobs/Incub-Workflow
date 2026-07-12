@@ -45,6 +45,12 @@ export function LoginForm() {
       <button type="submit" disabled={pending} className="btn-primary w-full">
         {pending ? "Wird angemeldet …" : "Anmelden"}
       </button>
+      <p className="text-center text-sm text-navy-400">
+        Noch kein Konto?{" "}
+        <a href="/registrieren" className="text-navy-700 underline underline-offset-2 dark:text-navy-200">
+          Konto erstellen
+        </a>
+      </p>
     </form>
   );
 }
