@@ -6,6 +6,11 @@ import { Wordmark } from "@/components/wordmark";
 
 export const metadata: Metadata = { title: "Konto erstellen" };
 
+// Pro Anfrage rendern: liest die Organisation aus der DB. Beim Docker-Build
+// (Railway) gibt es keine Datenbank – statisches Vorrendern würde den Build
+// abbrechen.
+export const dynamic = "force-dynamic";
+
 export default async function RegisterPage() {
   const org = await db.organization.findFirst();
   const allowed = org?.allowSelfRegistration ?? false;
