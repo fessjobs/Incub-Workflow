@@ -16,6 +16,7 @@ const orgSchema = z.object({
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Farbe: Hex-Format #RRGGBB."),
   storagePath: z.string().trim().min(1, "Ablagepfad fehlt."),
   allowSelfRegistration: z.boolean(),
+  employeeLinkPassword: z.string().trim().min(1, "Mitarbeiter-Link-Passwort fehlt.").max(40),
 });
 
 export async function updateOrganization(
@@ -30,6 +31,7 @@ export async function updateOrganization(
     primaryColor: formData.get("primaryColor"),
     storagePath: formData.get("storagePath"),
     allowSelfRegistration: formData.get("allowSelfRegistration") === "on",
+    employeeLinkPassword: formData.get("employeeLinkPassword"),
   });
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 

@@ -6,6 +6,7 @@ import { formatEuro } from "@/lib/format";
 import { DonutChart, BarList, MonthlyBars } from "@/components/charts";
 import { AnalyticsControls } from "./controls";
 import { ZipExport } from "./zip-export";
+import { DatevExport } from "./datev-export";
 
 export const metadata: Metadata = { title: "Auswertungen" };
 
@@ -14,7 +15,8 @@ const s = (v: string | string[] | undefined) => (typeof v === "string" ? v : "")
 
 export default async function AuswertungenPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser();
-  const isAdmin = user.role === "ADMIN";
+  // Buchhaltung sieht wie der Admin die Gruppen-Auswertung und die Exporte
+  const isAdmin = user.role === "ADMIN" || user.role === "BUCHHALTUNG";
   const sp = await searchParams;
 
   const year = Number(s(sp.year)) || currentYear();
@@ -105,6 +107,19 @@ export default async function AuswertungenPage({ searchParams }: { searchParams:
           </div>
         )}
       </div>
+
+      {isAdmin && (
+        <section className="card p-5">
+          <p className="eyebrow mb-1">Buchhaltung / DATEV</p>
+          <h2 className="text-lg font-semibold tracking-tight">DATEV-Monatsexport</h2>
+          <p className="mt-1 mb-4 text-sm text-navy-400">
+            Buchungsstapel-CSV (EXTF) je Firma zum direkten Einspielen in DATEV plus alle
+            Beleg-PDFs sortiert nach Firma und Zahlungsart (Firmenkarten einzeln, Mitarbeiter-
+            Auslagen gesammelt). Standard-Konten 4900/1890 bzw. 1200 – beim Import zuordnen.
+          </p>
+          <DatevExport companies={companies} defaultYear={year} />
+        </section>
+      )}
 
       {isAdmin && (
         <section className="card p-5">

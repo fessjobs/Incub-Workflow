@@ -219,6 +219,8 @@ const fullSchema = z.object({
   netAmount: z.coerce.number().optional().nullable(),
   kind: z.enum(["AUSLAGE", "FIRMENZAHLUNG", "PRIVAT"]),
   paymentMethod: z.enum(["BAR", "PRIVATE_KARTE", "FIRMENKARTE", "UNBEKANNT"]),
+  corporateCardId: z.string().optional().nullable(),
+  paidStatus: z.enum(["BEZAHLT", "ZU_ZAHLEN"]).optional(),
   purpose: z.string().trim().optional().nullable(),
   approved: z.boolean(),
   isSelfReceipt: z.boolean(),
@@ -257,6 +259,10 @@ export type ReceiptInput = {
   netAmount?: number | null;
   kind: "AUSLAGE" | "FIRMENZAHLUNG" | "PRIVAT";
   paymentMethod: "BAR" | "PRIVATE_KARTE" | "FIRMENKARTE" | "UNBEKANNT";
+  // Konkrete Firmenkarte (Amex), wenn paymentMethod FIRMENKARTE
+  corporateCardId?: string | null;
+  // Rechnung schon bezahlt oder noch zu zahlen?
+  paidStatus?: "BEZAHLT" | "ZU_ZAHLEN";
   purpose?: string | null;
   approved: boolean;
   isSelfReceipt: boolean;
@@ -293,6 +299,16 @@ export async function saveReceipt(
 
   const allowed = await assertCompanyAllowed(user, v.companyId);
   if (!allowed) return { ok: false, error: "Für diese Firma nicht freigegeben." };
+
+  // Firmenkarte nur mit passender Zahlungsart und aus der eigenen Organisation
+  let corporateCardId: string | null = null;
+  if (v.paymentMethod === "FIRMENKARTE" && v.corporateCardId) {
+    const card = await db.corporateCard.findFirst({
+      where: { id: v.corporateCardId, organizationId: user.organizationId, active: true },
+    });
+    if (!card) return { ok: false, error: "Firmenkarte nicht gefunden." };
+    corporateCardId = card.id;
+  }
 
   // Nur Admin darf den Einreicher ändern (Beleg für anderen Mitarbeiter erfassen)
   let submitterUserId: string | undefined;
@@ -357,6 +373,8 @@ export async function saveReceipt(
         vatLines: parseVatLines(v.vatLines) as unknown as object,
         kind: v.kind,
         paymentMethod: v.paymentMethod,
+        corporateCardId,
+        ...(v.paidStatus ? { paidStatus: v.paidStatus } : {}),
         purpose: v.purpose || null,
         approved: v.approved,
         isSelfReceipt: v.isSelfReceipt,
@@ -440,4 +458,148 @@ export async function deleteReceipt(receiptId: string): Promise<{ ok: boolean }>
 
 export async function extractionAvailable(): Promise<boolean> {
   return isExtractionAvailable();
+}
+
+// ─── Schnell-Upload (Gesellschafter): Entwurf mit einem Tap abschließen ──────
+// Firma + Zahlungsart (+ Karte) + bezahlt/offen – Rest kommt aus der
+// automatischen Extraktion. Danach sofortiger Zahlungs-Check.
+
+export type QuickFinalizeResult = {
+  ok: boolean;
+  error?: string;
+  duplicateOf?: string;
+  receiptNumber?: string;
+  matches?: PaymentMatch[];
+};
+
+export async function quickFinalize(
+  receiptId: string,
+  opts: {
+    companyId: string;
+    paymentMethod: "BAR" | "PRIVATE_KARTE" | "FIRMENKARTE" | "UNBEKANNT";
+    corporateCardId?: string | null;
+    paidStatus: "BEZAHLT" | "ZU_ZAHLEN";
+    ignoreDuplicate?: boolean;
+  }
+): Promise<QuickFinalizeResult> {
+  const user = await requireUser();
+  const draft = await db.receipt.findFirst({ where: { id: receiptId, ...receiptScope(user) } });
+  if (!draft) return { ok: false, error: "Beleg nicht gefunden." };
+
+  const res = await saveReceipt(
+    receiptId,
+    {
+      companyId: opts.companyId,
+      categoryId: draft.categoryId,
+      receiptDate: draft.receiptDate.toISOString().slice(0, 10),
+      vendor: draft.vendor || "Beleg",
+      grossAmount: Number(draft.grossAmount),
+      netAmount: draft.netAmount !== null ? Number(draft.netAmount) : null,
+      // Firmenkarte = Firmenzahlung; privat gezahlt = Auslage
+      kind: opts.paymentMethod === "FIRMENKARTE" ? "FIRMENZAHLUNG" : "AUSLAGE",
+      paymentMethod: opts.paymentMethod,
+      corporateCardId: opts.corporateCardId ?? null,
+      paidStatus: opts.paidStatus,
+      purpose: draft.purpose,
+      approved: false,
+      isSelfReceipt: false,
+      notes: draft.notes,
+      vatLines: JSON.stringify(draft.vatLines ?? []),
+    },
+    { ignoreDuplicate: opts.ignoreDuplicate }
+  );
+  if (!res.ok) return { ok: false, error: res.error, duplicateOf: res.duplicateOf };
+
+  const [full, check] = await Promise.all([
+    db.receipt.findUnique({ where: { id: receiptId }, select: { receiptNumber: true } }),
+    checkPaymentMatch(receiptId),
+  ]);
+  return { ok: true, receiptNumber: full?.receiptNumber ?? undefined, matches: check.matches };
+}
+
+// ─── Zahlungs-Check: passt eine Kontobewegung zu diesem Beleg? ───────────────
+// Wird beim Schnell-Upload direkt und auf der Beleg-Detailseite jederzeit
+// (auch im Nachhinein) ausgeführt.
+
+export type PaymentMatch = {
+  transactionId: string;
+  label: string; // "−42,90 € · 03.07.2026 · REWE · Konto Sparkasse"
+};
+
+export async function checkPaymentMatch(receiptId: string): Promise<{ matches: PaymentMatch[] }> {
+  const user = await requireUser();
+  const receipt = await db.receipt.findFirst({
+    where: { id: receiptId, ...receiptScope(user) },
+    include: { transactions: { select: { id: true } } },
+  });
+  if (!receipt || receipt.transactions.length > 0) return { matches: [] };
+
+  const gross = Number(receipt.grossAmount);
+  if (!gross) return { matches: [] };
+
+  // Zeitfenster: Buchung darf bis 3 Tage vor und 30 Tage nach dem Belegdatum liegen
+  const from = new Date(receipt.receiptDate);
+  from.setDate(from.getDate() - 3);
+  const to = new Date(receipt.receiptDate);
+  to.setDate(to.getDate() + 30);
+
+  // Nur Konten, die der Nutzer sehen darf (Mitglied: eigene; Admin: alle)
+  const accountFilter =
+    user.role === "ADMIN" ? {} : { userId: user.id };
+
+  const candidates = await db.bankTransaction.findMany({
+    where: {
+      organizationId: user.organizationId,
+      bankAccount: accountFilter,
+      matchedReceiptId: null,
+      ignored: false,
+      amount: { gte: -gross - 0.005, lte: -gross + 0.005 },
+      bookingDate: { gte: from, lte: to },
+    },
+    orderBy: { bookingDate: "asc" },
+    take: 3,
+    include: { bankAccount: { select: { name: true } } },
+  });
+
+  const { formatEuro, formatDate } = await import("@/lib/format");
+  return {
+    matches: candidates.map((t) => ({
+      transactionId: t.id,
+      label: `${formatEuro(Number(t.amount))} · ${formatDate(t.bookingDate)} · ${t.counterparty || t.purpose || "—"} · ${t.bankAccount.name}`,
+    })),
+  };
+}
+
+export async function linkPayment(receiptId: string, transactionId: string): Promise<{ ok: boolean }> {
+  const user = await requireUser();
+  const receipt = await db.receipt.findFirst({ where: { id: receiptId, ...receiptScope(user) } });
+  if (!receipt) return { ok: false };
+  const accountFilter = user.role === "ADMIN" ? {} : { userId: user.id };
+  const txn = await db.bankTransaction.findFirst({
+    where: {
+      id: transactionId,
+      organizationId: user.organizationId,
+      bankAccount: accountFilter,
+      matchedReceiptId: null,
+    },
+  });
+  if (!txn) return { ok: false };
+  await db.bankTransaction.update({
+    where: { id: transactionId },
+    data: { matchedReceiptId: receiptId, ignored: false },
+  });
+  // Abgebuchte Zahlung gefunden → Beleg ist bezahlt
+  await db.receipt.update({ where: { id: receiptId }, data: { paidStatus: "BEZAHLT" } });
+  await logAudit({
+    organizationId: user.organizationId,
+    userId: user.id,
+    action: "receipt.payment_link",
+    entityType: "receipt",
+    entityId: receiptId,
+    data: { transactionId },
+  });
+  revalidatePath("/belege");
+  revalidatePath(`/belege/${receiptId}`);
+  revalidatePath("/abgleich");
+  return { ok: true };
 }

@@ -60,6 +60,18 @@ export const PAYMENT_LABELS: Record<string, string> = {
   UNBEKANNT: "Unbekannt",
 };
 
+export const PAID_STATUS_LABELS: Record<string, string> = {
+  BEZAHLT: "Bezahlt",
+  ZU_ZAHLEN: "Noch zu zahlen",
+};
+
+export const ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Admin / Gesellschafter",
+  BUCHHALTUNG: "Buchhaltung",
+  MEMBER: "Mitglied",
+  EINREICHER: "Mitarbeiter-Link",
+};
+
 export const STATUS_LABELS: Record<string, string> = {
   ENTWURF: "Entwurf",
   ABGELEGT: "Abgelegt",

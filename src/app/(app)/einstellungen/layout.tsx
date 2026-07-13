@@ -20,7 +20,15 @@ export default async function SettingsLayout({ children }: { children: React.Rea
         </NavLink>
         <span className="text-navy-200 dark:text-navy-700">·</span>
         <NavLink href="/einstellungen/nutzer" compact>
-          Nutzer
+          Accounts
+        </NavLink>
+        <span className="text-navy-200 dark:text-navy-700">·</span>
+        <NavLink href="/einstellungen/rollen" compact>
+          Rollen
+        </NavLink>
+        <span className="text-navy-200 dark:text-navy-700">·</span>
+        <NavLink href="/einstellungen/karten" compact>
+          Firmenkarten
         </NavLink>
         <span className="text-navy-200 dark:text-navy-700">·</span>
         <NavLink href="/einstellungen/organisation" compact>

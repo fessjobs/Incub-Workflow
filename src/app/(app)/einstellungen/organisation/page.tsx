@@ -31,6 +31,7 @@ export default async function OrganizationPage() {
           primaryColor: org.primaryColor,
           storagePath: org.storagePath,
           allowSelfRegistration: org.allowSelfRegistration,
+          employeeLinkPassword: org.employeeLinkPassword,
         }}
       />
       <DemoControls demoCount={demos} />

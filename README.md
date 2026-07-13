@@ -80,14 +80,24 @@ App: <http://localhost:3000> – im lokalen Netz (Handy!): `http://<Rechner-IP>:
 **Erster Login:** `admin@incub.live` / `incub2026!` (bzw. die Werte aus `.env`).
 Passwort nach dem ersten Login unter *Einstellungen → Nutzer* ändern.
 
-**Konten:**
-- **Admin** – sieht und verwaltet alles.
-- **Selbst-Registrierung** – neue Nutzer legen unter „Konto erstellen" ein
-  Mitglieds-Konto an (unter *Einstellungen → Organisation* abschaltbar).
-- **fess-Kiosk** – vereinfachtes Mitarbeiter-Konto: `team@fess.jobs` /
-  `fess123`. Nach dem Login nur *ein* Bildschirm: Beleg fotografieren, Name und
-  Auftrag eingeben, ablegen – fest auf fess.jobs beschränkt. Weitere Kiosk-Konten
-  legt der Admin über die Rolle „Kiosk" an.
+**Rollen** (Anleitung in der App unter *Einstellungen → Rollen*):
+- **Admin / Gesellschafter** – sieht und verwaltet alles; **Schnell-Upload**
+  von überall (Beleg → Firma → Zahlungsart inkl. eigener **Amex-Firmenkarte** →
+  bezahlt/offen) mit sofortigem **Zahlungs-Check** gegen die Kontoauszüge
+  (auch nachträglich auf der Beleg-Detailseite).
+- **Buchhaltung** – liest alle Belege und zieht den **DATEV-Monatsexport**:
+  Buchungsstapel-CSV (EXTF) je Firma + Beleg-PDFs sortiert nach
+  Firma/Zahlungsart (Firmenkarten einzeln, Mitarbeiter-Auslagen gesammelt).
+- **Mitglied** – eigene Belege + eigener Kontoauszug-Abgleich.
+- **Mitarbeiter-Link** – kein Konto nötig: Link `/mitarbeiter` ans Team
+  schicken → animiertes Erklär-Intro → Passwort `123` (änderbar) → Name,
+  Einsatz, Grund, Beleg, Zahlungsart, Status → senden. Landet im Adminbereich
+  im Ordner **„Auslagen Mitarbeiter“**, sortiert nach Name und Datum; der
+  Mitarbeiter sieht seinen Erstattungsstatus jederzeit selbst.
+
+**Selbst-Registrierung:** neue Nutzer legen unter „Konto erstellen" ein Konto
+an und werden vom Admin unter *Einstellungen → Accounts* **freigeschaltet**
+(dort auch Rollen und Passwörter verwalten).
 
 Die Beleg-Ablage landet auf dem Host unter `./incubWorkflow-Ablage/` (ab Sprint 2 befüllt).
 

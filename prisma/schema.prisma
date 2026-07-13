@@ -24,6 +24,8 @@ model Organization {
   logoUrl      String?
   // Selbst-Registrierung erlaubt? (Mitglieder können sich selbst anlegen)
   allowSelfRegistration Boolean @default(true)
+  // Passwort für den öffentlichen Mitarbeiter-Link (/mitarbeiter)
+  employeeLinkPassword  String  @default("123")
   // Wurzelpfad der Datei-Ablage (Spec Abschnitt 7), pro Mandant konfigurierbar
   storagePath  String  @default("./incubWorkflow-Ablage")
   // Onboarding-Assistent abgeschlossen?
@@ -40,6 +42,7 @@ model Organization {
   bankTransactions BankTransaction[]
   matchRules       MatchRule[]
   auditLogs        AuditLog[]
+  corporateCards   CorporateCard[]
 
   @@map("organizations")
 }
@@ -48,6 +51,9 @@ model Organization {
 
 enum UserRole {
   ADMIN
+  // Buchhaltung: sieht alle Belege und Auswertungen (für DATEV-Export),
+  // aber keine Verwaltung/Einstellungen.
+  BUCHHALTUNG
   MEMBER
   // Vereinfachtes Kiosk-Konto: nur Belege erfassen (eine Firma), kein Zugriff
   // auf Listen/Auswertungen/Einstellungen. Name wird pro Upload eingegeben.
@@ -62,6 +68,8 @@ model User {
   name           String
   role           UserRole @default(MEMBER)
   active         Boolean  @default(true)
+  // Selbst registrierte Konten müssen vom Admin freigeschaltet werden
+  approved       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -73,6 +81,7 @@ model User {
   receiptVersions ReceiptVersion[]
   auditLogs       AuditLog[]
   bankAccounts    BankAccount[]
+  corporateCards  CorporateCard[]
 
   @@index([organizationId])
   @@map("users")
@@ -172,6 +181,36 @@ enum ReimbursementStatus {
   ERSTATTET
 }
 
+// Ist die Rechnung/der Beleg selbst schon bezahlt oder noch zu zahlen?
+// (wichtig für den Schnell-Upload der Gesellschafter)
+enum PaidStatus {
+  BEZAHLT
+  ZU_ZAHLEN
+}
+
+// Firmenkarten (z. B. eine Amex pro Gesellschafter). Belege mit Zahlungsart
+// "Firmenkarte" werden der konkreten Karte zugeordnet und für die Buchhaltung
+// pro Karte abgelegt.
+model CorporateCard {
+  id             String  @id @default(cuid())
+  organizationId String
+  // z. B. "Amex Maik"
+  label          String
+  // Karteninhaber (Gesellschafter), optional
+  holderUserId   String?
+  active         Boolean @default(true)
+  sortOrder      Int     @default(0)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  holder       User?        @relation(fields: [holderUserId], references: [id])
+  receipts     Receipt[]
+
+  @@unique([organizationId, label])
+  @@index([organizationId])
+  @@map("corporate_cards")
+}
+
 model Receipt {
   id             String @id @default(cuid())
   organizationId String
@@ -194,6 +233,10 @@ model Receipt {
   // Gemischte USt-Sätze auf einem Bon: [{rate: 19, vat: 1.90, net: 10.00}, ...]
   vatLines      Json?
   paymentMethod PaymentMethod @default(UNBEKANNT)
+  // Konkrete Firmenkarte (z. B. "Amex Maik"), wenn paymentMethod FIRMENKARTE
+  corporateCardId String?
+  // Rechnung schon bezahlt oder noch zu zahlen?
+  paidStatus    PaidStatus    @default(BEZAHLT)
   kind          ReceiptKind   @default(AUSLAGE)
   // Geschäftlicher Anlass/Zweck (prüfungsrelevant)
   purpose       String?
@@ -202,6 +245,9 @@ model Receipt {
   // Freitext-Name des Einreichers (Kiosk/geteiltes Konto) – überschreibt auf
   // dem Beiblatt den Kontonamen, wenn gesetzt
   submittedByName String?
+  // Über den öffentlichen Mitarbeiter-Link eingereicht → landet im Ordner
+  // "Auslagen Mitarbeiter" im Adminbereich
+  viaEmployeeLink Boolean @default(false)
 
   // Sonderfall Bewirtung
   hospitalityGuests   String?
@@ -235,14 +281,15 @@ model Receipt {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id])
-  user         User             @relation(fields: [userId], references: [id])
-  company      Company?         @relation(fields: [companyId], references: [id])
-  category     Category?        @relation(fields: [categoryId], references: [id])
-  vehicle      Vehicle?         @relation(fields: [vehicleId], references: [id])
-  versions     ReceiptVersion[]
-  transactions BankTransaction[]
-  files        ReceiptFile[]
+  organization  Organization     @relation(fields: [organizationId], references: [id])
+  user          User             @relation(fields: [userId], references: [id])
+  company       Company?         @relation(fields: [companyId], references: [id])
+  category      Category?        @relation(fields: [categoryId], references: [id])
+  vehicle       Vehicle?         @relation(fields: [vehicleId], references: [id])
+  corporateCard CorporateCard?   @relation(fields: [corporateCardId], references: [id])
+  versions      ReceiptVersion[]
+  transactions  BankTransaction[]
+  files         ReceiptFile[]
 
   @@index([organizationId])
   @@index([organizationId, userId])

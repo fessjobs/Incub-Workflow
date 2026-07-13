@@ -33,14 +33,20 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   if (!valid) {
     return { error: "E-Mail oder Passwort ist falsch.", email };
   }
+  if (!user.approved) {
+    return {
+      error: "Dein Konto wartet noch auf die Freischaltung durch den Admin.",
+      email,
+    };
+  }
 
   await createSession({
     userId: user.id,
     organizationId: user.organizationId,
     role: user.role,
   });
-  // Kiosk-Konten landen direkt im vereinfachten Erfassen-Bildschirm
-  redirect(user.role === "EINREICHER" ? "/erfassen" : "/dashboard");
+  // Kiosk-Konten landen direkt im vereinfachten Mitarbeiter-Bildschirm
+  redirect(user.role === "EINREICHER" ? "/mitarbeiter" : "/dashboard");
 }
 
 export async function logout() {

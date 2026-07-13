@@ -6,6 +6,17 @@ const PUBLIC_PATHS = ["/login", "/registrieren"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Mitarbeiter-Link: komplett öffentlich (Passwort-Gate in der Seite selbst)
+  if (pathname.startsWith("/mitarbeiter")) return NextResponse.next();
+  // Alter Kiosk-Pfad → neuer Mitarbeiter-Link
+  if (pathname.startsWith("/erfassen")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/mitarbeiter";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -28,20 +39,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Kiosk-Konten (EINREICHER) dürfen nur den Erfassen-Bildschirm sehen
-  if (authenticated && role === "EINREICHER") {
-    const allowed = pathname.startsWith("/erfassen");
-    if (!allowed && !isPublic) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/erfassen";
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
+  // Kiosk-Konten (EINREICHER) dürfen nur den Mitarbeiter-Bildschirm sehen
+  if (authenticated && role === "EINREICHER" && !isPublic) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/mitarbeiter";
+    url.search = "";
+    return NextResponse.redirect(url);
   }
 
   if (authenticated && isPublic) {
     const url = request.nextUrl.clone();
-    url.pathname = role === "EINREICHER" ? "/erfassen" : "/dashboard";
+    url.pathname = role === "EINREICHER" ? "/mitarbeiter" : "/dashboard";
     url.search = "";
     return NextResponse.redirect(url);
   }

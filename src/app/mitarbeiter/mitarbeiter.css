@@ -1,0 +1,161 @@
+/* fess.jobs Belegtool – Design-Tokens & Bausteine (Designkonzept PDF)
+   Orange #E8560F · Ink #1A1613 · Canvas #FAF8F6 · Erstattet-Grün #1E8A5B */
+
+.fess-canvas {
+  background: #faf8f6;
+  color: #1a1613;
+}
+
+.fess-card {
+  background: #ffffff;
+  border: 1px solid rgba(26, 22, 19, 0.07);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(26, 22, 19, 0.04);
+}
+
+.fess-hero {
+  background: #e8560f;
+  color: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(232, 86, 15, 0.28);
+}
+
+.fess-btn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 14px;
+  background: #1a1613;
+  color: #ffffff;
+  font-weight: 600;
+  padding: 0.95rem 1.25rem;
+  font-size: 1rem;
+  transition: transform 0.1s ease, opacity 0.15s ease;
+}
+.fess-btn:active {
+  transform: scale(0.985);
+}
+.fess-btn:disabled {
+  opacity: 0.55;
+}
+
+.fess-btn-orange {
+  background: #e8560f;
+}
+
+.fess-btn-ghost {
+  background: transparent;
+  color: #1a1613;
+  border: 1.5px solid rgba(26, 22, 19, 0.16);
+}
+
+.fess-input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1.5px solid rgba(26, 22, 19, 0.14);
+  background: #ffffff;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  color: #1a1613;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.fess-input:focus {
+  border-color: #e8560f;
+}
+.fess-input::placeholder {
+  color: rgba(26, 22, 19, 0.35);
+}
+
+.fess-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(26, 22, 19, 0.45);
+  margin-bottom: 0.4rem;
+}
+
+/* Status-Chips: Orange-Ton für "in Prüfung", Grün nur für "erstattet" */
+.fess-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.fess-chip-pruefung {
+  background: rgba(232, 86, 15, 0.12);
+  color: #c74708;
+}
+.fess-chip-erstattet {
+  background: rgba(30, 138, 91, 0.14);
+  color: #1e8a5b;
+}
+
+/* Auswahl-Chips (Zahlungsart, Status) */
+.fess-choice {
+  flex: 1;
+  border-radius: 14px;
+  border: 1.5px solid rgba(26, 22, 19, 0.14);
+  background: #ffffff;
+  padding: 0.8rem 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.12s ease;
+}
+.fess-choice[data-active="true"] {
+  border-color: #e8560f;
+  background: rgba(232, 86, 15, 0.08);
+  color: #c74708;
+  font-weight: 600;
+}
+
+/* ── Intro-Animationen ── */
+@keyframes fessPop {
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes fessPulse {
+  0%, 100% { transform: scale(1); opacity: 0.35; }
+  50% { transform: scale(1.35); opacity: 0; }
+}
+@keyframes fessLine {
+  from { width: 0; opacity: 0.4; }
+  to { width: 100%; opacity: 1; }
+}
+@keyframes fessFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes fessCheck {
+  from { stroke-dashoffset: 48; }
+  to { stroke-dashoffset: 0; }
+}
+
+.fess-intro-icon {
+  animation: fessPop 0.5s ease both, fessFloat 3s ease-in-out 0.6s infinite;
+}
+.fess-intro-ring {
+  animation: fessPulse 2s ease-out infinite;
+}
+.fess-intro-line {
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(26, 22, 19, 0.1);
+  animation: fessLine 0.7s ease both;
+}
+.fess-intro-check {
+  stroke-dasharray: 48;
+  animation: fessCheck 0.7s ease 0.3s both;
+}
+
+.fess-fade-in {
+  animation: fessPop 0.35s ease both;
+}

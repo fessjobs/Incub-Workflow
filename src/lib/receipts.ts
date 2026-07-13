@@ -7,11 +7,16 @@ import { buildPaths, mirrorToDisk, extForMime } from "@/lib/storage";
 import { slugForFile, monthFolder } from "@/lib/format";
 import type { VatLine } from "@/lib/claude";
 
+// Sieht dieser Nutzer alle Belege der Organisation? (Admin und Buchhaltung)
+export function seesAllReceipts(user: Pick<User, "role">): boolean {
+  return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
+}
+
 // Query-Scope: immer nach organization_id; Mitglieder zusätzlich nach user_id
-// (Spec Abschnitt 3/10).
+// (Spec Abschnitt 3/10). Buchhaltung sieht alles (DATEV-Export).
 export function receiptScope(user: Pick<User, "organizationId" | "id" | "role">): Prisma.ReceiptWhereInput {
   const base: Prisma.ReceiptWhereInput = { organizationId: user.organizationId };
-  if (user.role !== "ADMIN") base.userId = user.id;
+  if (!seesAllReceipts(user)) base.userId = user.id;
   return base;
 }
 

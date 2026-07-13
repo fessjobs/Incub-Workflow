@@ -3,8 +3,8 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { receiptScope } from "@/lib/receipts";
-import { formatEuro, formatDate, KIND_LABELS, REIMBURSEMENT_LABELS } from "@/lib/format";
+import { receiptScope, seesAllReceipts } from "@/lib/receipts";
+import { formatEuro, formatDate } from "@/lib/format";
 import { DraftQueue } from "./draft-queue";
 import { ReceiptFilters } from "./receipt-filters";
 import { StatusBadge } from "./status-badge";
@@ -21,8 +21,10 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
   const user = await requireUser();
   const sp = await searchParams;
   const isAdmin = user.role === "ADMIN";
+  // Buchhaltung sieht wie der Admin alle Belege (lesend, für Export/Sortierung)
+  const seesAll = seesAllReceipts(user);
 
-  const [companies, categories, users] = await Promise.all([
+  const [companies, categories, users, cards] = await Promise.all([
     db.company.findMany({
       where: { organizationId: user.organizationId, active: true },
       orderBy: { sortOrder: "asc" },
@@ -31,13 +33,18 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
       where: { organizationId: user.organizationId, active: true },
       orderBy: { sortOrder: "asc" },
     }),
-    isAdmin
+    seesAll
       ? db.user.findMany({
           where: { organizationId: user.organizationId },
           orderBy: { name: "asc" },
           select: { id: true, name: true },
         })
       : Promise.resolve([]),
+    db.corporateCard.findMany({
+      where: { organizationId: user.organizationId, active: true },
+      orderBy: { label: "asc" },
+      select: { id: true, label: true },
+    }),
   ]);
 
   // Firmen, für die der Nutzer einreichen darf (Einschränkung)
@@ -66,7 +73,11 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
   if (s(sp.category)) where.categoryId = s(sp.category);
   if (s(sp.kind)) where.kind = s(sp.kind) as never;
   if (s(sp.reimb)) where.reimbursementStatus = s(sp.reimb) as never;
-  if (isAdmin && s(sp.user)) where.userId = s(sp.user);
+  if (s(sp.pay)) where.paymentMethod = s(sp.pay) as never;
+  if (s(sp.card)) where.corporateCardId = s(sp.card);
+  // "Auslagen Mitarbeiter"-Ordner: über den Mitarbeiter-Link eingereicht
+  if (s(sp.ma) === "1") where.viaEmployeeLink = true;
+  if (seesAll && s(sp.user)) where.userId = s(sp.user);
   if (s(sp.from) || s(sp.to)) {
     where.receiptDate = {};
     if (s(sp.from)) (where.receiptDate as Prisma.DateTimeFilter).gte = new Date(s(sp.from));
@@ -79,12 +90,23 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
 
   const filed = await db.receipt.findMany({
     where,
-    orderBy: [{ receiptDate: "desc" }, { createdAt: "desc" }],
-    include: { company: true, category: true, user: true },
+    // Mitarbeiter-Ordner: nach Name sortiert, sonst neueste zuerst
+    orderBy:
+      s(sp.ma) === "1"
+        ? [{ submittedByName: "asc" }, { receiptDate: "desc" }]
+        : [{ receiptDate: "desc" }, { createdAt: "desc" }],
+    include: { company: true, category: true, user: true, corporateCard: true },
     take: 200,
   });
 
   const sum = filed.reduce((acc, r) => acc + Number(r.grossAmount), 0);
+
+  // Ordner "Auslagen Mitarbeiter" (nur Admin/Buchhaltung)
+  const employeeCount = seesAll
+    ? await db.receipt.count({
+        where: { organizationId: user.organizationId, status: "ABGELEGT", viaEmployeeLink: true },
+      })
+    : 0;
 
   return (
     <div className="space-y-10">
@@ -139,11 +161,33 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
           </p>
         </div>
 
+        {/* Ordner: Auslagen Mitarbeiter (über den Mitarbeiter-Link eingereicht) */}
+        {employeeCount > 0 && (
+          <Link
+            href="/belege?ma=1"
+            className="card flex items-center gap-3 border-l-4 border-l-emerald-500 p-4 transition hover:bg-navy-50/50 dark:hover:bg-navy-800/40"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+            </span>
+            <span className="flex-1">
+              <span className="block text-sm font-medium">Auslagen Mitarbeiter</span>
+              <span className="block text-xs text-navy-400">
+                {employeeCount} Belege über den Mitarbeiter-Link · sortiert nach Name und Datum
+              </span>
+            </span>
+            <span className="text-sm text-navy-400">→</span>
+          </Link>
+        )}
+
         <ReceiptFilters
           companies={companies.map((c) => ({ id: c.id, brandName: c.brandName }))}
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           users={users}
-          isAdmin={isAdmin}
+          cards={cards}
+          isAdmin={seesAll}
         />
 
         {filed.length === 0 ? (
@@ -161,7 +205,7 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                     <th className="px-4 py-3 font-medium">Aussteller</th>
                     <th className="px-4 py-3 font-medium">Firma</th>
                     <th className="px-4 py-3 font-medium">Kategorie</th>
-                    {isAdmin && <th className="px-4 py-3 font-medium">Einreicher</th>}
+                    {seesAll && <th className="px-4 py-3 font-medium">Einreicher</th>}
                     <th className="px-4 py-3 text-right font-medium">Brutto</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3"></th>
@@ -179,7 +223,14 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                       </td>
                       <td className="px-4 py-3">{r.company?.brandName ?? "–"}</td>
                       <td className="px-4 py-3 text-navy-500 dark:text-navy-300">{r.category?.name ?? "–"}</td>
-                      {isAdmin && <td className="px-4 py-3 text-navy-500 dark:text-navy-300">{r.user.name}</td>}
+                      {seesAll && (
+                        <td className="px-4 py-3 text-navy-500 dark:text-navy-300">
+                          {r.submittedByName || r.user.name}
+                          {r.corporateCard && (
+                            <span className="ml-1 text-xs text-navy-400">· {r.corporateCard.label}</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right tabular-nums">{formatEuro(Number(r.grossAmount))}</td>
                       <td className="px-4 py-3">
                         <StatusBadge kind={r.kind} approved={r.approved} reimbursement={r.reimbursementStatus} />

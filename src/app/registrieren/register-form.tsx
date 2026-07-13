@@ -6,6 +6,23 @@ import { register, type RegisterState } from "./actions";
 export function RegisterForm() {
   const [state, formAction, pending] = useActionState<RegisterState, FormData>(register, {});
 
+  if (state.pending) {
+    return (
+      <div className="card space-y-3 p-6 text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        </div>
+        <p className="text-lg font-semibold">Konto erstellt</p>
+        <p className="text-sm text-navy-400">
+          Dein Konto ({state.values?.email}) wartet jetzt auf die Freischaltung durch den
+          Admin. Sobald es freigeschaltet ist, kannst du dich anmelden.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <form action={formAction} className="card space-y-4 p-6">
       <div>

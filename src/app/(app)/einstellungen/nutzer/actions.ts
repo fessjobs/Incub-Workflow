@@ -13,7 +13,7 @@ export type UserFormState = { error?: string };
 const baseUserSchema = z.object({
   name: z.string().trim().min(1, "Name fehlt."),
   email: z.string().trim().toLowerCase().email("Ungültige E-Mail."),
-  role: z.enum(["ADMIN", "MEMBER", "EINREICHER"]),
+  role: z.enum(["ADMIN", "BUCHHALTUNG", "MEMBER", "EINREICHER"]),
 });
 
 function readCompanyIds(formData: FormData): string[] {
@@ -118,6 +118,54 @@ export async function updateUser(
   });
   revalidatePath("/einstellungen/nutzer");
   redirect("/einstellungen/nutzer");
+}
+
+// Registriertes Konto freischalten – erst danach ist der Login möglich.
+// Optional direkt mit Rolle (z. B. gleich als Buchhaltung freischalten).
+export async function approveUser(userId: string, role?: "ADMIN" | "BUCHHALTUNG" | "MEMBER") {
+  const admin = await requireAdmin();
+  const user = await db.user.findFirst({
+    where: { id: userId, organizationId: admin.organizationId, approved: false },
+  });
+  if (!user) return;
+  await db.user.update({
+    where: { id: userId },
+    data: { approved: true, ...(role ? { role } : {}) },
+  });
+  await logAudit({
+    organizationId: admin.organizationId,
+    userId: admin.id,
+    action: "user.approve",
+    entityType: "user",
+    entityId: userId,
+    data: { email: user.email, role: role ?? user.role },
+  });
+  revalidatePath("/einstellungen/nutzer");
+}
+
+// Registrierung ablehnen: Konto wird entfernt (hat noch keine Daten).
+export async function rejectUser(userId: string) {
+  const admin = await requireAdmin();
+  const user = await db.user.findFirst({
+    where: { id: userId, organizationId: admin.organizationId, approved: false },
+    include: { _count: { select: { receipts: true } } },
+  });
+  if (!user) return;
+  if (user._count.receipts > 0) {
+    // Sicherheitsnetz: Konten mit Belegen nur deaktivieren, nie löschen
+    await db.user.update({ where: { id: userId }, data: { active: false } });
+  } else {
+    await db.user.delete({ where: { id: userId } });
+  }
+  await logAudit({
+    organizationId: admin.organizationId,
+    userId: admin.id,
+    action: "user.reject",
+    entityType: "user",
+    entityId: userId,
+    data: { email: user.email },
+  });
+  revalidatePath("/einstellungen/nutzer");
 }
 
 export async function toggleUserActive(userId: string) {

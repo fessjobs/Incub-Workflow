@@ -17,6 +17,8 @@ type ReceiptData = {
   vatLines: VatLine[];
   kind: string;
   paymentMethod: string;
+  corporateCardId: string | null;
+  paidStatus: string;
   purpose: string | null;
   approved: boolean;
   isSelfReceipt: boolean;
@@ -44,6 +46,7 @@ export function ReceiptEditor({
   categories,
   vehicles,
   users,
+  cards,
   isAdmin,
   canDelete,
 }: {
@@ -52,6 +55,7 @@ export function ReceiptEditor({
   categories: { id: string; name: string; isHospitality: boolean; isFuel: boolean }[];
   vehicles: string[];
   users: { id: string; name: string }[];
+  cards: { id: string; label: string }[];
   isAdmin: boolean;
   canDelete: boolean;
 }) {
@@ -65,6 +69,8 @@ export function ReceiptEditor({
     netAmount: receipt.netAmount !== null ? String(receipt.netAmount) : "",
     kind: receipt.kind,
     paymentMethod: receipt.paymentMethod,
+    corporateCardId: receipt.corporateCardId ?? "",
+    paidStatus: receipt.paidStatus,
     purpose: receipt.purpose ?? "",
     approved: receipt.approved,
     isSelfReceipt: receipt.isSelfReceipt,
@@ -104,6 +110,8 @@ export function ReceiptEditor({
         netAmount: f.netAmount ? Number(f.netAmount) : null,
         kind: f.kind as "AUSLAGE" | "FIRMENZAHLUNG" | "PRIVAT",
         paymentMethod: f.paymentMethod as "BAR" | "PRIVATE_KARTE" | "FIRMENKARTE" | "UNBEKANNT",
+        corporateCardId: f.corporateCardId || null,
+        paidStatus: f.paidStatus as "BEZAHLT" | "ZU_ZAHLEN",
         purpose: f.purpose || null,
         approved: f.approved,
         isSelfReceipt: f.isSelfReceipt,
@@ -278,8 +286,58 @@ export function ReceiptEditor({
               <option value="UNBEKANNT">Unbekannt</option>
               <option value="BAR">Bar</option>
               <option value="PRIVATE_KARTE">Private Karte</option>
-              <option value="FIRMENKARTE">Firmenkarte</option>
+              <option value="FIRMENKARTE">Firmenkarte (Amex)</option>
             </select>
+          </div>
+        </div>
+
+        {/* Konkrete Firmenkarte (Amex pro Gesellschafter) */}
+        {f.paymentMethod === "FIRMENKARTE" && cards.length > 0 && (
+          <div>
+            <label className="label">Welche Karte?</label>
+            <div className="flex flex-wrap gap-2">
+              {cards.map((c) => {
+                const active = f.corporateCardId === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => set({ corporateCardId: active ? "" : c.id })}
+                    className={`rounded-lg border px-3 py-2 text-sm transition ${
+                      active
+                        ? "border-navy-900 bg-navy-900 text-white dark:border-white dark:bg-white dark:text-navy-900"
+                        : "border-navy-200 hover:border-navy-400 dark:border-navy-700"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Bezahlt oder noch zu zahlen? */}
+        <div>
+          <label className="label">Zahlungsstatus</label>
+          <div className="flex gap-2">
+            {[
+              { v: "BEZAHLT", l: "Bezahlt" },
+              { v: "ZU_ZAHLEN", l: "Noch zu zahlen" },
+            ].map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => set({ paidStatus: o.v })}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
+                  f.paidStatus === o.v
+                    ? "border-navy-900 bg-navy-900 text-white dark:border-white dark:bg-white dark:text-navy-900"
+                    : "border-navy-200 hover:border-navy-400 dark:border-navy-700"
+                }`}
+              >
+                {o.l}
+              </button>
+            ))}
           </div>
         </div>
         <div>

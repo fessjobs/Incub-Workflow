@@ -7,28 +7,33 @@ export function ReceiptFilters({
   companies,
   categories,
   users,
+  cards,
   isAdmin,
 }: {
   companies: { id: string; brandName: string }[];
   categories: { id: string; name: string }[];
   users: { id: string; name: string }[];
+  cards: { id: string; label: string }[];
   isAdmin: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
 
-  const setParam = useCallback(
-    (key: string, value: string) => {
+  const setParams = useCallback(
+    (patch: Record<string, string>) => {
       const next = new URLSearchParams(params.toString());
-      if (value) next.set(key, value);
-      else next.delete(key);
+      for (const [key, value] of Object.entries(patch)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
       router.push(`/belege?${next.toString()}`);
     },
     [params, router]
   );
+  const setParam = useCallback((key: string, value: string) => setParams({ [key]: value }), [setParams]);
 
   const g = (k: string) => params.get(k) ?? "";
-  const hasFilters = ["q", "company", "category", "kind", "reimb", "user", "from", "to"].some((k) => g(k));
+  const hasFilters = ["q", "company", "category", "kind", "reimb", "user", "from", "to", "pay", "card", "ma"].some((k) => g(k));
 
   return (
     <div className="card space-y-3 p-4">
@@ -67,6 +72,19 @@ export function ReceiptFilters({
           <option value="EINGEREICHT">Eingereicht</option>
           <option value="ERSTATTET">Erstattet</option>
         </select>
+        <select className="input max-w-[11rem]" value={g("card") ? `card:${g("card")}` : g("pay")} onChange={(e) => {
+          const v = e.target.value;
+          if (v.startsWith("card:")) setParams({ pay: "", card: v.slice(5) });
+          else setParams({ card: "", pay: v });
+        }}>
+          <option value="">Zahlungsart: alle</option>
+          <option value="BAR">Bar</option>
+          <option value="PRIVATE_KARTE">Private Karte</option>
+          <option value="FIRMENKARTE">Firmenkarte (alle)</option>
+          {cards.map((c) => (
+            <option key={c.id} value={`card:${c.id}`}>↳ {c.label}</option>
+          ))}
+        </select>
         {isAdmin && (
           <select className="input max-w-[10rem]" value={g("user")} onChange={(e) => setParam("user", e.target.value)}>
             <option value="">Alle Einreicher</option>
@@ -74,6 +92,17 @@ export function ReceiptFilters({
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
+        )}
+        {isAdmin && (
+          <label className="flex items-center gap-2 text-sm text-navy-500 dark:text-navy-300">
+            <input
+              type="checkbox"
+              checked={g("ma") === "1"}
+              onChange={(e) => setParam("ma", e.target.checked ? "1" : "")}
+              className="h-4 w-4 rounded accent-navy-900"
+            />
+            nur Auslagen Mitarbeiter
+          </label>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">

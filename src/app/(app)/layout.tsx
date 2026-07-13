@@ -11,9 +11,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const nav = [
     { href: "/dashboard", label: "Dashboard", number: "01" },
     { href: "/belege", label: "Belege", number: "02" },
-    { href: "/auswertungen", label: "Auswertungen", number: "03" },
-    { href: "/abgleich", label: "Abgleich", number: "04" },
-    ...(isAdmin ? [{ href: "/einstellungen", label: "Einstellungen", number: "05" }] : []),
+    { href: "/schnell", label: "Schnell-Upload", number: "03" },
+    { href: "/auswertungen", label: "Auswertungen", number: "04" },
+    { href: "/abgleich", label: "Abgleich", number: "05" },
+    ...(isAdmin ? [{ href: "/einstellungen", label: "Einstellungen", number: "06" }] : []),
   ];
 
   return (
@@ -36,7 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{user.name}</p>
               <p className="truncate text-xs text-navy-400">
-                {user.role === "ADMIN" ? "Admin" : "Mitglied"}
+                {user.role === "ADMIN" ? "Admin" : user.role === "BUCHHALTUNG" ? "Buchhaltung" : "Mitglied"}
               </p>
             </div>
             <div className="flex items-center gap-1">

@@ -11,12 +11,13 @@ export function currentYear(): number {
   return new Date().getFullYear();
 }
 
-type ScopeInput = { organizationId: string; id: string; role: "ADMIN" | "MEMBER" | "EINREICHER" };
+type ScopeInput = { organizationId: string; id: string; role: "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER" };
 
-// Belegdaten-Scope: Org + (Member → nur eigene). Optional weitere Filter.
+// Belegdaten-Scope: Org + (Member → nur eigene). Admin und Buchhaltung sehen
+// alles. Optional weitere Filter.
 export function scope(user: ScopeInput, extra?: Prisma.ReceiptWhereInput): Prisma.ReceiptWhereInput {
   const base: Prisma.ReceiptWhereInput = { organizationId: user.organizationId, status: "ABGELEGT" };
-  if (user.role !== "ADMIN") base.userId = user.id;
+  if (user.role !== "ADMIN" && user.role !== "BUCHHALTUNG") base.userId = user.id;
   return { ...base, ...extra };
 }
 

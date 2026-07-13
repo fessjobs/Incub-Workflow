@@ -1,10 +1,8 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { createSession } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
 
 const schema = z.object({
@@ -13,7 +11,12 @@ const schema = z.object({
   password: z.string().min(8, "Passwort: mindestens 8 Zeichen."),
 });
 
-export type RegisterState = { error?: string; values?: { name?: string; email?: string } };
+export type RegisterState = {
+  error?: string;
+  // Konto angelegt, wartet auf Freischaltung durch den Admin
+  pending?: boolean;
+  values?: { name?: string; email?: string };
+};
 
 export async function register(_prev: RegisterState, formData: FormData): Promise<RegisterState> {
   const name = String(formData.get("name") ?? "");
@@ -33,12 +36,14 @@ export async function register(_prev: RegisterState, formData: FormData): Promis
   const exists = await db.user.findUnique({ where: { email: parsed.data.email } });
   if (exists) return { error: "Diese E-Mail ist bereits registriert.", values: { name, email } };
 
+  // Neue Konten warten auf Freischaltung durch den Admin (kein Auto-Login)
   const user = await db.user.create({
     data: {
       organizationId: org.id,
       name: parsed.data.name,
       email: parsed.data.email,
       role: "MEMBER",
+      approved: false,
       passwordHash: await bcrypt.hash(parsed.data.password, 12),
     },
   });
@@ -51,6 +56,5 @@ export async function register(_prev: RegisterState, formData: FormData): Promis
     data: { email: user.email },
   });
 
-  await createSession({ userId: user.id, organizationId: org.id, role: "MEMBER" });
-  redirect("/dashboard");
+  return { pending: true, values: { name: user.name, email: user.email } };
 }

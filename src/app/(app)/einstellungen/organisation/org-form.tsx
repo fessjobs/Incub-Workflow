@@ -13,6 +13,7 @@ export function OrgForm({
     primaryColor: string;
     storagePath: string;
     allowSelfRegistration: boolean;
+    employeeLinkPassword: string;
   };
 }) {
   const [state, formAction, pending] = useActionState<OrgFormState, FormData>(
@@ -81,8 +82,24 @@ export function OrgForm({
             defaultChecked={initial.allowSelfRegistration}
             className="h-4 w-4 rounded accent-navy-900"
           />
-          Selbst-Registrierung erlauben (neue Nutzer können sich selbst als Mitglied anlegen)
+          Selbst-Registrierung erlauben (neue Nutzer müssen anschließend freigeschaltet werden)
         </label>
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="employeeLinkPassword">
+            Mitarbeiter-Link-Passwort *
+          </label>
+          <input
+            id="employeeLinkPassword"
+            name="employeeLinkPassword"
+            required
+            defaultValue={initial.employeeLinkPassword}
+            className="input max-w-[10rem]"
+          />
+          <p className="mt-1 text-xs text-navy-400">
+            Für den öffentlichen Einreich-Link <span className="font-mono">/mitarbeiter</span> – Link plus
+            Passwort einfach ans Team schicken (Standard: 123).
+          </p>
+        </div>
       </div>
 
       {state.error && (

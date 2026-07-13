@@ -80,29 +80,24 @@ async function main() {
     });
   }
 
-  // Vereinfachtes fess-Kiosk-Konto (Passwort fess123): nur Belege für fess.jobs
-  const fess = await prisma.company.findFirst({
-    where: { organizationId: org.id, shortCode: "FJ" },
+  // Mitarbeiter-Link: Belege von /mitarbeiter (Passwort 123) laufen über
+  // dieses System-Konto. Der alte fess-Kiosk-Login (team@fess.jobs) entfällt.
+  await prisma.user.upsert({
+    where: { email: "mitarbeiter@link.intern" },
+    update: {},
+    create: {
+      organizationId: org.id,
+      email: "mitarbeiter@link.intern",
+      name: "Mitarbeiter-Link",
+      role: "EINREICHER",
+      // Kein Login möglich – zufälliges, nirgends bekanntes Passwort
+      passwordHash: await bcrypt.hash(`link-${Math.random()}-${Date.now()}`, 12),
+    },
   });
-  if (fess) {
-    const kiosk = await prisma.user.upsert({
-      where: { email: "team@fess.jobs" },
-      update: {},
-      create: {
-        organizationId: org.id,
-        email: "team@fess.jobs",
-        name: "fess.jobs Team",
-        role: "EINREICHER",
-        passwordHash: await bcrypt.hash("fess123", 12),
-      },
-    });
-    // Auf fess.jobs beschränken
-    await prisma.userCompanyAccess.upsert({
-      where: { userId_companyId: { userId: kiosk.id, companyId: fess.id } },
-      update: {},
-      create: { userId: kiosk.id, companyId: fess.id },
-    });
-  }
+  await prisma.user.updateMany({
+    where: { email: "team@fess.jobs", active: true },
+    data: { active: false },
+  });
 
   for (const [i, cat] of CATEGORIES.entries()) {
     await prisma.category.upsert({

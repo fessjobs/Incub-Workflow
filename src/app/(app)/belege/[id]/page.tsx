@@ -7,6 +7,7 @@ import { receiptScope } from "@/lib/receipts";
 import { formatDateTime } from "@/lib/format";
 import { ReceiptEditor } from "./receipt-editor";
 import { ReimbursementControl } from "./reimbursement-control";
+import { PaymentCheck } from "./payment-check";
 
 export const metadata: Metadata = { title: "Beleg" };
 
@@ -51,6 +52,16 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
           select: { id: true, name: true },
         })
       : [];
+  const cards = await db.corporateCard.findMany({
+    where: { organizationId: user.organizationId, active: true },
+    orderBy: { label: "asc" },
+    select: { id: true, label: true },
+  });
+  // Ist bereits eine Kontobewegung verknüpft?
+  const linkedTxn = await db.bankTransaction.findFirst({
+    where: { matchedReceiptId: receipt.id },
+    select: { id: true },
+  });
 
   const hasPdf = receipt.files.some((f) => f.kind === "PDF");
   const hasOriginal = receipt.files.some((f) => f.kind === "ORIGINAL");
@@ -86,6 +97,8 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               vatLines: (receipt.vatLines as unknown as { rate: number; net: number; vat: number }[]) ?? [],
               kind: receipt.kind,
               paymentMethod: receipt.paymentMethod,
+              corporateCardId: receipt.corporateCardId,
+              paidStatus: receipt.paidStatus,
               purpose: receipt.purpose,
               approved: receipt.approved,
               isSelfReceipt: receipt.isSelfReceipt,
@@ -103,6 +116,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
             categories={categories.map((c) => ({ id: c.id, name: c.name, isHospitality: c.isHospitality, isFuel: c.isFuel }))}
             vehicles={vehicles.map((v) => v.name)}
             users={orgUsers}
+            cards={cards}
             isAdmin={user.role === "ADMIN"}
             canDelete={isDraft || user.role === "ADMIN"}
           />
@@ -130,6 +144,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
           {!isDraft && receipt.kind === "AUSLAGE" && (
             <ReimbursementControl receiptId={receipt.id} status={receipt.reimbursementStatus} />
           )}
+          {!isDraft && <PaymentCheck receiptId={receipt.id} alreadyLinked={Boolean(linkedTxn)} />}
           <div className="card p-4">
             <p className="eyebrow mb-3">Dateien</p>
             <div className="space-y-2">

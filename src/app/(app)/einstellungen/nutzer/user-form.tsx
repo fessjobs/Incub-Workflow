@@ -6,7 +6,7 @@ import type { UserFormState } from "./actions";
 export type UserFormValues = {
   name?: string;
   email?: string;
-  role?: "ADMIN" | "MEMBER" | "EINREICHER";
+  role?: "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER";
   companyIds?: string[];
 };
 
@@ -59,8 +59,9 @@ export function UserForm({
             className="input"
           >
             <option value="MEMBER">Mitglied – sieht nur eigene Belege</option>
-            <option value="ADMIN">Admin – sieht alles</option>
-            <option value="EINREICHER">Kiosk – nur Belege erfassen (eine Firma)</option>
+            <option value="ADMIN">Admin / Gesellschafter – sieht und verwaltet alles</option>
+            <option value="BUCHHALTUNG">Buchhaltung – alle Belege lesen + DATEV-Export</option>
+            <option value="EINREICHER">Mitarbeiter-Link – nur Belege einreichen</option>
           </select>
           {isSelf && <input type="hidden" name="role" value="ADMIN" />}
         </div>
