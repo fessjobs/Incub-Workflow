@@ -12,12 +12,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/dashboard", label: "Dashboard", number: "01" },
     { href: "/belege", label: "Belege", number: "02" },
     { href: "/auswertungen", label: "Auswertungen", number: "03" },
-    ...(isAdmin
-      ? [
-          { href: "/abgleich", label: "Abgleich", number: "04" },
-          { href: "/einstellungen", label: "Einstellungen", number: "05" },
-        ]
-      : []),
+    { href: "/abgleich", label: "Abgleich", number: "04" },
+    ...(isAdmin ? [{ href: "/einstellungen", label: "Einstellungen", number: "05" }] : []),
   ];
 
   return (

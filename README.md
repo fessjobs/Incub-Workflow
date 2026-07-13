@@ -17,9 +17,12 @@ weiter unten.
 
 ## Stand: Alle Sprints abgeschlossen ✅
 
-**Sprint 4 – Kontoauszug-Abgleich:** Bankkonten (mehrere pro Firma + privat),
-CSV-/PDF-Import mit robustem Parser, automatisches Matching (Betrag + Datum ±3 +
-Fuzzy), drei Ansichten (Zahlung ohne Beleg / Beleg ohne Zahlung / Auslagen offen),
+**Sprint 4 – Kontoauszug-Abgleich:** Bankkonten gehören dem **Benutzer** (nicht
+einer Firma) – jeder lädt seine eigenen (privaten) Auszüge hoch und sieht nur
+diese; der Admin sieht alle. Pro Kontobewegung lässt sich wählen, **für welche
+Firma** die Ausgabe war (private Verauslagung für verschiedene Firmen). CSV-/PDF-
+Import mit robustem Parser, automatisches Matching (Betrag + Datum ±3 + Fuzzy),
+drei Ansichten (Zahlung ohne Beleg / Beleg ohne Zahlung / Auslagen offen),
 Ignorieren mit Merkregeln, Erstattungs-Automatik.
 
 **Sprint 5 – Auswertungen:** Dashboards (Gruppe/persönlich), Charts (Kategorie-Donut,

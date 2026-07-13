@@ -1,46 +1,42 @@
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/auth";
+import type { Prisma } from "@prisma/client";
+import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AccountManager } from "./account-manager";
 
 export const metadata: Metadata = { title: "Bankkonten" };
 
 export default async function KontenPage() {
-  const admin = await requireAdmin();
-  const [accounts, companies] = await Promise.all([
-    db.bankAccount.findMany({
-      where: { organizationId: admin.organizationId },
-      orderBy: [{ active: "desc" }, { name: "asc" }],
-      include: { company: true, _count: { select: { transactions: true } } },
-    }),
-    db.company.findMany({
-      where: { organizationId: admin.organizationId, active: true },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, brandName: true },
-    }),
-  ]);
+  const user = await requireUser();
+  const isAdmin = user.role === "ADMIN";
+  const ownAccounts: Prisma.BankAccountWhereInput = isAdmin ? {} : { userId: user.id };
+
+  const accounts = await db.bankAccount.findMany({
+    where: { organizationId: user.organizationId, ...ownAccounts },
+    orderBy: [{ active: "desc" }, { name: "asc" }],
+    include: { owner: { select: { name: true } }, _count: { select: { transactions: true } } },
+  });
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Bankkonten</h2>
+        <h2 className="text-xl font-semibold tracking-tight">Meine Bankkonten</h2>
         <p className="mt-1 text-sm text-navy-400">
-          Mehrere Konten pro Firma und private Konten. Die Zuordnung Konto → Firma steuert die
-          Auswertungen pro Firma.
+          Deine privaten und geschäftlichen Konten. Kontoauszüge gehören dir – beim Abgleich
+          legst du pro Buchung fest, für welche Firma die Ausgabe war.
         </p>
       </div>
       <AccountManager
+        showOwner={isAdmin}
         accounts={accounts.map((a) => ({
           id: a.id,
           name: a.name,
           iban: a.iban,
-          companyId: a.companyId,
-          companyName: a.company?.brandName ?? null,
           isPrivate: a.isPrivate,
           active: a.active,
+          ownerName: a.owner?.name ?? null,
           txnCount: a._count.transactions,
         }))}
-        companies={companies}
       />
     </div>
   );

@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { confirmMatch, setIgnored } from "./actions";
+import { confirmMatch, setIgnored, setTransactionCompany } from "./actions";
 
 type Suggestion = { id: string; label: string };
+type Company = { id: string; brandName: string };
 
 export function TransactionCard({
   txn,
+  companies,
   suggestions,
 }: {
   txn: {
@@ -17,12 +19,15 @@ export function TransactionCard({
     amount: string;
     counterparty: string | null;
     purpose: string | null;
+    companyId: string | null;
   };
+  companies: Company[];
   suggestions: Suggestion[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [companyId, setCompanyId] = useState<string | null>(txn.companyId);
 
   async function match(receiptId: string) {
     setBusy(true);
@@ -32,6 +37,14 @@ export function TransactionCard({
   async function ignore() {
     setBusy(true);
     await setIgnored(txn.id, true, remember);
+    router.refresh();
+  }
+  async function pickCompany(id: string | null) {
+    const next = id === companyId ? null : id;
+    setCompanyId(next);
+    setBusy(true);
+    await setTransactionCompany(txn.id, next);
+    setBusy(false);
     router.refresh();
   }
 
@@ -57,6 +70,33 @@ export function TransactionCard({
           </button>
         </div>
       </div>
+
+      {/* Für welche Firma war diese Ausgabe? */}
+      {companies.length > 0 && (
+        <div className="mt-3 border-t border-navy-100 pt-3 dark:border-navy-800">
+          <p className="mb-1.5 text-xs text-navy-400">Ausgabe für Firma:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {companies.map((c) => {
+              const selected = c.id === companyId;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => pickCompany(c.id)}
+                  className={`rounded-full border px-2.5 py-1 text-xs transition ${
+                    selected
+                      ? "border-navy-900 bg-navy-900 text-white dark:border-white dark:bg-white dark:text-navy-900"
+                      : "border-navy-200 text-navy-500 hover:border-navy-400 dark:border-navy-700 dark:text-navy-300"
+                  }`}
+                >
+                  {c.brandName}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {suggestions.length > 0 && (
         <div className="mt-3 space-y-1.5 border-t border-navy-100 pt-3 dark:border-navy-800">

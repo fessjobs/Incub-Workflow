@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import type { Prisma } from "@prisma/client";
+import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { matchReceipts } from "@/lib/bank/match";
 import { formatEuro, formatDate } from "@/lib/format";
@@ -13,20 +14,31 @@ export const metadata: Metadata = { title: "Abgleich" };
 type SP = Record<string, string | string[] | undefined>;
 
 export default async function AbgleichPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const admin = await requireAdmin();
-  const orgId = admin.organizationId;
+  const user = await requireUser();
+  const orgId = user.organizationId;
+  const isAdmin = user.role === "ADMIN";
   const sp = await searchParams;
   const view = (typeof sp.v === "string" ? sp.v : "") || "ohne-beleg";
 
+  // Mitglieder sehen nur eigene Konten/Belege, Admin alles
+  const ownAccounts: Prisma.BankAccountWhereInput = isAdmin ? {} : { userId: user.id };
+  const ownReceipts: Prisma.ReceiptWhereInput = isAdmin ? {} : { userId: user.id };
+
   const accounts = await db.bankAccount.findMany({
-    where: { organizationId: orgId, active: true },
+    where: { organizationId: orgId, active: true, ...ownAccounts },
     orderBy: { name: "asc" },
-    include: { company: true },
+  });
+
+  // Firmen für die Zuordnung "diese Ausgabe war für Firma X"
+  const companies = await db.company.findMany({
+    where: { organizationId: orgId, active: true },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, brandName: true },
   });
 
   // Kandidaten-Belege für Matching-Vorschläge (abgelegt, nicht gematcht)
   const allReceipts = await db.receipt.findMany({
-    where: { organizationId: orgId, status: "ABGELEGT" },
+    where: { organizationId: orgId, status: "ABGELEGT", ...ownReceipts },
     select: {
       id: true,
       receiptNumber: true,
@@ -44,7 +56,13 @@ export default async function AbgleichPage({ searchParams }: { searchParams: Pro
 
   // (1) Zahlung ohne Beleg – Ausgaben ohne zugeordneten Beleg, nicht ignoriert
   const unpaidTxns = await db.bankTransaction.findMany({
-    where: { organizationId: orgId, amount: { lt: 0 }, matchedReceiptId: null, ignored: false },
+    where: {
+      organizationId: orgId,
+      amount: { lt: 0 },
+      matchedReceiptId: null,
+      ignored: false,
+      bankAccount: { ...ownAccounts },
+    },
     orderBy: { bookingDate: "desc" },
     include: { bankAccount: { select: { name: true } } },
   });
@@ -139,7 +157,9 @@ export default async function AbgleichPage({ searchParams }: { searchParams: Pro
                     amount: formatEuro(Number(t.amount)),
                     counterparty: t.counterparty,
                     purpose: t.purpose,
+                    companyId: t.companyId,
                   }}
+                  companies={companies}
                   suggestions={suggestions}
                 />
               );

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { RuleRow } from "./rule-row";
@@ -7,9 +7,9 @@ import { RuleRow } from "./rule-row";
 export const metadata: Metadata = { title: "Merkregeln" };
 
 export default async function RegelnPage() {
-  const admin = await requireAdmin();
+  const user = await requireUser();
   const rules = await db.matchRule.findMany({
-    where: { organizationId: admin.organizationId, active: true },
+    where: { organizationId: user.organizationId, active: true },
     orderBy: { createdAt: "desc" },
     include: { _count: { select: { transactions: true } } },
   });

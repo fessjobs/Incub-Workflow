@@ -1,8 +1,8 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { NavLink } from "@/components/nav-link";
 
 export default async function AbgleichLayout({ children }: { children: React.ReactNode }) {
-  await requireAdmin();
+  await requireUser();
   return (
     <div className="space-y-8">
       <div>

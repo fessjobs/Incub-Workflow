@@ -72,6 +72,7 @@ model User {
   receipts        Receipt[]
   receiptVersions ReceiptVersion[]
   auditLogs       AuditLog[]
+  bankAccounts    BankAccount[]
 
   @@index([organizationId])
   @@map("users")
@@ -110,11 +111,12 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization   Organization           @relation(fields: [organizationId], references: [id])
-  userAccess     UserCompanyAccess[]
-  receipts       Receipt[]
-  bankAccounts   BankAccount[]
-  numberCounters ReceiptNumberCounter[]
+  organization     Organization           @relation(fields: [organizationId], references: [id])
+  userAccess       UserCompanyAccess[]
+  receipts         Receipt[]
+  bankAccounts     BankAccount[]
+  bankTransactions BankTransaction[]
+  numberCounters   ReceiptNumberCounter[]
 
   @@unique([organizationId, shortCode])
   @@index([organizationId])
@@ -328,8 +330,11 @@ model ReceiptNumberCounter {
 model BankAccount {
   id             String  @id @default(cuid())
   organizationId String
-  // Zuordnung Konto → Firma; null + isPrivate = privates Konto
+  // Optionale Zuordnung Konto → Firma (Firmenkonten, vom Admin gepflegt)
   companyId String?
+  // Persönliches Konto: gehört diesem Nutzer – nur er (und Admin) sieht es.
+  // Kontoauszüge werden damit dem Benutzer zugeordnet, nicht einer Firma.
+  userId    String?
   name      String
   iban      String?
   isPrivate Boolean @default(false)
@@ -340,9 +345,11 @@ model BankAccount {
 
   organization Organization      @relation(fields: [organizationId], references: [id])
   company      Company?          @relation(fields: [companyId], references: [id])
+  owner        User?             @relation(fields: [userId], references: [id])
   transactions BankTransaction[]
 
   @@index([organizationId])
+  @@index([userId])
   @@map("bank_accounts")
 }
 
@@ -361,6 +368,9 @@ model BankTransaction {
   ignored          Boolean @default(false)
   // Merkregel, durch die dieser Posten automatisch behandelt wurde
   matchRuleId      String?
+  // "Diese Ausgabe war für Firma X" – pro Kontobewegung wählbar (z. B. private
+  // Karte, verauslagt für unterschiedliche Firmen)
+  companyId        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -369,6 +379,7 @@ model BankTransaction {
   bankAccount    BankAccount  @relation(fields: [bankAccountId], references: [id])
   matchedReceipt Receipt?     @relation(fields: [matchedReceiptId], references: [id])
   matchRule      MatchRule?   @relation(fields: [matchRuleId], references: [id])
+  company        Company?     @relation(fields: [companyId], references: [id])
 
   @@index([organizationId])
   @@index([bankAccountId, bookingDate])
