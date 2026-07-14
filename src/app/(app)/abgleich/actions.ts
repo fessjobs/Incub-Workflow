@@ -119,7 +119,6 @@ export async function importStatement(accountId: string, formData: FormData): Pr
 
   let imported = 0;
   let skipped = parsed.skipped;
-  const toMatch: string[] = [];
 
   for (const t of parsed.transactions) {
     const key = dedupeKey(t);
@@ -132,7 +131,7 @@ export async function importStatement(accountId: string, formData: FormData): Pr
     const hay = normalizeText(`${t.counterparty ?? ""} ${t.purpose ?? ""}`);
     const rule = rules.find((r) => hay.includes(normalizeText(r.pattern)));
 
-    const created = await db.bankTransaction.create({
+    await db.bankTransaction.create({
       data: {
         organizationId: user.organizationId,
         bankAccountId: accountId,
@@ -148,11 +147,11 @@ export async function importStatement(accountId: string, formData: FormData): Pr
       },
     });
     imported++;
-    if (!rule && t.amount < 0) toMatch.push(created.id);
   }
 
-  const matched = await autoMatch(user, account, toMatch);
-  await autoReimburse(user, account);
+  // Beleg-Treffer werden bewusst NICHT automatisch verknüpft – sie erscheinen
+  // als Vorschläge in der Buchungen-Ansicht und werden per Klick bestätigt.
+  const matched = 0;
 
   await logAudit({
     organizationId: user.organizationId,
@@ -164,86 +163,6 @@ export async function importStatement(accountId: string, formData: FormData): Pr
   });
   revalidatePath("/abgleich");
   return { ok: true, imported, skipped, matched };
-}
-
-// Belege, gegen die gematcht werden darf: bei persönlichem Konto die Belege des
-// Konto-Eigentümers; sonst (Admin/Firmenkonto) org-weit.
-function receiptMatchScope(user: Pick<User, "organizationId" | "role">, account: { userId: string | null }): Prisma.ReceiptWhereInput {
-  const base: Prisma.ReceiptWhereInput = { organizationId: user.organizationId, status: "ABGELEGT" };
-  if (account.userId) base.userId = account.userId;
-  return base;
-}
-
-async function autoMatch(
-  user: Pick<User, "organizationId" | "id" | "role">,
-  account: { userId: string | null },
-  transactionIds: string[]
-): Promise<number> {
-  if (transactionIds.length === 0) return 0;
-  const { matchReceipts, isConfidentMatch } = await import("@/lib/bank/match");
-
-  const txns = await db.bankTransaction.findMany({ where: { id: { in: transactionIds } } });
-  const receipts = await db.receipt.findMany({
-    where: receiptMatchScope(user, account),
-    select: { id: true, grossAmount: true, receiptDate: true, vendor: true, transactions: { select: { id: true } } },
-  });
-  const available = receipts
-    .filter((r) => r.transactions.length === 0)
-    .map((r) => ({ id: r.id, grossAmount: Number(r.grossAmount), receiptDate: r.receiptDate, vendor: r.vendor }));
-
-  let count = 0;
-  const used = new Set<string>();
-  for (const t of txns) {
-    const cands = matchReceipts(
-      { amount: Number(t.amount), bookingDate: t.bookingDate, counterparty: t.counterparty, purpose: t.purpose },
-      available.filter((r) => !used.has(r.id))
-    );
-    const best = cands[0];
-    if (isConfidentMatch(best) && (cands.length === 1 || cands[0].score - (cands[1]?.score ?? 0) > 0.3)) {
-      await db.bankTransaction.update({ where: { id: t.id }, data: { matchedReceiptId: best.receiptId } });
-      used.add(best.receiptId);
-      count++;
-    }
-  }
-  return count;
-}
-
-async function autoReimburse(
-  user: Pick<User, "organizationId" | "role">,
-  account: { userId: string | null }
-): Promise<void> {
-  const incoming = await db.bankTransaction.findMany({
-    where: {
-      organizationId: user.organizationId,
-      // Erstattungen kommen auf ein Konto desselben Eigentümers zurück
-      ...(account.userId ? { bankAccount: { userId: account.userId } } : {}),
-      amount: { gt: 0 },
-      matchedReceiptId: null,
-      ignored: false,
-    },
-  });
-  if (incoming.length === 0) return;
-  const openExpenses = await db.receipt.findMany({
-    where: {
-      ...receiptMatchScope(user, account),
-      kind: "AUSLAGE",
-      reimbursementStatus: { in: ["OFFEN", "EINGEREICHT"] },
-    },
-    select: { id: true, grossAmount: true, receiptDate: true },
-  });
-  for (const inc of incoming) {
-    const match = openExpenses.find(
-      (e) => Math.abs(Number(e.grossAmount) - Number(inc.amount)) < 0.005 && inc.bookingDate >= e.receiptDate
-    );
-    if (match) {
-      await db.receipt.update({
-        where: { id: match.id },
-        data: { reimbursementStatus: "ERSTATTET", reimbursedAt: inc.bookingDate },
-      });
-      await db.bankTransaction.update({ where: { id: inc.id }, data: { matchedReceiptId: match.id } });
-      openExpenses.splice(openExpenses.indexOf(match), 1);
-    }
-  }
 }
 
 // Buchung gehört einem Benutzer, wenn ihr Konto ihm gehört (oder Admin)
@@ -259,7 +178,31 @@ export async function confirmMatch(transactionId: string, receiptId: string): Pr
   const user = await requireUser();
   const txn = await findOwnTransaction(user, transactionId);
   if (!txn) return { ok: false };
+  const receipt = await db.receipt.findFirst({
+    where: { id: receiptId, organizationId: user.organizationId },
+  });
+  if (!receipt) return { ok: false };
   await db.bankTransaction.update({ where: { id: transactionId }, data: { matchedReceiptId: receiptId, ignored: false } });
+  // Status des Belegs nachziehen: Eingang auf Auslage = erstattet,
+  // Abbuchung = Beleg ist bezahlt
+  if (Number(txn.amount) > 0 && receipt.kind === "AUSLAGE") {
+    await db.receipt.update({
+      where: { id: receiptId },
+      data: { reimbursementStatus: "ERSTATTET", reimbursedAt: txn.bookingDate },
+    });
+  } else if (Number(txn.amount) < 0) {
+    await db.receipt.update({ where: { id: receiptId }, data: { paidStatus: "BEZAHLT" } });
+  }
+  revalidatePath("/abgleich");
+  return { ok: true };
+}
+
+// Freigabe: Buchung ist geprüft und zugeordnet → abhaken (bzw. wieder öffnen)
+export async function setTransactionReviewed(transactionId: string, reviewed: boolean): Promise<{ ok: boolean }> {
+  const user = await requireUser();
+  const txn = await findOwnTransaction(user, transactionId);
+  if (!txn) return { ok: false };
+  await db.bankTransaction.update({ where: { id: transactionId }, data: { reviewed } });
   revalidatePath("/abgleich");
   return { ok: true };
 }

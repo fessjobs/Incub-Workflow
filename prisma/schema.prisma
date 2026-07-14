@@ -413,6 +413,9 @@ model BankTransaction {
 
   matchedReceiptId String?
   ignored          Boolean @default(false)
+  // Freigabe: Buchung wurde geprüft (Privat/Firma zugeordnet, ggf. Beleg
+  // verknüpft) und abgehakt
+  reviewed         Boolean @default(false)
   // Merkregel, durch die dieser Posten automatisch behandelt wurde
   matchRuleId      String?
   // "Diese Ausgabe war für Firma X" – pro Kontobewegung wählbar (z. B. private

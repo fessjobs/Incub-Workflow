@@ -12,6 +12,8 @@ export default async function AbgleichLayout({ children }: { children: React.Rea
       <nav className="flex flex-wrap gap-2 border-b border-navy-100 pb-3 dark:border-navy-800">
         <NavLink href="/abgleich" compact>Übersicht</NavLink>
         <span className="text-navy-200 dark:text-navy-700">·</span>
+        <NavLink href="/abgleich/buchungen" compact>Buchungen</NavLink>
+        <span className="text-navy-200 dark:text-navy-700">·</span>
         <NavLink href="/abgleich/konten" compact>Konten</NavLink>
         <span className="text-navy-200 dark:text-navy-700">·</span>
         <NavLink href="/abgleich/regeln" compact>Merkregeln</NavLink>
