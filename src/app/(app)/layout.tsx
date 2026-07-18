@@ -14,7 +14,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/schnell", label: "Schnell-Upload", number: "03" },
     { href: "/auswertungen", label: "Auswertungen", number: "04" },
     { href: "/abgleich", label: "Abgleich", number: "05" },
-    ...(isAdmin ? [{ href: "/einstellungen", label: "Einstellungen", number: "06" }] : []),
+    ...(isAdmin
+      ? [
+          { href: "/setcards", label: "Setcards", number: "06" },
+          { href: "/einstellungen", label: "Einstellungen", number: "07" },
+        ]
+      : []),
   ];
 
   return (

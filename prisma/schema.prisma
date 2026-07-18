@@ -43,6 +43,8 @@ model Organization {
   matchRules       MatchRule[]
   auditLogs        AuditLog[]
   corporateCards   CorporateCard[]
+  persons          Person[]
+  setcards         Setcard[]
 
   @@map("organizations")
 }
@@ -126,6 +128,7 @@ model Company {
   bankAccounts     BankAccount[]
   bankTransactions BankTransaction[]
   numberCounters   ReceiptNumberCounter[]
+  setcards         Setcard[]
 
   @@unique([organizationId, shortCode])
   @@index([organizationId])
@@ -452,6 +455,67 @@ model MatchRule {
 
   @@index([organizationId])
   @@map("match_rules")
+}
+
+// ─── Setcard-Maker (Personal-Setcards pro Firma) ────────────────────────────
+
+// Personal-Stamm: einmal erfasste Personen werden wiederverwendet und beim
+// nächsten Mal vorbefüllt (Mitlernen). Ausweis/CV-Uploads werden NUR zum
+// Auslesen verwendet und nicht gespeichert – nur diese Strukturdaten + Foto.
+model Person {
+  id             String  @id @default(cuid())
+  organizationId String
+  firstName      String
+  lastName       String
+  // Basisdaten (alle optional – was eben bekannt ist)
+  birthYear  Int?
+  age        Int?
+  city       String?
+  region     String?
+  phone      String?
+  email      String?
+  languages  String? // "Deutsch (Muttersprache) · Englisch (B1)"
+  mobility   String? // "Führerschein Kl. B · eigener Pkw"
+  // Strukturierte Daten als JSON: experiences [{from,to,title,company,details}],
+  // qualifications [string], skills [string]
+  experiences    Json?
+  qualifications Json?
+  skills         Json?
+  profileText    String?
+  notes          String?
+  // Foto (klein, fürs Setcard)
+  photoBytes Bytes?
+  photoMime  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  setcards     Setcard[]
+
+  @@index([organizationId, lastName])
+  @@map("persons")
+}
+
+// Erstellte Setcards: finaler Datenstand (fürs Mitlernen) + fertige PDF
+model Setcard {
+  id             String @id @default(cuid())
+  organizationId String
+  personId       String
+  companyId      String
+  einsatzbereich String
+  profileNo      String // z. B. "EP-2601"
+  // Vollständiger, ggf. manuell korrigierter Karteninhalt (Template-Slots)
+  data      Json
+  pdfBytes  Bytes?
+  createdById String?
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  person       Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id])
+
+  @@index([organizationId, personId])
+  @@map("setcards")
 }
 
 // ─── Audit-Log ──────────────────────────────────────────────────────────────
