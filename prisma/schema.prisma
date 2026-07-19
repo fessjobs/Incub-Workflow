@@ -191,6 +191,15 @@ enum PaidStatus {
   ZU_ZAHLEN
 }
 
+// Freigabe-Workflow für Belege vom Mitarbeiter-Link: erst nach Admin-Freigabe
+// arbeitet die Buchhaltung damit (Listen + DATEV/Exporte). Bei Ablehnung gibt
+// es einen Kommentar für den Mitarbeiter.
+enum EmployeeReviewStatus {
+  AUSSTEHEND
+  FREIGEGEBEN
+  ABGELEHNT
+}
+
 // Firmenkarten (z. B. eine Amex pro Gesellschafter). Belege mit Zahlungsart
 // "Firmenkarte" werden der konkreten Karte zugeordnet und für die Buchhaltung
 // pro Karte abgelegt.
@@ -251,6 +260,10 @@ model Receipt {
   // Über den öffentlichen Mitarbeiter-Link eingereicht → landet im Ordner
   // "Auslagen Mitarbeiter" im Adminbereich
   viaEmployeeLink Boolean @default(false)
+  // Freigabe-Status (nur für Mitarbeiter-Link-Belege gesetzt)
+  employeeReview        EmployeeReviewStatus?
+  // Kommentar an den Mitarbeiter bei Ablehnung (im Belegtool sichtbar)
+  employeeReviewComment String?
 
   // Sonderfall Bewirtung
   hospitalityGuests   String?

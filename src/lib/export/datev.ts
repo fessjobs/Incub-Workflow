@@ -149,6 +149,8 @@ export async function buildDatevZip(params: {
       organizationId: params.organizationId,
       status: "ABGELEGT",
       receiptDate: { gte: from, lte: to },
+      // Mitarbeiter-Link-Belege erst nach Admin-Freigabe
+      OR: [{ viaEmployeeLink: false }, { employeeReview: "FREIGEGEBEN" }],
       ...(params.companyId ? { companyId: params.companyId } : {}),
     },
     orderBy: [{ companyId: "asc" }, { receiptDate: "asc" }],

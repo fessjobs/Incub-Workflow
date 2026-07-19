@@ -331,7 +331,7 @@ function Home({
   onSubmit: () => void;
   onSwitchName: () => void;
 }) {
-  const [filter, setFilter] = useState<"alle" | "pruefung" | "erstattet">("alle");
+  const [filter, setFilter] = useState<"alle" | "pruefung" | "erstattet" | "abgelehnt">("alle");
   const items = (overview?.items ?? []).filter((i) => filter === "alle" || i.status === filter);
   const firstName = name.split(/\s+/)[0] || name;
   const initials = name
@@ -403,6 +403,7 @@ function Home({
             { v: "alle", l: "Alle" },
             { v: "pruefung", l: "In Prüfung" },
             { v: "erstattet", l: "Erstattet" },
+            { v: "abgelehnt", l: "Abgelehnt" },
           ] as const
         ).map((f) => (
           <button
@@ -444,7 +445,8 @@ function ReceiptRow({ item }: { item: EmployeeItem }) {
     .map((p) => p[0]?.toUpperCase())
     .join("");
   return (
-    <div className="fess-card flex items-center gap-3 p-3.5">
+    <div className="fess-card p-3.5">
+    <div className="flex items-center gap-3">
       <span
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
         style={{ background: "rgba(26,22,19,0.06)", color: "rgba(26,22,19,0.6)" }}
@@ -459,10 +461,26 @@ function ReceiptRow({ item }: { item: EmployeeItem }) {
       </div>
       <div className="text-right">
         <p className="text-sm font-bold tabular-nums">{item.amount}</p>
-        <span className={`fess-chip ${item.status === "erstattet" ? "fess-chip-erstattet" : "fess-chip-pruefung"}`}>
-          {item.status === "erstattet" ? "Erstattet" : "In Prüfung"}
+        <span
+          className={`fess-chip ${
+            item.status === "erstattet"
+              ? "fess-chip-erstattet"
+              : item.status === "abgelehnt"
+                ? "fess-chip-abgelehnt"
+                : "fess-chip-pruefung"
+          }`}
+        >
+          {item.status === "erstattet" ? "Erstattet" : item.status === "abgelehnt" ? "Abgelehnt" : "In Prüfung"}
         </span>
       </div>
+    </div>
+    {item.status === "abgelehnt" && (
+      <p className="mt-2 rounded-lg px-2.5 py-1.5 text-xs" style={{ background: "rgba(220,60,60,.08)", color: "#b3362c" }}>
+        {item.comment
+          ? `Hinweis vom Team: ${item.comment}`
+          : "Dieser Beleg wurde abgelehnt – bitte melde dich kurz beim Team."}
+      </p>
+    )}
     </div>
   );
 }

@@ -34,7 +34,9 @@ export type EmployeeItem = {
   einsatz: string;
   date: string;
   amount: string;
-  status: "pruefung" | "erstattet";
+  status: "pruefung" | "erstattet" | "abgelehnt";
+  // Kommentar des Admins bei Ablehnung
+  comment: string | null;
 };
 
 export type EmployeeOverview = {
@@ -68,6 +70,8 @@ export async function employeeOverview(password: string, name: string): Promise<
       receiptDate: true,
       grossAmount: true,
       reimbursementStatus: true,
+      employeeReview: true,
+      employeeReviewComment: true,
     },
   });
 
@@ -76,6 +80,7 @@ export async function employeeOverview(password: string, name: string): Promise<
   let openCount = 0;
   for (const r of receipts) {
     const gross = Number(r.grossAmount) || 0;
+    if (r.employeeReview === "ABGELEHNT") continue; // zählt nicht als offen
     if (r.reimbursementStatus === "ERSTATTET") reimbursed += gross;
     else {
       open += gross;
@@ -95,7 +100,13 @@ export async function employeeOverview(password: string, name: string): Promise<
       einsatz: r.purpose ?? "",
       date: formatDate(r.receiptDate),
       amount: formatEuro(Number(r.grossAmount)),
-      status: r.reimbursementStatus === "ERSTATTET" ? ("erstattet" as const) : ("pruefung" as const),
+      status:
+        r.employeeReview === "ABGELEHNT"
+          ? ("abgelehnt" as const)
+          : r.reimbursementStatus === "ERSTATTET"
+            ? ("erstattet" as const)
+            : ("pruefung" as const),
+      comment: r.employeeReview === "ABGELEHNT" ? (r.employeeReviewComment ?? null) : null,
     })),
   };
 }
@@ -188,6 +199,7 @@ export async function employeeSubmit(password: string, formData: FormData): Prom
         notes: `Grund: ${parsed.data.grund}`,
         submittedByName: parsed.data.name,
         viaEmployeeLink: true,
+        employeeReview: "AUSSTEHEND",
         reimbursementStatus: parsed.data.erhalten === "ERHALTEN" ? "ERSTATTET" : "OFFEN",
         ...(parsed.data.erhalten === "ERHALTEN" ? { reimbursedAt: new Date() } : {}),
         status: "ABGELEGT",

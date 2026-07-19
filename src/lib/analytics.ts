@@ -18,6 +18,10 @@ type ScopeInput = { organizationId: string; id: string; role: "ADMIN" | "BUCHHAL
 export function scope(user: ScopeInput, extra?: Prisma.ReceiptWhereInput): Prisma.ReceiptWhereInput {
   const base: Prisma.ReceiptWhereInput = { organizationId: user.organizationId, status: "ABGELEGT" };
   if (user.role !== "ADMIN" && user.role !== "BUCHHALTUNG") base.userId = user.id;
+  // Buchhaltung: Mitarbeiter-Link-Belege erst nach Admin-Freigabe
+  if (user.role === "BUCHHALTUNG") {
+    base.AND = [{ OR: [{ viaEmployeeLink: false }, { employeeReview: "FREIGEGEBEN" }] }];
+  }
   return { ...base, ...extra };
 }
 

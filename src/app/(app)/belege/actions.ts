@@ -460,6 +460,42 @@ export async function extractionAvailable(): Promise<boolean> {
   return isExtractionAvailable();
 }
 
+// ─── Freigabe von Mitarbeiter-Link-Belegen (nur Admin) ───────────────────────
+// Erst nach Freigabe arbeitet die Buchhaltung damit (Listen + Exporte). Bei
+// Ablehnung geht ein Kommentar an den Mitarbeiter (im Belegtool sichtbar).
+
+export async function reviewEmployeeReceipt(
+  receiptId: string,
+  decision: "FREIGEGEBEN" | "ABGELEHNT",
+  comment?: string
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") return { ok: false, error: "Nur Admins können freigeben." };
+  const receipt = await db.receipt.findFirst({
+    where: { id: receiptId, organizationId: user.organizationId, viaEmployeeLink: true },
+  });
+  if (!receipt) return { ok: false, error: "Beleg nicht gefunden." };
+
+  await db.receipt.update({
+    where: { id: receiptId },
+    data: {
+      employeeReview: decision,
+      employeeReviewComment: decision === "ABGELEHNT" ? (comment?.trim() || null) : null,
+    },
+  });
+  await logAudit({
+    organizationId: user.organizationId,
+    userId: user.id,
+    action: decision === "FREIGEGEBEN" ? "receipt.employee_approve" : "receipt.employee_reject",
+    entityType: "receipt",
+    entityId: receiptId,
+    data: { receiptNumber: receipt.receiptNumber, comment: comment?.trim() || undefined },
+  });
+  revalidatePath("/belege");
+  revalidatePath(`/belege/${receiptId}`);
+  return { ok: true };
+}
+
 // ─── Schnell-Upload (Gesellschafter): Entwurf mit einem Tap abschließen ──────
 // Firma + Zahlungsart (+ Karte) + bezahlt/offen – Rest kommt aus der
 // automatischen Extraktion. Danach sofortiger Zahlungs-Check.

@@ -25,6 +25,8 @@ export async function buildMonthlyZip(params: {
       companyId: params.companyId,
       status: "ABGELEGT",
       receiptDate: { gte: from, lte: to },
+      // Mitarbeiter-Link-Belege erst nach Admin-Freigabe
+      OR: [{ viaEmployeeLink: false }, { employeeReview: "FREIGEGEBEN" }],
     },
     orderBy: { receiptDate: "asc" },
     include: {

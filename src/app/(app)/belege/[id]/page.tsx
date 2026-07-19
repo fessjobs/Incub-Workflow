@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/format";
 import { ReceiptEditor } from "./receipt-editor";
 import { ReimbursementControl } from "./reimbursement-control";
 import { PaymentCheck } from "./payment-check";
+import { EmployeeReview } from "../employee-review";
 
 export const metadata: Metadata = { title: "Beleg" };
 
@@ -141,6 +142,21 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
 
         {/* Seitenspalte: Vorschau + Downloads + Erstattung */}
         <aside className="space-y-4">
+          {receipt.viaEmployeeLink && (
+            <div className="card p-4">
+              <p className="eyebrow mb-3">Mitarbeiter-Beleg</p>
+              <EmployeeReview
+                receiptId={receipt.id}
+                status={receipt.employeeReview}
+                comment={receipt.employeeReviewComment}
+                isAdmin={user.role === "ADMIN"}
+              />
+              <p className="mt-2 text-xs text-navy-400">
+                Erst nach Freigabe arbeitet die Buchhaltung mit diesem Beleg (Listen und
+                DATEV-Export). Der Ablehnungs-Kommentar ist für den Mitarbeiter sichtbar.
+              </p>
+            </div>
+          )}
           {!isDraft && receipt.kind === "AUSLAGE" && (
             <ReimbursementControl receiptId={receipt.id} status={receipt.reimbursementStatus} />
           )}

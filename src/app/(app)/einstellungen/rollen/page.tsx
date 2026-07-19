@@ -30,6 +30,7 @@ const ROLES: Role[] = [
     steps: [
       "Beleg unterwegs: „Schnell-Upload“ im Menü → Foto → Firma antippen → Zahlungsart wählen → bezahlt oder noch zu zahlen → fertig.",
       "Neue Registrierung? Unter Einstellungen → Nutzer den Account freischalten und die Rolle wählen.",
+      "Mitarbeiter-Belege vom Link prüfen: Belege → Ordner „Auslagen Mitarbeiter" → Freigeben oder mit Kommentar ablehnen (der Kommentar erscheint beim Mitarbeiter).",
       "Monatsabschluss: Auswertungen → DATEV-Export an die Buchhaltung geben (oder die Buchhaltung zieht ihn selbst).",
     ],
   },
@@ -47,7 +48,7 @@ const ROLES: Role[] = [
     steps: [
       "Anmelden → Belege: mit den Filtern (Firma, Monat, Zahlungsart, Karte) die gewünschte Sicht bauen.",
       "Auswertungen → „DATEV-Export“: Monat wählen → ZIP herunterladen → CSV in DATEV einspielen, PDFs sind im ZIP passend sortiert.",
-      "Mitarbeiter-Auslagen liegen gesammelt im Ordner „Auslagen Mitarbeiter“ (Filter in der Belegliste).",
+      "Mitarbeiter-Auslagen erscheinen erst nach Admin-Freigabe – im Ordner „Auslagen Mitarbeiter“ und in den Exporten.",
     ],
   },
   {

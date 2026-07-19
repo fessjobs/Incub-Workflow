@@ -12,11 +12,19 @@ export function seesAllReceipts(user: Pick<User, "role">): boolean {
   return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
 }
 
+// Mitarbeiter-Link-Belege zählen erst nach Admin-Freigabe für die Buchhaltung
+// und für Buchhaltungs-Exporte (DATEV, Steuerberater-ZIP).
+export const ONLY_APPROVED_EMPLOYEE: Prisma.ReceiptWhereInput = {
+  OR: [{ viaEmployeeLink: false }, { employeeReview: "FREIGEGEBEN" }],
+};
+
 // Query-Scope: immer nach organization_id; Mitglieder zusätzlich nach user_id
-// (Spec Abschnitt 3/10). Buchhaltung sieht alles (DATEV-Export).
+// (Spec Abschnitt 3/10). Buchhaltung sieht alles – aber Mitarbeiter-Link-
+// Belege erst nach Freigabe durch den Admin.
 export function receiptScope(user: Pick<User, "organizationId" | "id" | "role">): Prisma.ReceiptWhereInput {
   const base: Prisma.ReceiptWhereInput = { organizationId: user.organizationId };
   if (!seesAllReceipts(user)) base.userId = user.id;
+  if (user.role === "BUCHHALTUNG") base.AND = [ONLY_APPROVED_EMPLOYEE];
   return base;
 }
 

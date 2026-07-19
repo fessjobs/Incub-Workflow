@@ -8,6 +8,7 @@ import { formatEuro, formatDate } from "@/lib/format";
 import { DraftQueue } from "./draft-queue";
 import { ReceiptFilters } from "./receipt-filters";
 import { StatusBadge } from "./status-badge";
+import { EmployeeReview } from "./employee-review";
 
 export const metadata: Metadata = { title: "Belege" };
 
@@ -107,6 +108,18 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
         where: { organizationId: user.organizationId, status: "ABGELEGT", viaEmployeeLink: true },
       })
     : 0;
+  // Wie viele davon warten noch auf die Admin-Freigabe?
+  const pendingEmployeeCount =
+    user.role === "ADMIN"
+      ? await db.receipt.count({
+          where: {
+            organizationId: user.organizationId,
+            status: "ABGELEGT",
+            viaEmployeeLink: true,
+            employeeReview: "AUSSTEHEND",
+          },
+        })
+      : 0;
 
   return (
     <div className="space-y-10">
@@ -177,6 +190,11 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
               <span className="block text-xs text-navy-400">
                 {employeeCount} Belege über den Mitarbeiter-Link · sortiert nach Name und Datum
               </span>
+              {pendingEmployeeCount > 0 && (
+                <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                  {pendingEmployeeCount} warten auf Freigabe
+                </span>
+              )}
             </span>
             <span className="text-sm text-navy-400">→</span>
           </Link>
@@ -233,7 +251,18 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                       )}
                       <td className="px-4 py-3 text-right tabular-nums">{formatEuro(Number(r.grossAmount))}</td>
                       <td className="px-4 py-3">
-                        <StatusBadge kind={r.kind} approved={r.approved} reimbursement={r.reimbursementStatus} />
+                        <div className="space-y-1.5">
+                          <StatusBadge kind={r.kind} approved={r.approved} reimbursement={r.reimbursementStatus} />
+                          {r.viaEmployeeLink && (
+                            <EmployeeReview
+                              receiptId={r.id}
+                              status={r.employeeReview}
+                              comment={r.employeeReviewComment}
+                              isAdmin={isAdmin}
+                              compact
+                            />
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">

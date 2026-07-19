@@ -96,6 +96,10 @@
   background: rgba(30, 138, 91, 0.14);
   color: #1e8a5b;
 }
+.fess-chip-abgelehnt {
+  background: rgba(220, 60, 60, 0.12);
+  color: #b3362c;
+}
 
 /* Auswahl-Chips (Zahlungsart, Status) */
 .fess-choice {
