@@ -81,28 +81,13 @@ async function runExtraction(
   return { extracted, vendor, learned: history?.matchCount ?? 0, error: extraction.error };
 }
 
-// Ein Beleg-Foto/PDF hochladen: sofort als Entwurf anlegen, Original speichern,
-// automatisch auslesen. Für Batch-Upload ruft der Client dies je Datei auf.
-export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
-  const user = await requireUser();
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { ok: false, error: "Keine Datei erhalten." };
-  if (file.size === 0) return { ok: false, error: "Datei ist leer." };
-  if (file.size > MAX_BYTES) return { ok: false, error: "Datei zu groß (max. 20 MB)." };
-
-  let mime = file.type;
-  if (!ACCEPTED.includes(mime)) {
-    // Manche Kameras liefern generische Typen – anhand Endung nachbessern
-    const name = file.name.toLowerCase();
-    if (name.endsWith(".jpg") || name.endsWith(".jpeg")) mime = "image/jpeg";
-    else if (name.endsWith(".png")) mime = "image/png";
-    else if (name.endsWith(".pdf")) mime = "application/pdf";
-    else return { ok: false, error: "Dateityp nicht unterstützt (JPG, PNG, WebP, PDF)." };
-  }
-
-  const bytes = Buffer.from(await file.arrayBuffer());
-
-  // Entwurf anlegen
+// Kern des Uploads: Entwurf anlegen, Original ablegen, automatisch auslesen.
+// Wird vom Einzel-Upload und vom PDF-Batch-Split genutzt.
+async function createDraftFromBytes(
+  user: { id: string; organizationId: string },
+  bytes: Buffer,
+  mime: string
+): Promise<{ id: string; vendor: string | null; extracted: boolean; learned: number; extractionError: string | null }> {
   const draft = await db.receipt.create({
     data: {
       organizationId: user.organizationId,
@@ -113,19 +98,17 @@ export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
     },
   });
 
-  // Original ablegen (Quelle = DB)
   await db.receiptFile.create({
     data: {
       receiptId: draft.id,
       kind: "ORIGINAL",
       filename: `original.${extForMime(mime)}`,
       mimeType: mime,
-      bytes,
+      bytes: new Uint8Array(bytes),
       size: bytes.length,
     },
   });
 
-  // Automatisch auslesen + Mitlern-Vorschläge (falls API-Key vorhanden)
   let extractedOk = false;
   let vendor: string | null = null;
   let learned = 0;
@@ -148,8 +131,95 @@ export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
     entityType: "receipt",
     entityId: draft.id,
   });
+  return { id: draft.id, vendor, extracted: extractedOk, learned, extractionError };
+}
+
+function resolveMime(file: File): string | null {
+  let mime = file.type;
+  if (ACCEPTED.includes(mime)) return mime;
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+  if (name.endsWith(".png")) return "image/png";
+  if (name.endsWith(".pdf")) return "application/pdf";
+  return null;
+}
+
+// Ein Beleg-Foto/PDF hochladen: sofort als Entwurf anlegen, Original speichern,
+// automatisch auslesen. Für Batch-Upload ruft der Client dies je Datei auf.
+export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
+  const user = await requireUser();
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "Keine Datei erhalten." };
+  if (file.size === 0) return { ok: false, error: "Datei ist leer." };
+  if (file.size > MAX_BYTES) return { ok: false, error: "Datei zu groß (max. 20 MB)." };
+
+  const mime = resolveMime(file);
+  if (!mime) return { ok: false, error: "Dateityp nicht unterstützt (JPG, PNG, WebP, PDF)." };
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const result = await createDraftFromBytes(user, bytes, mime);
   revalidatePath("/belege");
-  return { ok: true, id: draft.id, vendor, extracted: extractedOk, learned, extractionError };
+  return { ok: true, ...result };
+}
+
+// ─── Sammel-PDF: viele Belege in einer Datei → in Einzelbelege aufteilen ─────
+// Die KI gruppiert die Seiten (mehrseitige Rechnungen bleiben zusammen);
+// ohne API-Key gilt: eine Seite = ein Beleg. Jede Gruppe wird ein eigener
+// Entwurf mit eigener Original-PDF und automatischem Auslesen.
+
+export type PdfBatchResult =
+  | {
+      ok: true;
+      pages: number;
+      receipts: Array<{ id: string; vendor: string | null; pages: number[] }>;
+    }
+  | { ok: false; error: string };
+
+export async function uploadReceiptPdfBatch(formData: FormData): Promise<PdfBatchResult> {
+  const user = await requireUser();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Keine Datei erhalten." };
+  if (file.size > MAX_BYTES) return { ok: false, error: "Datei zu groß (max. 20 MB)." };
+  if (resolveMime(file) !== "application/pdf") return { ok: false, error: "Bitte eine PDF-Datei hochladen." };
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+
+  const { pdfPageCount, detectReceiptGroups, buildSubPdf, MAX_SPLIT_PAGES } = await import("@/lib/pdf/split");
+  let pageCount: number;
+  try {
+    pageCount = await pdfPageCount(bytes);
+  } catch {
+    return { ok: false, error: "PDF konnte nicht gelesen werden." };
+  }
+  if (pageCount > MAX_SPLIT_PAGES) {
+    return { ok: false, error: `PDF hat ${pageCount} Seiten – bitte in Teile bis ${MAX_SPLIT_PAGES} Seiten aufteilen.` };
+  }
+
+  // Eine Seite = normaler Einzel-Upload
+  if (pageCount <= 1) {
+    const result = await createDraftFromBytes(user, bytes, "application/pdf");
+    revalidatePath("/belege");
+    return { ok: true, pages: 1, receipts: [{ id: result.id, vendor: result.vendor, pages: [1] }] };
+  }
+
+  const groups = await detectReceiptGroups(bytes, pageCount);
+
+  // Je Gruppe: Teil-PDF bauen → Entwurf + Auslesen (begrenzte Parallelität)
+  const receipts: Array<{ id: string; vendor: string | null; pages: number[] }> = new Array(groups.length);
+  let next = 0;
+  async function worker() {
+    while (next < groups.length) {
+      const i = next++;
+      const pages = groups[i];
+      const sub = await buildSubPdf(bytes, pages);
+      const result = await createDraftFromBytes(user, sub, "application/pdf");
+      receipts[i] = { id: result.id, vendor: result.vendor, pages };
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(3, groups.length) }, worker));
+
+  revalidatePath("/belege");
+  return { ok: true, pages: pageCount, receipts };
 }
 
 // Erneut auslesen (z. B. nachdem der API-Schlüssel gesetzt wurde)

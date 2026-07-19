@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   uploadReceipt,
+  uploadReceiptPdfBatch,
   quickFinalize,
   linkPayment,
   type PaymentMatch,
@@ -46,7 +47,9 @@ function initials(name: string) {
 }
 
 export function QuickUpload({ companies, cards }: { companies: Company[]; cards: Card[] }) {
-  const [phase, setPhase] = useState<"pick" | "assign" | "done">("pick");
+  const [phase, setPhase] = useState<"pick" | "assign" | "done" | "batch">("pick");
+  // Ergebnis eines Sammel-PDF-Splits
+  const [batch, setBatch] = useState<{ pages: number; receipts: Array<{ id: string; vendor: string | null; pages: number[] }> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -71,18 +74,38 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
     setError(null);
     setBusy(true);
     if (f.type.startsWith("image/")) setPreview(URL.createObjectURL(f));
+
+    const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
     try {
-      const prepared = await prepareFile(f);
-      const fd = new FormData();
-      fd.append("file", prepared);
-      const res = await uploadReceipt(fd);
-      if (res.ok) {
-        setReceiptId(res.id);
-        setVendor(res.vendor);
-        setPhase("assign");
+      if (isPdf) {
+        // Sammel-PDF: wird serverseitig in Einzelbelege aufgeteilt
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await uploadReceiptPdfBatch(fd);
+        if (!res.ok) {
+          setError(res.error);
+        } else if (res.receipts.length === 1) {
+          // nur ein Beleg → normaler Zuordnen-Schritt
+          setReceiptId(res.receipts[0].id);
+          setVendor(res.receipts[0].vendor);
+          setPhase("assign");
+        } else {
+          setBatch({ pages: res.pages, receipts: res.receipts });
+          setPhase("batch");
+        }
       } else {
-        setError(res.error);
-        setPreview(null);
+        const prepared = await prepareFile(f);
+        const fd = new FormData();
+        fd.append("file", prepared);
+        const res = await uploadReceipt(fd);
+        if (res.ok) {
+          setReceiptId(res.id);
+          setVendor(res.vendor);
+          setPhase("assign");
+        } else {
+          setError(res.error);
+          setPreview(null);
+        }
       }
     } catch {
       setError("Upload fehlgeschlagen.");
@@ -130,6 +153,7 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
 
   function reset() {
     setPhase("pick");
+    setBatch(null);
     setPreview(null);
     setReceiptId(null);
     setVendor(null);
@@ -167,8 +191,62 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
         </div>
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
-        {busy && <p className="text-center text-sm text-navy-400">Beleg wird hochgeladen und ausgelesen …</p>}
+        {busy && (
+          <p className="text-center text-sm text-navy-400">
+            Wird hochgeladen und ausgelesen … (Sammel-PDFs mit vielen Belegen können 1–2 Minuten dauern)
+          </p>
+        )}
+        {!busy && (
+          <p className="text-center text-xs text-navy-400">
+            Tipp: Eine PDF mit <b>mehreren Belegen</b> (z. B. gesammelt gescannt) wird automatisch
+            in Einzelbelege aufgeteilt.
+          </p>
+        )}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}
+      </div>
+    );
+  }
+
+  // ── Sammel-PDF: Ergebnis des Splits ──
+  if (phase === "batch" && batch) {
+    return (
+      <div className="space-y-4">
+        <div className="card space-y-3 p-6 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </div>
+          <p className="text-lg font-semibold">
+            {batch.receipts.length} Belege aus {batch.pages} Seiten erstellt
+          </p>
+          <p className="text-sm text-navy-400">
+            Alle liegen als Entwürfe in der Zuordnen-Warteschlange – dort Firma antippen,
+            prüfen und ablegen.
+          </p>
+        </div>
+
+        <div className="card divide-y divide-navy-100 text-sm dark:divide-navy-800">
+          {batch.receipts.map((r, i) => (
+            <div key={r.id} className="flex items-center gap-3 px-4 py-2.5">
+              <span className="font-mono text-xs text-navy-400">{i + 1}.</span>
+              <span className="min-w-0 flex-1 truncate">{r.vendor || "Beleg (nicht erkannt)"}</span>
+              <span className="text-xs text-navy-400">
+                Seite{r.pages.length > 1 ? "n" : ""} {r.pages.join(", ")}
+              </span>
+              <Link href={`/belege/${r.id}`} className="text-xs text-navy-500 underline underline-offset-2">
+                Details
+              </Link>
+            </div>
+          ))}
+        </div>
+
+        <Link href="/belege" className="btn-primary w-full justify-center py-3">
+          Jetzt zuordnen ({batch.receipts.length} Entwürfe)
+        </Link>
+        <button type="button" className="btn-secondary w-full justify-center" onClick={reset}>
+          Weitere Belege hochladen
+        </button>
       </div>
     );
   }
