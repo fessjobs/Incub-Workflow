@@ -48,7 +48,7 @@ Regeln:
 async function extractChunk(client: Anthropic, pdfBase64: string): Promise<{ txns: RawTxn[]; error?: string }> {
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 8000,
     messages: [
       {
         role: "user",
@@ -108,7 +108,10 @@ export async function extractStatementPdf(bytes: Buffer): Promise<{ transactions
       try {
         results[i] = await extractChunk(client, chunks[i]);
       } catch (err) {
-        const msg = err instanceof Anthropic.APIError ? `API ${err.status}` : "Fehler beim Auslesen";
+        const msg =
+          err instanceof Anthropic.APIError
+            ? `API ${err.status}: ${err.message}`.slice(0, 200)
+            : "Fehler beim Auslesen";
         results[i] = { txns: [], error: msg };
       }
     }
