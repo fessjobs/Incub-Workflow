@@ -14,6 +14,7 @@ type Draft = {
   categoryId: string | null;
   kind: string;
   approved: boolean;
+  paymentHint: { label: string; linked: boolean } | null;
 };
 
 type Company = { id: string; brandName: string; color: string | null; location: string | null; isPrivate: boolean };
@@ -135,6 +136,27 @@ function DraftCard({ draft, companies, categories }: { draft: Draft; companies: 
         </a>
 
         <div className="flex-1 space-y-3">
+          {/* Zahlung über hinterlegtes Konto / Karte erkannt */}
+          {draft.paymentHint && (
+            <p className="flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0">
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <line x1="2" y1="10" x2="22" y2="10" />
+              </svg>
+              <span>
+                <span className="font-semibold">
+                  {draft.paymentHint.linked ? "Mit Kontobewegung verknüpft:" : "Zahlung über hinterlegtes Konto erkannt:"}
+                </span>{" "}
+                {draft.paymentHint.label}
+                {!draft.paymentHint.linked && (
+                  <span className="block text-emerald-700/80 dark:text-emerald-400/80">
+                    Verknüpfen kannst du nach dem Ablegen über „Details“ → Zahlungs-Check.
+                  </span>
+                )}
+              </span>
+            </p>
+          )}
+
           {/* Ausgelesene Felder (editierbar) */}
           <div className="grid gap-3 sm:grid-cols-3">
             <div>

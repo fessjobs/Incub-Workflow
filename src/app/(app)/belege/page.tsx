@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { receiptScope, seesAllReceipts } from "@/lib/receipts";
+import { findPaymentHints } from "@/lib/payment-hint";
 import { formatEuro, formatDate } from "@/lib/format";
 import { DraftQueue } from "./draft-queue";
 import { ReceiptFilters } from "./receipt-filters";
@@ -59,6 +60,13 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
     orderBy: { createdAt: "desc" },
     include: { company: true, category: true },
   });
+
+  // Zahlungs-Hinweis: Passt zu einem Entwurf schon eine Abbuchung auf einem
+  // hinterlegten Konto (Bankkonto/Firmenkarte)? Dann direkt anzeigen.
+  const paymentHints = await findPaymentHints(
+    user,
+    drafts.map((d) => ({ id: d.id, grossAmount: Number(d.grossAmount), receiptDate: d.receiptDate }))
+  );
 
   // Filter für abgelegte Belege
   const where: Prisma.ReceiptWhereInput = { ...receiptScope(user), status: "ABGELEGT" };
@@ -155,6 +163,7 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
               categoryId: d.categoryId,
               kind: d.kind,
               approved: d.approved,
+              paymentHint: paymentHints.get(d.id) ?? null,
             }))}
             companies={allowedCompanies.map((c) => ({ id: c.id, brandName: c.brandName, color: c.color, location: c.location, isPrivate: c.isPrivate }))}
             categories={categories.map((c) => ({ id: c.id, name: c.name }))}
