@@ -185,9 +185,15 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
           </div>
           <p className="text-lg font-semibold">Abgelegt{doneNumber ? ` · ${doneNumber}` : ""}</p>
           {receiptId && (
-            <Link href={`/belege/${receiptId}`} className="text-sm text-navy-500 underline underline-offset-2">
-              Beleg öffnen und Details ergänzen
-            </Link>
+            <>
+              <Link href={`/belege/${receiptId}`} className="btn-secondary w-full justify-center">
+                Details ergänzen
+              </Link>
+              <p className="text-xs text-navy-400">
+                z. B. Bemerkungen, Kilometerstand &amp; Fahrzeug (Tankbeleg), Bewirtungsangaben,
+                Kategorie oder USt-Sätze – die PDF wird danach automatisch neu erzeugt.
+              </p>
+            </>
           )}
         </div>
 
@@ -357,6 +363,10 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
           {busy ? "Wird abgelegt …" : "Ablegen + Zahlungs-Check"}
         </button>
       </div>
+      <p className="text-center text-xs text-navy-400">
+        Nach dem Ablegen kannst du über „Details ergänzen“ jederzeit Bemerkungen,
+        Kilometerstand oder Bewirtungsangaben nachtragen.
+      </p>
     </div>
   );
 }

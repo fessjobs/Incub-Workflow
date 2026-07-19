@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { Wordmark } from "@/components/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NavLink } from "@/components/nav-link";
+import { MobileNav } from "@/components/mobile-nav";
 import { logout } from "@/app/login/actions";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -65,24 +66,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Mobile Top-Bar */}
-      <header className="fixed inset-x-0 top-0 z-20 flex items-center justify-between border-b border-navy-100 bg-white px-4 py-3 dark:border-navy-800 dark:bg-navy-900 md:hidden">
-        <Wordmark />
-        <div className="flex items-center gap-3">
-          <nav className="flex gap-3 text-sm">
-            {nav.map((item) => (
-              <NavLink key={item.href} href={item.href} compact>
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-          <form action={logout}>
-            <button type="submit" className="text-xs text-navy-400 underline">
-              Abmelden
-            </button>
-          </form>
-        </div>
-      </header>
+      {/* Mobile: Top-Bar mit Burger-Menü */}
+      <MobileNav
+        nav={nav}
+        userName={user.name}
+        roleLabel={user.role === "ADMIN" ? "Admin" : user.role === "BUCHHALTUNG" ? "Buchhaltung" : "Mitglied"}
+        logout={logout}
+      />
 
       <main className="w-full px-4 pb-12 pt-20 md:pl-60 md:pt-0">
         <div className="mx-auto max-w-6xl px-0 py-8 md:px-8 md:py-10">{children}</div>
