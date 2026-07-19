@@ -30,7 +30,7 @@ const ROLES: Role[] = [
     steps: [
       "Beleg unterwegs: „Schnell-Upload“ im Menü → Foto → Firma antippen → Zahlungsart wählen → bezahlt oder noch zu zahlen → fertig.",
       "Neue Registrierung? Unter Einstellungen → Nutzer den Account freischalten und die Rolle wählen.",
-      "Mitarbeiter-Belege vom Link prüfen: Belege → Ordner „Auslagen Mitarbeiter" → Freigeben oder mit Kommentar ablehnen (der Kommentar erscheint beim Mitarbeiter).",
+      "Mitarbeiter-Belege vom Link prüfen: Belege → Ordner „Auslagen Mitarbeiter“ → Freigeben oder mit Kommentar ablehnen (der Kommentar erscheint beim Mitarbeiter).",
       "Monatsabschluss: Auswertungen → DATEV-Export an die Buchhaltung geben (oder die Buchhaltung zieht ihn selbst).",
     ],
   },
