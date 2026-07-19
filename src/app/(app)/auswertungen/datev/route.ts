@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { receiptVisibility } from "@/lib/receipts";
 import { buildDatevZip } from "@/lib/export/datev";
 
 // DATEV-Monatsexport (Admin + Buchhaltung): Buchungsstapel-CSV je Firma +
@@ -21,6 +22,8 @@ export async function GET(req: Request) {
     year,
     month: month - 1,
     companyId,
+    // Admin exportiert nur, was er sehen darf; Buchhaltung alles
+    restrict: user.role === "ADMIN" ? receiptVisibility(user) : undefined,
   });
   if (!result) return new NextResponse("Keine Belege in diesem Monat.", { status: 404 });
 

@@ -15,6 +15,7 @@ import {
   findDuplicates,
 } from "@/lib/receipts";
 import { extForMime } from "@/lib/storage";
+import { accountVisibility } from "@/lib/bank/scope";
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
@@ -649,9 +650,8 @@ export async function checkPaymentMatch(receiptId: string): Promise<{ matches: P
   const to = new Date(receipt.receiptDate);
   to.setDate(to.getDate() + 30);
 
-  // Nur Konten, die der Nutzer sehen darf (Mitglied: eigene; Admin: alle)
-  const accountFilter =
-    user.role === "ADMIN" ? {} : { userId: user.id };
+  // Nur Konten, die der Nutzer sehen darf
+  const accountFilter = accountVisibility(user);
 
   const candidates = await db.bankTransaction.findMany({
     where: {
@@ -680,7 +680,7 @@ export async function linkPayment(receiptId: string, transactionId: string): Pro
   const user = await requireUser();
   const receipt = await db.receipt.findFirst({ where: { id: receiptId, ...receiptScope(user) } });
   if (!receipt) return { ok: false };
-  const accountFilter = user.role === "ADMIN" ? {} : { userId: user.id };
+  const accountFilter = accountVisibility(user);
   const txn = await db.bankTransaction.findFirst({
     where: {
       id: transactionId,

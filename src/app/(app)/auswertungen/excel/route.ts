@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { scope } from "@/lib/analytics";
+import { receiptScope } from "@/lib/receipts";
 import { buildExcel, type ExportReceipt } from "@/lib/export/excel";
 
 export async function GET(req: Request) {
@@ -34,8 +34,10 @@ export async function GET(req: Request) {
     }
   }
 
+  // Belegliste (Zeilenexport): Rollen-Sichtbarkeit wie in der Belegansicht –
+  // Admins exportieren keine Belege anderer Admins.
   const receipts = await db.receipt.findMany({
-    where: scope(user, extra),
+    where: { ...receiptScope(user), status: "ABGELEGT", ...extra },
     orderBy: [{ receiptDate: "asc" }],
     include: { category: true, company: true, user: true },
   });

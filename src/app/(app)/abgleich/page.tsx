@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { matchReceipts } from "@/lib/bank/match";
+import { accountVisibility } from "@/lib/bank/scope";
+import { receiptVisibility } from "@/lib/receipts";
 import { formatEuro, formatDate } from "@/lib/format";
 import { StatementUpload } from "./statement-upload";
 import { TransactionCard } from "./transaction-card";
@@ -20,9 +21,10 @@ export default async function AbgleichPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const view = (typeof sp.v === "string" ? sp.v : "") || "ohne-beleg";
 
-  // Mitglieder sehen nur eigene Konten/Belege, Admin alles
-  const ownAccounts: Prisma.BankAccountWhereInput = isAdmin ? {} : { userId: user.id };
-  const ownReceipts: Prisma.ReceiptWhereInput = isAdmin ? {} : { userId: user.id };
+  // Sichtbarkeit: eigene Konten/Belege + die der Mitarbeiter (Admins sehen
+  // die anderer Admins nicht)
+  const ownAccounts = accountVisibility(user);
+  const ownReceipts = receiptVisibility(user);
 
   const accounts = await db.bankAccount.findMany({
     where: { organizationId: orgId, active: true, ...ownAccounts },

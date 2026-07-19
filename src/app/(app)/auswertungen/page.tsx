@@ -55,7 +55,7 @@ export default async function AuswertungenPage({ searchParams }: { searchParams:
           </h1>
           <p className="mt-1 text-sm text-navy-400">
             {isAdmin
-              ? "Ausgaben der Gruppe – nach Firma, Kategorie, Nutzer und Monat."
+              ? "Ausgaben der Gruppe als Summen – nach Firma, Kategorie, Nutzer und Monat. Einzelbelege anderer Admins bleiben verborgen."
               : "Deine Ausgaben nach Firma, Kategorie und Monat."}
           </p>
         </div>

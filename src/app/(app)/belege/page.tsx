@@ -37,7 +37,11 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
     }),
     seesAll
       ? db.user.findMany({
-          where: { organizationId: user.organizationId },
+          // Admin: nur sich selbst + Mitarbeiter im Filter (keine anderen Admins)
+          where: {
+            organizationId: user.organizationId,
+            ...(isAdmin ? { OR: [{ id: user.id }, { role: { not: "ADMIN" } }] } : {}),
+          },
           orderBy: { name: "asc" },
           select: { id: true, name: true },
         })

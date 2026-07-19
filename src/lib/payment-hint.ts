@@ -2,8 +2,10 @@
 // passende Abbuchung auf einem hinterlegten Konto (Bankkonto/Firmenkarte)?
 // Gleiche Match-Logik wie der Zahlungs-Check (Betrag ±0,005 €, Buchung 3 Tage
 // vor bis 30 Tage nach Belegdatum), aber gesammelt in einer Abfrage.
+import type { UserRole } from "@prisma/client";
 import { db } from "@/lib/db";
 import { formatEuro, formatDate } from "@/lib/format";
+import { accountVisibility } from "@/lib/bank/scope";
 
 export type PaymentHint = {
   label: string; // "Amex Maik · −42,90 € · 03.07.2026"
@@ -21,15 +23,15 @@ function window(receiptDate: Date): { from: Date; to: Date } {
 }
 
 export async function findPaymentHints(
-  user: { id: string; role: string; organizationId: string },
+  user: { id: string; role: UserRole; organizationId: string },
   drafts: DraftInfo[]
 ): Promise<Map<string, PaymentHint>> {
   const hints = new Map<string, PaymentHint>();
   const candidates = drafts.filter((d) => d.grossAmount > 0).slice(0, 50);
   if (candidates.length === 0) return hints;
 
-  // Nur Konten, die der Nutzer sehen darf (Mitglied: eigene; Admin: alle)
-  const accountFilter = user.role === "ADMIN" ? {} : { userId: user.id };
+  // Nur Konten, die der Nutzer sehen darf
+  const accountFilter = accountVisibility(user);
 
   const txns = await db.bankTransaction.findMany({
     where: {

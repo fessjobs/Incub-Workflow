@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { buildExcel, type ExportReceipt } from "./excel";
 import { slugForFile, monthFolder } from "@/lib/format";
@@ -10,6 +11,8 @@ export async function buildMonthlyZip(params: {
   companyId: string;
   year: number;
   month: number; // 0-basiert
+  // Sichtbarkeits-Einschränkung des Abrufers (Admin: keine fremden Admin-Belege)
+  restrict?: Prisma.ReceiptWhereInput;
 }): Promise<{ filename: string; bytes: Buffer } | null> {
   const from = new Date(params.year, params.month, 1);
   const to = new Date(params.year, params.month + 1, 0, 23, 59, 59);
@@ -27,6 +30,7 @@ export async function buildMonthlyZip(params: {
       receiptDate: { gte: from, lte: to },
       // Mitarbeiter-Link-Belege erst nach Admin-Freigabe
       OR: [{ viaEmployeeLink: false }, { employeeReview: "FREIGEGEBEN" }],
+      ...(params.restrict ? { AND: [params.restrict] } : {}),
     },
     orderBy: { receiptDate: "asc" },
     include: {

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { receiptScope as buildReceiptScope } from "@/lib/receipts";
+import { accountVisibility } from "@/lib/bank/scope";
 import { CompanyChip } from "@/components/company-chip";
 import { OnboardingCard } from "./onboarding-card";
 import { formatEuro } from "@/lib/format";
@@ -12,7 +14,8 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const orgId = user.organizationId;
   const isAdmin = user.role === "ADMIN";
-  const receiptScope = isAdmin ? { organizationId: orgId } : { organizationId: orgId, userId: user.id };
+  // Sichtbarkeit: eigene Belege + Mitarbeiter (Admins sehen andere Admins nicht)
+  const receiptScope = buildReceiptScope(user);
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -52,7 +55,16 @@ export default async function DashboardPage() {
       where: { ...receiptScope, status: "ABGELEGT", kind: "AUSLAGE", reimbursementStatus: { in: ["OFFEN", "EINGEREICHT"] }, receiptDate: { lt: twoWeeksAgo } },
     }),
     isAdmin
-      ? db.bankTransaction.count({ where: { organizationId: orgId, amount: { lt: 0 }, matchedReceiptId: null, ignored: false, bookingDate: { lt: twoWeeksAgo } } })
+      ? db.bankTransaction.count({
+          where: {
+            organizationId: orgId,
+            bankAccount: accountVisibility(user),
+            amount: { lt: 0 },
+            matchedReceiptId: null,
+            ignored: false,
+            bookingDate: { lt: twoWeeksAgo },
+          },
+        })
       : Promise.resolve(0),
   ]);
 

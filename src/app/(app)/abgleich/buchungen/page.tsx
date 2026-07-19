@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { matchReceipts } from "@/lib/bank/match";
+import { accountVisibility } from "@/lib/bank/scope";
+import { receiptVisibility } from "@/lib/receipts";
 import { formatEuro, formatDate } from "@/lib/format";
 import { BookingRow } from "./booking-row";
 
@@ -16,13 +17,11 @@ const s = (v: string | string[] | undefined) => (typeof v === "string" ? v : "")
 // bestätigen und die Buchung freigeben (abhaken).
 export default async function BuchungenPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser();
-  const isAdmin = user.role === "ADMIN";
   const sp = await searchParams;
   const status = s(sp.status) || "offen";
 
-  const ownAccounts: Prisma.BankAccountWhereInput = isAdmin ? {} : { userId: user.id };
   const accounts = await db.bankAccount.findMany({
-    where: { organizationId: user.organizationId, active: true, ...ownAccounts },
+    where: { organizationId: user.organizationId, active: true, ...accountVisibility(user) },
     orderBy: { name: "asc" },
     select: { id: true, name: true, userId: true },
   });
@@ -52,6 +51,7 @@ export default async function BuchungenPage({ searchParams }: { searchParams: Pr
           organizationId: user.organizationId,
           status: "ABGELEGT",
           ...(account.userId ? { userId: account.userId } : {}),
+          AND: [receiptVisibility(user)],
         },
         select: {
           id: true,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { receiptVisibility } from "@/lib/receipts";
 import { buildMonthlyZip } from "@/lib/export/zip";
 
 // Steuerberater-Monats-ZIP (Admin): alle PDFs des Monats + Excel-Übersicht.
@@ -19,6 +20,8 @@ export async function GET(req: Request) {
     companyId,
     year,
     month: month - 1,
+    // Admin exportiert nur, was er sehen darf (keine Belege anderer Admins)
+    restrict: receiptVisibility(admin),
   });
   if (!result) return new NextResponse("Firma nicht gefunden.", { status: 404 });
 

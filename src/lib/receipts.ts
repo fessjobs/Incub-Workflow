@@ -7,7 +7,8 @@ import { buildPaths, mirrorToDisk, extForMime } from "@/lib/storage";
 import { slugForFile, monthFolder } from "@/lib/format";
 import type { VatLine } from "@/lib/claude";
 
-// Sieht dieser Nutzer alle Belege der Organisation? (Admin und Buchhaltung)
+// Sieht dieser Nutzer Belege anderer Nutzer? (Admin: eigene + Mitarbeiter;
+// Buchhaltung: alle)
 export function seesAllReceipts(user: Pick<User, "role">): boolean {
   return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
 }
@@ -18,14 +19,23 @@ export const ONLY_APPROVED_EMPLOYEE: Prisma.ReceiptWhereInput = {
   OR: [{ viaEmployeeLink: false }, { employeeReview: "FREIGEGEBEN" }],
 };
 
-// Query-Scope: immer nach organization_id; Mitglieder zusätzlich nach user_id
-// (Spec Abschnitt 3/10). Buchhaltung sieht alles – aber Mitarbeiter-Link-
-// Belege erst nach Freigabe durch den Admin.
+// Beleg-Sichtbarkeit je Rolle:
+// - Admin: eigene Belege, Belege der Mitarbeiter (Nicht-Admin-Accounts) und
+//   alle Mitarbeiter-Link-Belege – aber NICHT die Belege anderer Admins.
+// - Buchhaltung: alle (Mitarbeiter-Link-Belege erst nach Admin-Freigabe).
+// - Mitglied/Einreicher: nur eigene.
+export function receiptVisibility(user: Pick<User, "id" | "role">): Prisma.ReceiptWhereInput {
+  if (user.role === "ADMIN") {
+    return { OR: [{ userId: user.id }, { viaEmployeeLink: true }, { user: { role: { not: "ADMIN" } } }] };
+  }
+  if (user.role === "BUCHHALTUNG") return ONLY_APPROVED_EMPLOYEE;
+  return { userId: user.id };
+}
+
+// Query-Scope: immer nach organization_id plus Rollen-Sichtbarkeit (als AND,
+// damit Suchfilter mit eigenem OR nicht kollidieren).
 export function receiptScope(user: Pick<User, "organizationId" | "id" | "role">): Prisma.ReceiptWhereInput {
-  const base: Prisma.ReceiptWhereInput = { organizationId: user.organizationId };
-  if (!seesAllReceipts(user)) base.userId = user.id;
-  if (user.role === "BUCHHALTUNG") base.AND = [ONLY_APPROVED_EMPLOYEE];
-  return base;
+  return { organizationId: user.organizationId, AND: [receiptVisibility(user)] };
 }
 
 // Darf der Nutzer für diese Firma einreichen? (optionale Einschränkung)

@@ -17,16 +17,19 @@ const ROLES: Role[] = [
   {
     badge: "A",
     name: "Admin / Gesellschafter",
-    short: "Sieht und verwaltet alles – und lädt von überall schnell Belege hoch.",
+    short: "Verwaltet alles – sieht Belege von sich und den Mitarbeitern, nicht die anderer Admins.",
     can: [
-      "Alle Belege aller Nutzer sehen, bearbeiten, für andere erfassen",
+      "Eigene Belege und die aller Mitarbeiter sehen und bearbeiten",
       "Schnell-Upload von überall: Beleg → Firma → Zahlungsart (z. B. eigene Amex) → bezahlt/offen",
       "Automatischer Zahlungs-Check: passt eine Kontobewegung zum Beleg?",
       "Accounts freischalten, Rollen und Passwörter verwalten",
       "Firmen, Kategorien, Firmenkarten und Organisation pflegen",
-      "Kontoauszug-Abgleich über alle Konten",
+      "Kontoauszug-Abgleich für eigene und Mitarbeiter-Konten",
+      "Firmenauswertung als Summen über die ganze Gruppe",
     ],
-    cannot: [],
+    cannot: [
+      "Keine Einsicht in Belege und Kontoauszüge anderer Admins (nur Summen in der Auswertung)",
+    ],
     steps: [
       "Beleg unterwegs: „Schnell-Upload“ im Menü → Foto → Firma antippen → Zahlungsart wählen → bezahlt oder noch zu zahlen → fertig.",
       "Neue Registrierung? Unter Einstellungen → Nutzer den Account freischalten und die Rolle wählen.",

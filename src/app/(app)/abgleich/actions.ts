@@ -9,12 +9,13 @@ import { logAudit } from "@/lib/audit";
 import { parseBankCsv } from "@/lib/bank/csv";
 import { extractStatementPdf } from "@/lib/bank/pdf-extract";
 import { normalizeText } from "@/lib/bank/match";
+import { accountVisibility } from "@/lib/bank/scope";
+import { receiptVisibility } from "@/lib/receipts";
 
-// Konten-Scope: Mitglieder sehen/verwalten nur eigene Konten, Admin alle.
+// Konten-Scope: Mitglieder sehen/verwalten nur eigene Konten; Admins eigene
+// und Mitarbeiter-Konten (nicht die anderer Admins).
 function accountScope(user: Pick<User, "organizationId" | "id" | "role">): Prisma.BankAccountWhereInput {
-  const base: Prisma.BankAccountWhereInput = { organizationId: user.organizationId };
-  if (user.role !== "ADMIN") base.userId = user.id;
-  return base;
+  return { organizationId: user.organizationId, AND: [accountVisibility(user)] };
 }
 
 // ─── Bankkonten (gehören dem Benutzer) ───────────────────────────────────────
@@ -179,7 +180,7 @@ export async function confirmMatch(transactionId: string, receiptId: string): Pr
   const txn = await findOwnTransaction(user, transactionId);
   if (!txn) return { ok: false };
   const receipt = await db.receipt.findFirst({
-    where: { id: receiptId, organizationId: user.organizationId },
+    where: { id: receiptId, organizationId: user.organizationId, AND: [receiptVisibility(user)] },
   });
   if (!receipt) return { ok: false };
   await db.bankTransaction.update({ where: { id: transactionId }, data: { matchedReceiptId: receiptId, ignored: false } });

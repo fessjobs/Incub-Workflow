@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { accountVisibility } from "@/lib/bank/scope";
 import { AccountManager } from "./account-manager";
 
 export const metadata: Metadata = { title: "Bankkonten" };
@@ -9,10 +9,9 @@ export const metadata: Metadata = { title: "Bankkonten" };
 export default async function KontenPage() {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
-  const ownAccounts: Prisma.BankAccountWhereInput = isAdmin ? {} : { userId: user.id };
 
   const accounts = await db.bankAccount.findMany({
-    where: { organizationId: user.organizationId, ...ownAccounts },
+    where: { organizationId: user.organizationId, ...accountVisibility(user) },
     orderBy: [{ active: "desc" }, { name: "asc" }],
     include: { owner: { select: { name: true } }, _count: { select: { transactions: true } } },
   });
