@@ -193,7 +193,9 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
       companyId,
       paymentMethod: payment,
       corporateCardId: payment === "FIRMENKARTE" ? cardId || null : null,
-      paidStatus: paid,
+      // Auslage (privat/bar): Rechnung ist privat bezahlt, die Erstattung
+      // bleibt automatisch "Zahlung zu bekommen" (Erstattung offen)
+      paidStatus: payment === "FIRMENKARTE" ? paid : "BEZAHLT",
       ignoreDuplicate,
     });
     setBusy(false);
@@ -480,30 +482,39 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
           </div>
         )}
 
-        <div>
-          <p className="label">Zahlungsstatus</p>
-          <div className="flex gap-2">
-            {(
-              [
-                { v: "BEZAHLT", l: "Schon bezahlt" },
-                { v: "ZU_ZAHLEN", l: "Noch zu zahlen" },
-              ] as const
-            ).map((o) => (
-              <button
-                key={o.v}
-                type="button"
-                onClick={() => setPaid(o.v)}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
-                  paid === o.v
-                    ? "border-navy-900 bg-navy-900 text-white dark:border-white dark:bg-white dark:text-navy-900"
-                    : "border-navy-200 hover:border-navy-400 dark:border-navy-700"
-                }`}
-              >
-                {o.l}
-              </button>
-            ))}
+        {payment === "FIRMENKARTE" ? (
+          <div>
+            <p className="label">Zahlungsstatus</p>
+            <div className="flex gap-2">
+              {(
+                [
+                  { v: "BEZAHLT", l: "Schon bezahlt" },
+                  { v: "ZU_ZAHLEN", l: "Noch zu zahlen" },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setPaid(o.v)}
+                  className={`flex-1 rounded-lg border px-3 py-2 text-sm transition ${
+                    paid === o.v
+                      ? "border-navy-900 bg-navy-900 text-white dark:border-white dark:bg-white dark:text-navy-900"
+                      : "border-navy-200 hover:border-navy-400 dark:border-navy-700"
+                  }`}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          // Privat gezahlt = Auslage: automatisch "Zahlung zu bekommen", bis die
+          // Erstattung eingeht – änderbar jederzeit über Details.
+          <p className="rounded-lg bg-navy-50 px-3 py-2 text-xs text-navy-500 dark:bg-navy-800 dark:text-navy-300">
+            Wird als <b>Auslage</b> erfasst – Status automatisch{" "}
+            <b>„Zahlung zu bekommen“</b>, bis die Erstattung auf dem Konto eingeht.
+          </p>
+        )}
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}

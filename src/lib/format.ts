@@ -78,7 +78,7 @@ export const STATUS_LABELS: Record<string, string> = {
 };
 
 export const REIMBURSEMENT_LABELS: Record<string, string> = {
-  OFFEN: "Offen",
+  OFFEN: "Zahlung zu bekommen",
   EINGEREICHT: "Eingereicht",
   ERSTATTET: "Erstattet",
 };

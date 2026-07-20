@@ -5,12 +5,10 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { receiptScope, seesAllReceipts } from "@/lib/receipts";
 import { findPaymentHints } from "@/lib/payment-hint";
-import { formatEuro, formatDate } from "@/lib/format";
+import { formatEuro } from "@/lib/format";
 import { DraftQueue } from "./draft-queue";
 import { ReceiptFilters } from "./receipt-filters";
-import { StatusBadge } from "./status-badge";
-import { EmployeeReview } from "./employee-review";
-import { DatevToggle } from "./datev-toggle";
+import { ReceiptTable } from "./receipt-table";
 
 export const metadata: Metadata = { title: "Belege" };
 
@@ -105,13 +103,26 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
     }
   }
 
+  // Sortierung über klickbare Spaltenköpfe (?sort=…&dir=asc|desc)
+  const dir: Prisma.SortOrder = s(sp.dir) === "asc" ? "asc" : "desc";
+  const sortMap: Record<string, Prisma.ReceiptOrderByWithRelationInput[]> = {
+    nr: [{ receiptNumber: dir }],
+    datum: [{ receiptDate: dir }, { createdAt: dir }],
+    aussteller: [{ vendor: dir }],
+    firma: [{ company: { brandName: dir } }],
+    kategorie: [{ category: { name: dir } }],
+    betrag: [{ grossAmount: dir }],
+  };
+  const orderBy =
+    sortMap[s(sp.sort)] ??
+    // Mitarbeiter-Ordner: nach Name sortiert, sonst neueste zuerst
+    (s(sp.ma) === "1"
+      ? [{ submittedByName: "asc" as const }, { receiptDate: "desc" as const }]
+      : [{ receiptDate: "desc" as const }, { createdAt: "desc" as const }]);
+
   const filed = await db.receipt.findMany({
     where,
-    // Mitarbeiter-Ordner: nach Name sortiert, sonst neueste zuerst
-    orderBy:
-      s(sp.ma) === "1"
-        ? [{ submittedByName: "asc" }, { receiptDate: "desc" }]
-        : [{ receiptDate: "desc" }, { createdAt: "desc" }],
+    orderBy,
     include: { company: true, category: true, user: true, corporateCard: true },
     take: 200,
   });
@@ -230,82 +241,28 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
             Keine Belege gefunden. Passe die Filter an oder erfasse neue Belege.
           </div>
         ) : (
-          <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-navy-100 text-left text-xs text-navy-400 dark:border-navy-800">
-                    <th className="px-4 py-3 font-medium">Belegnr.</th>
-                    <th className="px-4 py-3 font-medium">Datum</th>
-                    <th className="px-4 py-3 font-medium">Aussteller</th>
-                    <th className="px-4 py-3 font-medium">Firma</th>
-                    <th className="px-4 py-3 font-medium">Kategorie</th>
-                    {seesAll && <th className="px-4 py-3 font-medium">Einreicher</th>}
-                    <th className="px-4 py-3 text-right font-medium">Brutto</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    {seesAll && <th className="px-4 py-3 font-medium">DATEV</th>}
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filed.map((r) => (
-                    <tr key={r.id} className="border-b border-navy-50 last:border-0 hover:bg-navy-50/50 dark:border-navy-800/60 dark:hover:bg-navy-800/40">
-                      <td className="px-4 py-3 font-mono text-xs">{r.receiptNumber}</td>
-                      <td className="px-4 py-3">{formatDate(r.receiptDate)}</td>
-                      <td className="px-4 py-3">
-                        <Link href={`/belege/${r.id}`} className="font-medium hover:underline">
-                          {r.vendor || "–"}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">{r.company?.brandName ?? "–"}</td>
-                      <td className="px-4 py-3 text-navy-500 dark:text-navy-300">{r.category?.name ?? "–"}</td>
-                      {seesAll && (
-                        <td className="px-4 py-3 text-navy-500 dark:text-navy-300">
-                          {r.submittedByName || r.user.name}
-                          {r.corporateCard && (
-                            <span className="ml-1 text-xs text-navy-400">· {r.corporateCard.label}</span>
-                          )}
-                        </td>
-                      )}
-                      <td className="px-4 py-3 text-right tabular-nums">{formatEuro(Number(r.grossAmount))}</td>
-                      <td className="px-4 py-3">
-                        <div className="space-y-1.5">
-                          <StatusBadge kind={r.kind} approved={r.approved} reimbursement={r.reimbursementStatus} />
-                          {r.viaEmployeeLink && (
-                            <EmployeeReview
-                              receiptId={r.id}
-                              status={r.employeeReview}
-                              comment={r.employeeReviewComment}
-                              isAdmin={isAdmin}
-                              compact
-                            />
-                          )}
-                        </div>
-                      </td>
-                      {seesAll && (
-                        <td className="px-4 py-3">
-                          <DatevToggle
-                            receiptId={r.id}
-                            uploadedAt={r.datevUploadedAt ? r.datevUploadedAt.toISOString() : null}
-                          />
-                        </td>
-                      )}
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <a href={`/belege/${r.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs text-navy-500 underline-offset-2 hover:underline" title="PDF öffnen">
-                            PDF
-                          </a>
-                          <Link href={`/belege/${r.id}`} className="text-xs text-navy-500 underline-offset-2 hover:underline">
-                            Details
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <ReceiptTable
+            seesAll={seesAll}
+            isAdmin={isAdmin}
+            rows={filed.map((r) => ({
+              id: r.id,
+              receiptNumber: r.receiptNumber,
+              receiptDate: r.receiptDate.toISOString(),
+              vendor: r.vendor,
+              companyName: r.company?.brandName ?? null,
+              categoryName: r.category?.name ?? null,
+              submitter: r.submittedByName || r.user.name,
+              cardLabel: r.corporateCard?.label ?? null,
+              gross: Number(r.grossAmount),
+              kind: r.kind,
+              approved: r.approved,
+              reimbursementStatus: r.reimbursementStatus,
+              viaEmployeeLink: r.viaEmployeeLink,
+              employeeReview: r.employeeReview,
+              employeeReviewComment: r.employeeReviewComment,
+              datevUploadedAt: r.datevUploadedAt ? r.datevUploadedAt.toISOString() : null,
+            }))}
+          />
         )}
       </section>
     </div>
