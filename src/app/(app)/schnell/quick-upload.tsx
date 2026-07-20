@@ -76,6 +76,14 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
     if (f.type.startsWith("image/")) setPreview(URL.createObjectURL(f));
 
     const isPdf = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
+    // Größen-Check vor dem Senden: zu große Dateien lehnt der Server sonst
+    // kommentarlos ab (Body-Limit)
+    if (f.size > 20 * 1024 * 1024) {
+      setError(`Datei zu groß (${(f.size / 1024 / 1024).toFixed(1)} MB, max. 20 MB) – bitte verkleinern/komprimieren.`);
+      setPreview(null);
+      setBusy(false);
+      return;
+    }
     try {
       if (isPdf) {
         // Sammel-PDF: wird serverseitig in Einzelbelege aufgeteilt
@@ -107,9 +115,10 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
           setPreview(null);
         }
       }
-    } catch {
-      // Meist ein veralteter Tab nach einem App-Update – Neuladen behebt es
-      setError("Verbindung unterbrochen – Seite neu laden und erneut versuchen.");
+    } catch (err) {
+      // Server-Aufruf geplatzt – echten Grund mit anzeigen
+      const reason = err instanceof Error && err.message ? ` (${err.message.slice(0, 120)})` : "";
+      setError(`Nicht durchgekommen${reason} – Seite neu laden und erneut versuchen.`);
       setPreview(null);
     }
     setBusy(false);

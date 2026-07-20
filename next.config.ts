@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@react-pdf/renderer"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "20mb",
+      // Etwas Puffer über dem 20-MB-Dateilimit (Multipart-Overhead), damit
+      // knapp darunter liegende Dateien nicht am Body-Limit scheitern
+      bodySizeLimit: "25mb",
     },
   },
 };

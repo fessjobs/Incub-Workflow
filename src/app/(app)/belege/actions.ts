@@ -148,19 +148,26 @@ function resolveMime(file: File): string | null {
 // Ein Beleg-Foto/PDF hochladen: sofort als Entwurf anlegen, Original speichern,
 // automatisch auslesen. Für Batch-Upload ruft der Client dies je Datei auf.
 export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
-  const user = await requireUser();
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { ok: false, error: "Keine Datei erhalten." };
-  if (file.size === 0) return { ok: false, error: "Datei ist leer." };
-  if (file.size > MAX_BYTES) return { ok: false, error: "Datei zu groß (max. 20 MB)." };
+  try {
+    const user = await requireUser();
+    const file = formData.get("file");
+    if (!(file instanceof File)) return { ok: false, error: "Keine Datei erhalten." };
+    if (file.size === 0) return { ok: false, error: "Datei ist leer." };
+    if (file.size > MAX_BYTES) return { ok: false, error: "Datei zu groß (max. 20 MB)." };
 
-  const mime = resolveMime(file);
-  if (!mime) return { ok: false, error: "Dateityp nicht unterstützt (JPG, PNG, WebP, PDF)." };
+    const mime = resolveMime(file);
+    if (!mime) return { ok: false, error: "Dateityp nicht unterstützt (JPG, PNG, WebP, PDF)." };
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const result = await createDraftFromBytes(user, bytes, mime);
-  revalidatePath("/belege");
-  return { ok: true, ...result };
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const result = await createDraftFromBytes(user, bytes, mime);
+    revalidatePath("/belege");
+    return { ok: true, ...result };
+  } catch (err) {
+    // Immer eine lesbare Meldung zurückgeben statt eines anonymen Serverfehlers
+    console.error("uploadReceipt fehlgeschlagen:", err);
+    const msg = err instanceof Error ? err.message.slice(0, 160) : "Unbekannter Fehler";
+    return { ok: false, error: `Serverfehler beim Upload: ${msg}` };
+  }
 }
 
 // ─── Sammel-PDF: viele Belege in einer Datei → in Einzelbelege aufteilen ─────
@@ -177,6 +184,7 @@ export type PdfBatchResult =
   | { ok: false; error: string };
 
 export async function uploadReceiptPdfBatch(formData: FormData): Promise<PdfBatchResult> {
+  try {
   const user = await requireUser();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Keine Datei erhalten." };
@@ -221,6 +229,11 @@ export async function uploadReceiptPdfBatch(formData: FormData): Promise<PdfBatc
 
   revalidatePath("/belege");
   return { ok: true, pages: pageCount, receipts };
+  } catch (err) {
+    console.error("uploadReceiptPdfBatch fehlgeschlagen:", err);
+    const msg = err instanceof Error ? err.message.slice(0, 160) : "Unbekannter Fehler";
+    return { ok: false, error: `Serverfehler beim Upload: ${msg}` };
+  }
 }
 
 // Erneut auslesen (z. B. nachdem der API-Schlüssel gesetzt wurde)

@@ -85,6 +85,19 @@ export function Uploader({ autoRead }: { autoRead: boolean }) {
         setItems((prev) => prev.map((it) => (it.key === key ? { ...it, status: "uploading" } : it)));
         try {
           const prepared = await prepareFile(list[i]);
+          // Größen-Check vor dem Senden: zu große Dateien lehnt der Server
+          // sonst kommentarlos ab (Body-Limit) – hier mit klarer Ansage.
+          if (prepared.size > 20 * 1024 * 1024) {
+            const mb = (prepared.size / 1024 / 1024).toFixed(1);
+            setItems((prev) =>
+              prev.map((it) =>
+                it.key === key
+                  ? { ...it, status: "error", error: `Datei zu groß (${mb} MB, max. 20 MB) – bitte verkleinern/komprimieren` }
+                  : it
+              )
+            );
+            continue;
+          }
           const fd = new FormData();
           fd.append("file", prepared);
           const res = await uploadReceipt(fd);
@@ -97,13 +110,14 @@ export function Uploader({ autoRead }: { autoRead: boolean }) {
                 : it
             )
           );
-        } catch {
-          // Server-Aufruf geplatzt: meist wurde die App gerade aktualisiert
-          // (Deploy) und der offene Tab ist veraltet – Neuladen behebt es.
+        } catch (err) {
+          // Server-Aufruf geplatzt (Deploy-Neustart, Netzwerk, Limit) –
+          // echten Grund mit anzeigen, damit die Ursache erkennbar ist.
+          const reason = err instanceof Error && err.message ? ` (${err.message.slice(0, 120)})` : "";
           setItems((prev) =>
             prev.map((it) =>
               it.key === key
-                ? { ...it, status: "error", error: "Verbindung unterbrochen – Seite neu laden (⌘R) und erneut versuchen" }
+                ? { ...it, status: "error", error: `Nicht durchgekommen${reason} – Seite neu laden und erneut versuchen` }
                 : it
             )
           );
