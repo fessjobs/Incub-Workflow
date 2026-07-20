@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { matchReceipts } from "@/lib/bank/match";
+import { matchReceipts, matchCombinations } from "@/lib/bank/match";
 import { accountVisibility } from "@/lib/bank/scope";
 import { receiptVisibility } from "@/lib/receipts";
 import { formatEuro, formatDate } from "@/lib/format";
@@ -40,7 +40,11 @@ export default async function BuchungenPage({ searchParams }: { searchParams: Pr
         where: { organizationId: user.organizationId, bankAccountId: account.id },
         orderBy: { bookingDate: "desc" },
         take: 500,
-        include: { matchedReceipt: { select: { id: true, receiptNumber: true, vendor: true } } },
+        include: {
+          matchedReceipt: { select: { id: true, receiptNumber: true, vendor: true } },
+          // Sammel-Zuordnung: eine Abbuchung ↔ mehrere Belege
+          receiptLinks: { select: { receipt: { select: { id: true, receiptNumber: true, vendor: true } } } },
+        },
       })
     : [];
 
@@ -62,10 +66,11 @@ export default async function BuchungenPage({ searchParams }: { searchParams: Pr
           kind: true,
           reimbursementStatus: true,
           transactions: { select: { id: true } },
+          paymentLinks: { select: { id: true } },
         },
       })
     : [];
-  const freeReceipts = receipts.filter((r) => r.transactions.length === 0);
+  const freeReceipts = receipts.filter((r) => r.transactions.length === 0 && r.paymentLinks.length === 0);
   const pool = freeReceipts.map((r) => ({
     id: r.id,
     grossAmount: Number(r.grossAmount),
@@ -85,8 +90,10 @@ export default async function BuchungenPage({ searchParams }: { searchParams: Pr
   });
 
   const rows = filtered.map((t) => {
-    // Vorschlag: Ausgaben über das normale Matching, Eingänge gegen offene Auslagen
-    let suggestion: { receiptId: string; label: string } | null = null;
+    // Vorschlag: Ausgaben über das normale Matching, Eingänge gegen offene
+    // Auslagen. Findet sich kein Einzelbeleg, wird nach Kombinationen gesucht
+    // (Sammel-Abbuchung = Summe mehrerer Belege, z. B. Amazon).
+    let suggestion: { receiptIds: string[]; label: string } | null = null;
     if (!t.matchedReceiptId && !t.ignored) {
       const amount = Number(t.amount);
       if (amount < 0) {
@@ -94,7 +101,21 @@ export default async function BuchungenPage({ searchParams }: { searchParams: Pr
           { amount, bookingDate: t.bookingDate, counterparty: t.counterparty, purpose: t.purpose },
           pool
         );
-        if (cands[0]) suggestion = { receiptId: cands[0].receiptId, label: label(cands[0].receiptId) };
+        if (cands[0]) {
+          suggestion = { receiptIds: [cands[0].receiptId], label: label(cands[0].receiptId) };
+        } else {
+          const combo = matchCombinations({ amount, bookingDate: t.bookingDate }, pool, 1)[0];
+          if (combo) {
+            const parts = combo.receiptIds.map((id) => {
+              const r = freeReceipts.find((x) => x.id === id)!;
+              return `${r.receiptNumber ?? r.vendor ?? "Beleg"} ${formatEuro(Number(r.grossAmount))}`;
+            });
+            suggestion = {
+              receiptIds: combo.receiptIds,
+              label: `${combo.receiptIds.length} Belege${combo.sameVendor ? " (gleicher Lieferant)" : ""}: ${parts.join(" + ")} = ${formatEuro(Math.abs(amount))}`,
+            };
+          }
+        }
       } else if (amount > 0) {
         const open = freeReceipts.find(
           (r) =>
@@ -103,9 +124,21 @@ export default async function BuchungenPage({ searchParams }: { searchParams: Pr
             Math.abs(Number(r.grossAmount) - amount) < 0.005 &&
             r.receiptDate <= t.bookingDate
         );
-        if (open) suggestion = { receiptId: open.id, label: label(open.id) };
+        if (open) suggestion = { receiptIds: [open.id], label: label(open.id) };
       }
     }
+    // Zuordnung anzeigen: Sammel-Verknüpfung (mehrere Belege) vor Einzel-Match
+    const matched =
+      t.receiptLinks.length > 1
+        ? {
+            id: t.receiptLinks[0].receipt.id,
+            label: `${t.receiptLinks.length} Belege: ${t.receiptLinks
+              .map((l) => l.receipt.receiptNumber ?? l.receipt.vendor)
+              .join(", ")}`,
+          }
+        : t.matchedReceipt
+        ? { id: t.matchedReceipt.id, label: t.matchedReceipt.receiptNumber ?? t.matchedReceipt.vendor }
+        : null;
     return {
       id: t.id,
       date: formatDate(t.bookingDate),
@@ -116,9 +149,7 @@ export default async function BuchungenPage({ searchParams }: { searchParams: Pr
       companyId: t.companyId,
       ignored: t.ignored,
       reviewed: t.reviewed,
-      matched: t.matchedReceipt
-        ? { id: t.matchedReceipt.id, label: t.matchedReceipt.receiptNumber ?? t.matchedReceipt.vendor }
-        : null,
+      matched,
       suggestion,
     };
   });

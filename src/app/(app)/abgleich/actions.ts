@@ -212,8 +212,66 @@ export async function unmatch(transactionId: string): Promise<{ ok: boolean }> {
   const user = await requireUser();
   const txn = await findOwnTransaction(user, transactionId);
   if (!txn) return { ok: false };
+  // Auch Sammel-Verknüpfungen (mehrere Belege pro Buchung) lösen
+  await db.transactionReceiptLink.deleteMany({ where: { transactionId } });
   await db.bankTransaction.update({ where: { id: transactionId }, data: { matchedReceiptId: null } });
   revalidatePath("/abgleich");
+  return { ok: true };
+}
+
+// Sammel-Abbuchung mehreren Belegen zuordnen (z. B. Amazon: eine Abbuchung,
+// mehrere Einzelrechnungen). Verknüpft alle Belege über die Link-Tabelle und
+// setzt matchedReceiptId auf den ersten, damit die Buchung als zugeordnet gilt.
+export async function confirmMatchGroup(transactionId: string, receiptIds: string[]): Promise<{ ok: boolean }> {
+  const user = await requireUser();
+  const ids = [...new Set(receiptIds)].slice(0, 10);
+  if (ids.length === 0) return { ok: false };
+  if (ids.length === 1) return confirmMatch(transactionId, ids[0]);
+
+  const txn = await findOwnTransaction(user, transactionId);
+  if (!txn || txn.matchedReceiptId) return { ok: false };
+
+  const receipts = await db.receipt.findMany({
+    where: {
+      id: { in: ids },
+      organizationId: user.organizationId,
+      status: "ABGELEGT",
+      AND: [receiptVisibility(user)],
+    },
+  });
+  if (receipts.length !== ids.length) return { ok: false };
+
+  await db.$transaction([
+    db.transactionReceiptLink.createMany({
+      data: ids.map((receiptId) => ({ transactionId, receiptId })),
+      skipDuplicates: true,
+    }),
+    db.bankTransaction.update({
+      where: { id: transactionId },
+      data: { matchedReceiptId: ids[0], ignored: false },
+    }),
+  ]);
+
+  // Status aller Belege nachziehen (wie beim Einzel-Match)
+  if (Number(txn.amount) < 0) {
+    await db.receipt.updateMany({ where: { id: { in: ids } }, data: { paidStatus: "BEZAHLT" } });
+  } else {
+    await db.receipt.updateMany({
+      where: { id: { in: ids }, kind: "AUSLAGE" },
+      data: { reimbursementStatus: "ERSTATTET", reimbursedAt: txn.bookingDate },
+    });
+  }
+
+  await logAudit({
+    organizationId: user.organizationId,
+    userId: user.id,
+    action: "transaction.match_group",
+    entityType: "bank_transaction",
+    entityId: transactionId,
+    data: { receiptIds: ids },
+  });
+  revalidatePath("/abgleich");
+  revalidatePath("/belege");
   return { ok: true };
 }
 

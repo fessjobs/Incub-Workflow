@@ -308,6 +308,7 @@ model Receipt {
   corporateCard CorporateCard?   @relation(fields: [corporateCardId], references: [id])
   versions      ReceiptVersion[]
   transactions  BankTransaction[]
+  paymentLinks  TransactionReceiptLink[]
   files         ReceiptFile[]
 
   @@index([organizationId])
@@ -449,10 +450,29 @@ model BankTransaction {
   matchedReceipt Receipt?     @relation(fields: [matchedReceiptId], references: [id])
   matchRule      MatchRule?   @relation(fields: [matchRuleId], references: [id])
   company        Company?     @relation(fields: [companyId], references: [id])
+  receiptLinks   TransactionReceiptLink[]
 
   @@index([organizationId])
   @@index([bankAccountId, bookingDate])
   @@map("bank_transactions")
+}
+
+// Sammel-Abbuchung ↔ mehrere Einzelbelege (z. B. Amazon bündelt Rechnungen):
+// eine Kontobewegung kann über diese Tabelle mit mehreren Belegen verknüpft
+// sein. matchedReceiptId zeigt dabei zusätzlich auf den ersten Beleg, damit
+// die Buchung überall als "zugeordnet" gilt.
+model TransactionReceiptLink {
+  id            String   @id @default(cuid())
+  transactionId String
+  receiptId     String
+  createdAt     DateTime @default(now())
+
+  transaction BankTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  receipt     Receipt         @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, receiptId])
+  @@index([receiptId])
+  @@map("transaction_receipt_links")
 }
 
 // Merkregeln für wiederkehrende Buchungen (z. B. Miete, Gehälter → ignorieren)

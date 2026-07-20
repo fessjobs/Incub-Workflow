@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   setTransactionCompany,
   setTransactionReviewed,
-  confirmMatch,
+  confirmMatchGroup,
   unmatch,
   setIgnored,
 } from "../actions";
@@ -24,7 +24,7 @@ type Txn = {
   ignored: boolean;
   reviewed: boolean;
   matched: { id: string; label: string } | null;
-  suggestion: { receiptId: string; label: string } | null;
+  suggestion: { receiptIds: string[]; label: string } | null;
 };
 
 export function BookingRow({ txn, companies }: { txn: Txn; companies: Company[] }) {
@@ -91,9 +91,9 @@ export function BookingRow({ txn, companies }: { txn: Txn; companies: Company[] 
               type="button"
               disabled={busy}
               className="btn-primary !px-2.5 !py-1 text-xs"
-              onClick={() => run(() => confirmMatch(txn.id, txn.suggestion!.receiptId))}
+              onClick={() => run(() => confirmMatchGroup(txn.id, txn.suggestion!.receiptIds))}
             >
-              Zuordnen
+              {txn.suggestion.receiptIds.length > 1 ? `Alle ${txn.suggestion.receiptIds.length} zuordnen` : "Zuordnen"}
             </button>
           </div>
         ) : (

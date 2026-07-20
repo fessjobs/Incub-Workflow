@@ -691,9 +691,9 @@ export async function checkPaymentMatch(receiptId: string): Promise<{ matches: P
   const user = await requireUser();
   const receipt = await db.receipt.findFirst({
     where: { id: receiptId, ...receiptScope(user) },
-    include: { transactions: { select: { id: true } } },
+    include: { transactions: { select: { id: true } }, paymentLinks: { select: { id: true } } },
   });
-  if (!receipt || receipt.transactions.length > 0) return { matches: [] };
+  if (!receipt || receipt.transactions.length > 0 || receipt.paymentLinks.length > 0) return { matches: [] };
 
   const gross = Number(receipt.grossAmount);
   if (!gross) return { matches: [] };

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { confirmMatch, setIgnored, setTransactionCompany } from "./actions";
+import { confirmMatchGroup, setIgnored, setTransactionCompany } from "./actions";
 
-type Suggestion = { id: string; label: string };
+type Suggestion = { ids: string[]; label: string };
 type Company = { id: string; brandName: string };
 
 export function TransactionCard({
@@ -29,9 +29,9 @@ export function TransactionCard({
   const [remember, setRemember] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(txn.companyId);
 
-  async function match(receiptId: string) {
+  async function match(receiptIds: string[]) {
     setBusy(true);
-    await confirmMatch(txn.id, receiptId);
+    await confirmMatchGroup(txn.id, receiptIds);
     router.refresh();
   }
   async function ignore() {
@@ -102,10 +102,10 @@ export function TransactionCard({
         <div className="mt-3 space-y-1.5 border-t border-navy-100 pt-3 dark:border-navy-800">
           <p className="text-xs text-navy-400">Passende Belege:</p>
           {suggestions.map((s) => (
-            <div key={s.id} className="flex items-center justify-between gap-3">
-              <span className="min-w-0 truncate text-sm">{s.label}</span>
-              <button type="button" disabled={busy} className="btn-primary !px-3 !py-1.5" onClick={() => match(s.id)}>
-                Zuordnen
+            <div key={s.ids.join(",")} className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate text-sm" title={s.label}>{s.label}</span>
+              <button type="button" disabled={busy} className="btn-primary shrink-0 !px-3 !py-1.5" onClick={() => match(s.ids)}>
+                {s.ids.length > 1 ? `Alle ${s.ids.length} zuordnen` : "Zuordnen"}
               </button>
             </div>
           ))}

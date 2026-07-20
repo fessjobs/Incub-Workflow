@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { matchReceipts } from "@/lib/bank/match";
+import { matchReceipts, matchCombinations } from "@/lib/bank/match";
 import { accountVisibility } from "@/lib/bank/scope";
 import { receiptVisibility } from "@/lib/receipts";
 import { formatEuro, formatDate } from "@/lib/format";
@@ -52,9 +52,10 @@ export default async function AbgleichPage({ searchParams }: { searchParams: Pro
       company: { select: { brandName: true } },
       user: { select: { name: true } },
       transactions: { select: { id: true } },
+      paymentLinks: { select: { id: true } },
     },
   });
-  const unmatchedReceipts = allReceipts.filter((r) => r.transactions.length === 0);
+  const unmatchedReceipts = allReceipts.filter((r) => r.transactions.length === 0 && r.paymentLinks.length === 0);
 
   // (1) Zahlung ohne Beleg – Ausgaben ohne zugeordneten Beleg, nicht ignoriert
   const unpaidTxns = await db.bankTransaction.findMany({
@@ -145,10 +146,22 @@ export default async function AbgleichPage({ searchParams }: { searchParams: Pro
               const suggestions = cands.map((c) => {
                 const r = unmatchedReceipts.find((x) => x.id === c.receiptId)!;
                 return {
-                  id: r.id,
+                  ids: [r.id],
                   label: `${r.receiptNumber ?? ""} · ${r.vendor} · ${formatEuro(Number(r.grossAmount))} · ${formatDate(r.receiptDate)}`,
                 };
               });
+              // Sammel-Abbuchung: Kombination mehrerer Belege ergibt den Betrag
+              // (z. B. Amazon bündelt Einzelrechnungen in einer Abbuchung)
+              for (const combo of matchCombinations({ amount: Number(t.amount), bookingDate: t.bookingDate }, receiptPool, 2)) {
+                const parts = combo.receiptIds.map((id) => {
+                  const r = unmatchedReceipts.find((x) => x.id === id)!;
+                  return `${r.receiptNumber ?? r.vendor} ${formatEuro(Number(r.grossAmount))}`;
+                });
+                suggestions.push({
+                  ids: combo.receiptIds,
+                  label: `${combo.receiptIds.length} Belege${combo.sameVendor ? " (gleicher Lieferant)" : ""}: ${parts.join(" + ")} = ${formatEuro(Math.abs(Number(t.amount)))}`,
+                });
+              }
               return (
                 <TransactionCard
                   key={t.id}
