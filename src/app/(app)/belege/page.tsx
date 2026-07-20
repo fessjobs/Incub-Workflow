@@ -10,6 +10,7 @@ import { DraftQueue } from "./draft-queue";
 import { ReceiptFilters } from "./receipt-filters";
 import { StatusBadge } from "./status-badge";
 import { EmployeeReview } from "./employee-review";
+import { DatevToggle } from "./datev-toggle";
 
 export const metadata: Metadata = { title: "Belege" };
 
@@ -90,6 +91,9 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
   if (s(sp.card)) where.corporateCardId = s(sp.card);
   // "Auslagen Mitarbeiter"-Ordner: über den Mitarbeiter-Link eingereicht
   if (s(sp.ma) === "1") where.viaEmployeeLink = true;
+  // DATEV-Status: offen / hochgeladen
+  if (s(sp.datev) === "offen") where.datevUploadedAt = null;
+  if (s(sp.datev) === "hochgeladen") where.datevUploadedAt = { not: null };
   if (seesAll && s(sp.user)) where.userId = s(sp.user);
   if (s(sp.from) || s(sp.to)) {
     where.receiptDate = {};
@@ -239,6 +243,7 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                     {seesAll && <th className="px-4 py-3 font-medium">Einreicher</th>}
                     <th className="px-4 py-3 text-right font-medium">Brutto</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    {seesAll && <th className="px-4 py-3 font-medium">DATEV</th>}
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
@@ -277,6 +282,14 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                           )}
                         </div>
                       </td>
+                      {seesAll && (
+                        <td className="px-4 py-3">
+                          <DatevToggle
+                            receiptId={r.id}
+                            uploadedAt={r.datevUploadedAt ? r.datevUploadedAt.toISOString() : null}
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           <a href={`/belege/${r.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs text-navy-500 underline-offset-2 hover:underline" title="PDF öffnen">

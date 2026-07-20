@@ -285,6 +285,9 @@ model Receipt {
   reimbursementStatus ReimbursementStatus @default(OFFEN)
   reimbursedAt        DateTime?
 
+  // "In DATEV hochgeladen" – Haken der Buchhaltung/des Admins in der Belegliste
+  datevUploadedAt DateTime?
+
   // Dateiablage (Spec Abschnitt 7)
   originalPath String?
   pdfPath      String?

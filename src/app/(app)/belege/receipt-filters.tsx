@@ -33,7 +33,7 @@ export function ReceiptFilters({
   const setParam = useCallback((key: string, value: string) => setParams({ [key]: value }), [setParams]);
 
   const g = (k: string) => params.get(k) ?? "";
-  const hasFilters = ["q", "company", "category", "kind", "reimb", "user", "from", "to", "pay", "card", "ma"].some((k) => g(k));
+  const hasFilters = ["q", "company", "category", "kind", "reimb", "user", "from", "to", "pay", "card", "ma", "datev"].some((k) => g(k));
 
   return (
     <div className="card space-y-3 p-4">
@@ -91,6 +91,13 @@ export function ReceiptFilters({
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
+          </select>
+        )}
+        {isAdmin && (
+          <select className="input max-w-[11rem]" value={g("datev")} onChange={(e) => setParam("datev", e.target.value)}>
+            <option value="">DATEV: alle</option>
+            <option value="offen">Noch nicht hochgeladen</option>
+            <option value="hochgeladen">In DATEV hochgeladen</option>
           </select>
         )}
         {isAdmin && (

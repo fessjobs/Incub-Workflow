@@ -654,6 +654,30 @@ export async function quickFinalize(
   return { ok: true, receiptNumber: full?.receiptNumber ?? undefined, matches: check.matches };
 }
 
+// ─── "In DATEV hochgeladen" – Haken pro Beleg (Admin + Buchhaltung) ──────────
+
+export async function setDatevUploaded(receiptId: string, uploaded: boolean): Promise<{ ok: boolean }> {
+  const user = await requireUser();
+  if (user.role !== "ADMIN" && user.role !== "BUCHHALTUNG") return { ok: false };
+  const receipt = await db.receipt.findFirst({
+    where: { id: receiptId, ...receiptScope(user), status: "ABGELEGT" },
+  });
+  if (!receipt) return { ok: false };
+  await db.receipt.update({
+    where: { id: receiptId },
+    data: { datevUploadedAt: uploaded ? new Date() : null },
+  });
+  await logAudit({
+    organizationId: user.organizationId,
+    userId: user.id,
+    action: uploaded ? "receipt.datev_uploaded" : "receipt.datev_unmarked",
+    entityType: "receipt",
+    entityId: receiptId,
+  });
+  revalidatePath("/belege");
+  return { ok: true };
+}
+
 // ─── Zahlungs-Check: passt eine Kontobewegung zu diesem Beleg? ───────────────
 // Wird beim Schnell-Upload direkt und auf der Beleg-Detailseite jederzeit
 // (auch im Nachhinein) ausgeführt.
