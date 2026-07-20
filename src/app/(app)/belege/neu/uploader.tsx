@@ -97,10 +97,14 @@ export function Uploader({ autoRead }: { autoRead: boolean }) {
                 : it
             )
           );
-        } catch (err) {
+        } catch {
+          // Server-Aufruf geplatzt: meist wurde die App gerade aktualisiert
+          // (Deploy) und der offene Tab ist veraltet – Neuladen behebt es.
           setItems((prev) =>
             prev.map((it) =>
-              it.key === key ? { ...it, status: "error", error: "Upload fehlgeschlagen" } : it
+              it.key === key
+                ? { ...it, status: "error", error: "Verbindung unterbrochen – Seite neu laden (⌘R) und erneut versuchen" }
+                : it
             )
           );
         }

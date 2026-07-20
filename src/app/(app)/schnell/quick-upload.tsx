@@ -108,7 +108,8 @@ export function QuickUpload({ companies, cards }: { companies: Company[]; cards:
         }
       }
     } catch {
-      setError("Upload fehlgeschlagen.");
+      // Meist ein veralteter Tab nach einem App-Update – Neuladen behebt es
+      setError("Verbindung unterbrochen – Seite neu laden und erneut versuchen.");
       setPreview(null);
     }
     setBusy(false);
