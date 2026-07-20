@@ -34,6 +34,10 @@ export default async function SettingsLayout({ children }: { children: React.Rea
         <NavLink href="/einstellungen/organisation" compact>
           Organisation
         </NavLink>
+        <span className="text-navy-200 dark:text-navy-700">·</span>
+        <NavLink href="/einstellungen/speicher" compact>
+          Speicher
+        </NavLink>
       </nav>
       {children}
     </div>

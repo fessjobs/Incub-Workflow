@@ -20,6 +20,25 @@ import { accountVisibility } from "@/lib/bank/scope";
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
+// Datenbank-/Serverfehler in eine verständliche Meldung übersetzen.
+// Wichtigster Fall: volles Postgres-Volume (Railway) – Uploads scheitern dann
+// beim Speichern der Datei-Bytes.
+function readableUploadError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const pgMessage = raw.match(/message:\s*"([^"]+)"/)?.[1];
+  const pgCode = raw.match(/code:\s*"?([0-9A-Z]{5})"?/)?.[1];
+  if (
+    pgCode === "53100" ||
+    raw.includes("No space left") ||
+    pgMessage?.includes("could not extend") ||
+    pgMessage?.includes("disk full")
+  ) {
+    return "Datenbank-Speicher ist voll – in Railway das Postgres-Volume vergrößern (siehe Einstellungen → Speicher).";
+  }
+  const detail = pgMessage ? `${pgMessage}${pgCode ? ` (Code ${pgCode})` : ""}` : raw.slice(0, 300);
+  return `Serverfehler beim Upload: ${detail}`;
+}
+
 export type UploadResult =
   | { ok: true; id: string; vendor: string | null; extracted: boolean; learned: number; extractionError: string | null }
   | { ok: false; error: string };
@@ -165,8 +184,7 @@ export async function uploadReceipt(formData: FormData): Promise<UploadResult> {
   } catch (err) {
     // Immer eine lesbare Meldung zurückgeben statt eines anonymen Serverfehlers
     console.error("uploadReceipt fehlgeschlagen:", err);
-    const msg = err instanceof Error ? err.message.slice(0, 160) : "Unbekannter Fehler";
-    return { ok: false, error: `Serverfehler beim Upload: ${msg}` };
+    return { ok: false, error: readableUploadError(err) };
   }
 }
 
@@ -231,8 +249,7 @@ export async function uploadReceiptPdfBatch(formData: FormData): Promise<PdfBatc
   return { ok: true, pages: pageCount, receipts };
   } catch (err) {
     console.error("uploadReceiptPdfBatch fehlgeschlagen:", err);
-    const msg = err instanceof Error ? err.message.slice(0, 160) : "Unbekannter Fehler";
-    return { ok: false, error: `Serverfehler beim Upload: ${msg}` };
+    return { ok: false, error: readableUploadError(err) };
   }
 }
 
