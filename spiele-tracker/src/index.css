@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* Verhindert, dass iOS beim Fokussieren eines Inputs zoomt. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-surface text-slate-100 antialiased;
+    /* Der Live-Screen soll nicht versehentlich mitscrollen oder wippen. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Doppeltippen auf Buttons darf nicht zoomen – neben der Scheibe wird
+     schnell und ungenau getippt. */
+  button {
+    touch-action: manipulation;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface;
+  }
+}
+
+@layer components {
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
