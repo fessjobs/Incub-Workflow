@@ -1,8 +1,9 @@
 "use client";
 
-// Rohtext → Vorschau (editierbare Tabelle mit Namens-Zuordnung, Hinweisen,
-// Konflikten) → Speichern (+ Konkretisierungs-PDF).
-import { useMemo, useState, useTransition } from "react";
+// Rohtext und/oder Anhänge (Screenshot, Foto, PDF, Tabelle) → Vorschau
+// (editierbare Tabelle mit Namens-Zuordnung, Hinweisen, Konflikten) →
+// Speichern (+ Konkretisierungs-PDF).
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Conflict } from "@/lib/einsatz/conflicts";
 import { createAssignmentAction } from "../actions";
@@ -37,9 +38,14 @@ type ParseResponse = {
   schichten: PreviewShift[];
   hinweise: string[];
   konflikte: Conflict[];
+  anhaenge?: string[];
   parsedJson: unknown;
   error?: string;
 };
+
+const MAX_DATEIEN = 5;
+const MAX_BYTES = 5 * 1024 * 1024;
+const DATEI_TYPEN = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.tsv,.md,.eml,.xlsx,.xlsm";
 
 const SAMPLE = `Artist: Reezy
 Location: Porsche Arena Stuttgart
@@ -60,6 +66,8 @@ Ibrahim Bouriahi`;
 export function ParseWizard({ customers, employees }: { customers: Customer[]; employees: Employee[] }) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
+  const [dateien, setDateien] = useState<File[]>([]);
+  const dateiFeld = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<ParseResponse | null>(null);
@@ -79,11 +87,39 @@ export function ParseWizard({ customers, employees }: { customers: Customer[]; e
 
   const employeeOptions = useMemo(() => employees, [employees]);
 
+  // Dateien sammeln statt ersetzen; zu große und zu viele werden hier schon
+  // abgewiesen, damit niemand erst nach dem Upload eine Absage bekommt.
+  const nimmDateien = (neue: File[]) => {
+    setError(null);
+    const zuGross = neue.filter((d) => d.size > MAX_BYTES);
+    if (zuGross.length > 0) setError(`Zu groß (max. ${MAX_BYTES / 1024 / 1024} MB): ${zuGross.map((d) => d.name).join(", ")}`);
+    setDateien((alt) => {
+      const zusammen = [...alt, ...neue.filter((d) => d.size <= MAX_BYTES && !alt.some((a) => a.name === d.name && a.size === d.size))];
+      if (zusammen.length > MAX_DATEIEN) setError(`Höchstens ${MAX_DATEIEN} Dateien.`);
+      return zusammen.slice(0, MAX_DATEIEN);
+    });
+  };
+
+  // Screenshot aus der Zwischenablage: Strg+V irgendwo auf der Seite
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const bilder = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+      if (bilder.length === 0) return;
+      e.preventDefault();
+      nimmDateien(bilder.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `Screenshot-${Date.now()}-${i + 1}.png`, { type: f.type }))));
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
   const parse = async () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/assignments/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawText: raw }) });
+      const body = new FormData();
+      body.set("rawText", raw);
+      for (const d of dateien) body.append("dateien", d);
+      const res = await fetch("/api/assignments/parse", { method: "POST", body });
       const j = (await res.json()) as ParseResponse;
       if (!res.ok) {
         setError(j.error ?? `Fehler ${res.status}`);
@@ -157,15 +193,56 @@ export function ParseWizard({ customers, employees }: { customers: Customer[]; e
       <div className="card p-5">
         <div className="flex items-center justify-between gap-2">
           <label className="label" htmlFor="raw">
-            Rohtext (WhatsApp / Mail)
+            Rohtext (WhatsApp / Mail) – oder unten eine Datei anhängen
           </label>
           <button type="button" className="text-xs text-navy-400 hover:underline" onClick={() => setRaw(SAMPLE)}>
             Beispiel einfügen
           </button>
         </div>
         <textarea id="raw" className="input-accent min-h-[220px] font-mono text-[13px]" value={raw} onChange={(e) => setRaw(e.target.value)} placeholder={"Artist: …\nLocation: …\nKunde: …\nArbeitsbeginn 18.09.2026:\nCall 2 | 08:00 Uhr | 2x Hands\nName …"} data-testid="raw-input" />
+
+        <div className="mt-4 rounded-xl border border-dashed border-navy-200 p-4 dark:border-navy-700">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="label mb-0">Screenshot oder Datei (optional)</p>
+              <p className="mt-1 text-xs text-navy-400">
+                Screenshot aus der WhatsApp-Gruppe, Foto des Ablaufplans, PDF vom Kunden oder eine Excel-/CSV-Liste. Ein Screenshot lässt sich auch einfach mit Strg&nbsp;+&nbsp;V einfügen. Höchstens {MAX_DATEIEN} Dateien, je {MAX_BYTES / 1024 / 1024} MB.
+              </p>
+            </div>
+            <button type="button" className="btn-secondary" onClick={() => dateiFeld.current?.click()} data-testid="datei-waehlen">
+              Datei wählen
+            </button>
+          </div>
+          <input
+            ref={dateiFeld}
+            type="file"
+            multiple
+            accept={DATEI_TYPEN}
+            className="sr-only"
+            data-testid="anhang-input"
+            onChange={(e) => {
+              nimmDateien(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
+          {dateien.length > 0 ? (
+            <ul className="mt-3 space-y-1 text-sm" data-testid="anhang-liste">
+              {dateien.map((d) => (
+                <li key={`${d.name}-${d.size}`} className="flex items-center justify-between gap-2 rounded-lg bg-navy-50 px-3 py-1.5 dark:bg-navy-800">
+                  <span className="truncate">
+                    {d.name} <span className="text-xs text-navy-400">({Math.max(1, Math.round(d.size / 1024))} kB)</span>
+                  </span>
+                  <button type="button" className="text-xs text-navy-400 hover:underline" onClick={() => setDateien((l) => l.filter((x) => x !== d))}>
+                    Entfernen
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" className="btn-accent" onClick={parse} disabled={loading || raw.trim().length < 5} data-testid="parse-button">
+          <button type="button" className="btn-accent" onClick={parse} disabled={loading || (raw.trim().length < 5 && dateien.length === 0)} data-testid="parse-button">
             {loading ? "Wird ausgewertet …" : "Auswerten"}
           </button>
           {preview ? (

@@ -17,9 +17,10 @@ export default async function NeuerEinsatzPage() {
     <div className="space-y-6">
       <div>
         <p className="eyebrow">Neuer Einsatz</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Aus Rohtext anlegen</h1>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Aus Rohtext oder Screenshot anlegen</h1>
         <p className="mt-1 text-sm text-navy-400">
-          Text aus WhatsApp oder Mail einfügen. {isParserAvailable() ? `Die Auswertung läuft über die Claude API (${PARSER_MODEL}).` : "Ohne ANTHROPIC_API_KEY wird der Text regelbasiert gelesen."}{" "}
+          Text aus WhatsApp oder Mail einfügen und/oder Screenshot, Foto, PDF oder Tabelle anhängen.{" "}
+          {isParserAvailable() ? `Die Auswertung läuft über die Claude API (${PARSER_MODEL}).` : "Ohne ANTHROPIC_API_KEY wird nur Text regelbasiert gelesen; Bilder und PDFs brauchen die API."}{" "}
           Danach prüfen, Personen zuordnen, speichern.
         </p>
       </div>

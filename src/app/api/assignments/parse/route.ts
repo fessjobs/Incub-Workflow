@@ -1,11 +1,16 @@
-// POST /api/assignments/parse – Rohtext → strukturierter Einsatz (Claude,
-// sonst Heuristik) + Namens-Matching gegen den Mitarbeiterstamm +
-// Arbeitszeit-Konflikte gegen alle Einsätze. Nur für Dispo-Rollen.
+// POST /api/assignments/parse – Rohtext und/oder Anhänge (Screenshot, Foto,
+// PDF, Tabelle) → strukturierter Einsatz (Claude, sonst Heuristik) +
+// Namens-Matching gegen den Mitarbeiterstamm + Arbeitszeit-Konflikte gegen
+// alle Einsätze. Nur für Dispo-Rollen.
+//
+// Der Body kommt als JSON (nur Rohtext) oder als multipart/form-data
+// (Rohtext + Dateien).
 import { NextResponse } from "next/server";
 import { apiUser, canDispo } from "@/lib/einsatz/access";
+import { leseAnhaenge } from "@/lib/einsatz/anhaenge";
 import { checkConflicts, type PlannedSlot } from "@/lib/einsatz/conflicts";
 import { matchNames } from "@/lib/einsatz/matching";
-import { parseRawText, suggestEnd } from "@/lib/einsatz/parser";
+import { parseRawText, suggestEnd, type Anhang } from "@/lib/einsatz/parser";
 import { ParseRequestSchema } from "@/lib/einsatz/schemas";
 import { fromBerlin, isValidDateKey, isValidTime } from "@/lib/einsatz/tz";
 import { db } from "@/lib/db";
@@ -17,18 +22,44 @@ export async function POST(req: Request) {
   const { user, status } = await apiUser(canDispo);
   if (!user) return NextResponse.json({ error: status === 401 ? "Nicht angemeldet." : "Keine Berechtigung." }, { status });
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Ungültiger Request-Body." }, { status: 400 });
+  let rawText = "";
+  let anhaenge: Anhang[] = [];
+  let abgelehnt: Array<{ name: string; grund: string }> = [];
+
+  if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return NextResponse.json({ error: "Ungültiger Request-Body." }, { status: 400 });
+    }
+    const dateien = form.getAll("dateien").filter((d): d is File => d instanceof File);
+    const gelesen = await leseAnhaenge(dateien);
+    anhaenge = gelesen.anhaenge;
+    abgelehnt = gelesen.abgelehnt;
+    rawText = [String(form.get("rawText") ?? "").trim(), gelesen.zusatzText].filter(Boolean).join("\n\n");
+    if (!rawText && anhaenge.length === 0) {
+      const grund = abgelehnt.length > 0 ? abgelehnt.map((a) => `${a.name}: ${a.grund}`).join("; ") : "Bitte Rohtext einfügen oder eine Datei anhängen.";
+      return NextResponse.json({ error: grund }, { status: 400 });
+    }
+    if (rawText.length > 20000) rawText = rawText.slice(0, 20000);
+  } else {
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Ungültiger Request-Body." }, { status: 400 });
+    }
+    const parsedBody = ParseRequestSchema.safeParse(body);
+    if (!parsedBody.success) return NextResponse.json({ error: parsedBody.error.errors[0].message }, { status: 400 });
+    rawText = parsedBody.data.rawText;
   }
-  const parsedBody = ParseRequestSchema.safeParse(body);
-  if (!parsedBody.success) return NextResponse.json({ error: parsedBody.error.errors[0].message }, { status: 400 });
 
   try {
-    const outcome = await parseRawText(parsedBody.data.rawText);
+    const outcome = await parseRawText(rawText, anhaenge);
     const parsed = outcome.parsed;
+    // Nicht verwertbare Dateien gehören in die Hinweisliste, nicht ins Log
+    const anhangHinweise = abgelehnt.map((a) => `Anhang „${a.name}“ wurde übergangen: ${a.grund}.`);
 
     // Namens-Matching (eindeutig je Name)
     const names = [...new Set(parsed.schichten.flatMap((s) => s.personen.map((p) => p.name)))];
@@ -108,7 +139,8 @@ export async function POST(req: Request) {
       einsatzort: parsed.einsatzort,
       datum: parsed.datum,
       schichten,
-      hinweise: parsed.hinweise,
+      hinweise: [...anhangHinweise, ...parsed.hinweise],
+      anhaenge: anhaenge.map((a) => a.name),
       konflikte,
       parsedJson: parsed,
     });

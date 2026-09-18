@@ -1,4 +1,5 @@
-// Konkretisierungs-Parser: Rohtext (WhatsApp/Mail) → strukturierter Einsatz.
+// Konkretisierungs-Parser: Rohtext (WhatsApp/Mail) und/oder Anhänge
+// (Screenshot, Foto, PDF) → strukturierter Einsatz.
 // Primär über die Anthropic API mit striktem JSON-Schema (Structured Output).
 // Ohne API-Schlüssel oder bei API-Fehlern greift ein deterministischer
 // Heuristik-Parser, der das übliche Dispo-Format ("Bezeichnung | 08:00 Uhr |
@@ -70,6 +71,7 @@ const ApiOutputSchema = z4.object({
 export const DEFAULT_SHIFT_HOURS = 8;
 
 const SYSTEM_PROMPT = `Du strukturierst Einsatz-Rohtexte einer Personaldienstleistung (Arbeitnehmerüberlassung, Veranstaltungstechnik/Logistik/Catering) für die Disposition.
+Die Vorlage kommt als Text, als Screenshot/Foto oder als PDF. Liegen Bilder oder Dokumente bei, lies die Angaben daraus ab (auch aus Tabellen, Chatverläufen und handschriftlichen Notizen); ein zusätzlicher Rohtext ergänzt sie und hat bei Widersprüchen Vorrang.
 Der Text stammt aus WhatsApp oder Mail und enthält typischerweise: Artist/Veranstaltung, Location/Einsatzort, Kunde, ein Datum ("Arbeitsbeginn 18.09.2026") und mehrere Schichten. Eine Schichtzeile sieht meist so aus: "Load-Out | 21:30 Uhr | 4x Hands" (Bezeichnung | Startzeit | Anzahl x Tätigkeit). Darunter stehen die Namen der eingeteilten Personen, eine je Zeile.
 Regeln:
 - Gib ausschließlich das JSON nach Schema zurück, kein Markdown, keine Erklärung.
@@ -80,20 +82,48 @@ Regeln:
 - Personen exakt so übernehmen, wie sie im Text stehen (keine Namen ergänzen oder korrigieren). rolle "ansprechpartner" nur bei ausdrücklicher Kennzeichnung (AP, Ansprechpartner, Vorarbeiter), "spare" bei Ersatz/Spare/Springer, sonst "mitarbeiter".
 - hinweise: Auffälligkeiten im Text (unklare Zeiten, fehlende Angaben). Dubletten und Sollzahl-Abweichungen werden separat geprüft, nicht hier.`;
 
-export type ParserClient = (rawText: string) => Promise<ParsedAssignment>;
+// Anhang für die KI-Auswertung: Screenshot aus WhatsApp, abfotografierter
+// Ablaufplan oder ein PDF. Bilder und PDFs gehen als eigene Inhaltsblöcke an
+// die API, Textdateien werden schon vorher in den Rohtext übernommen.
+export type Anhang = { name: string; mediaType: string; dataBase64: string };
+
+export const BILD_TYPEN = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+export const DOKUMENT_TYPEN = ["application/pdf"] as const;
+
+export function istBild(mediaType: string): boolean {
+  return (BILD_TYPEN as readonly string[]).includes(mediaType);
+}
+export function istDokument(mediaType: string): boolean {
+  return (DOKUMENT_TYPEN as readonly string[]).includes(mediaType);
+}
+
+export type ParserClient = (rawText: string, anhaenge: Anhang[]) => Promise<ParsedAssignment>;
 
 export function isParserAvailable(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
-// Aufruf der Anthropic API mit striktem Ausgabeformat
-export async function parseWithClaude(rawText: string): Promise<ParsedAssignment> {
+// Aufruf der Anthropic API mit striktem Ausgabeformat. Anhänge (Screenshots,
+// Fotos, PDFs) stehen vor dem Text, damit das Modell sie als Hauptquelle liest.
+export async function parseWithClaude(rawText: string, anhaenge: Anhang[] = []): Promise<ParsedAssignment> {
   const client = new Anthropic();
+  const bloecke: Anthropic.ContentBlockParam[] = [];
+  for (const a of anhaenge) {
+    if (istBild(a.mediaType)) {
+      bloecke.push({ type: "image", source: { type: "base64", media_type: a.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: a.dataBase64 } });
+    } else if (istDokument(a.mediaType)) {
+      bloecke.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: a.dataBase64 } });
+    }
+  }
+  bloecke.push({
+    type: "text",
+    text: rawText ? `Rohtext:\n\n${rawText}` : "Kein Rohtext – nimm die Angaben aus den beigefügten Bildern bzw. Dokumenten.",
+  });
   const response = await client.messages.parse({
     model: PARSER_MODEL,
     max_tokens: 4000,
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: `Rohtext:\n\n${rawText}` }],
+    messages: [{ role: "user", content: bloecke }],
     output_config: { format: zodOutputFormat(ApiOutputSchema) },
   });
   if (response.stop_reason === "refusal") {
@@ -118,6 +148,9 @@ const DATE_RE = /(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})/;
 const TIME_RE = /(\d{1,2})[:.](\d{2})\s*(?:uhr|h)?/i;
 const RANGE_RE = /(\d{1,2})[:.](\d{2})\s*(?:uhr|h)?\s*(?:-|–|bis)\s*(\d{1,2})[:.](\d{2})/i;
 const COUNT_RE = /(\d+)\s*[x×]\s*([A-Za-zÄÖÜäöüß\-\/ ]+)/;
+// Trennlinien und Dateiüberschriften ("--- ablaufplan.txt ---"), wie sie beim
+// Zusammenführen mehrerer Vorlagen entstehen: keine Schicht, keine Person.
+const SEPARATOR_RE = /^[-–—_=*]{2,}\s*(.*?)\s*[-–—_=*]{2,}$|^[-–—_=*]{3,}$/;
 
 function toDateKey(m: RegExpMatchArray): string | null {
   const d = Number(m[1]);
@@ -206,6 +239,7 @@ export function parseHeuristic(rawText: string): ParsedAssignment {
 
   for (const line of lines) {
     if (!line) continue;
+    if (SEPARATOR_RE.test(line)) continue;
 
     let matchedKey = false;
     for (const [re, field] of KEY_MAP) {
@@ -315,25 +349,32 @@ export function suggestEnd(datum: string, start: string): { datum: string; ende:
 export type ParseOutcome = { parsed: ParsedAssignment; quelle: "claude" | "heuristik"; fehler: string | null };
 
 // Einstieg für die API-Route: Claude, sonst Heuristik; Client injizierbar (Tests)
-export async function parseRawText(rawText: string, client?: ParserClient): Promise<ParseOutcome> {
+export async function parseRawText(rawText: string, anhaenge: Anhang[] = [], client?: ParserClient): Promise<ParseOutcome> {
   const text = rawText.trim();
-  if (!text) throw new Error("Rohtext ist leer.");
+  if (!text && anhaenge.length === 0) throw new Error("Bitte Rohtext einfügen oder eine Datei anhängen.");
   const useClaude = client ?? (isParserAvailable() ? parseWithClaude : null);
   if (useClaude) {
     try {
-      const parsed = await useClaude(text);
+      const parsed = await useClaude(text, anhaenge);
       return { parsed: analyseParsed(parsed), quelle: "claude", fehler: null };
     } catch (err) {
       let message = "Unbekannter Fehler";
       if (err instanceof Anthropic.APIError) message = `API ${err.status}: ${String(err.message).slice(0, 200)}`;
       else if (err instanceof Error) message = err.message.slice(0, 200);
       console.error("Konkretisierungs-Parser (Claude) fehlgeschlagen:", message);
-      const parsed = analyseParsed(parseHeuristic(text));
-      parsed.hinweise.unshift(`KI-Auswertung fehlgeschlagen (${message}) – Ergebnis stammt aus der Heuristik.`);
-      return { parsed, quelle: "heuristik", fehler: message };
+      return heuristikErgebnis(text, anhaenge, `KI-Auswertung fehlgeschlagen (${message}) – Ergebnis stammt aus der Heuristik.`, message);
     }
   }
+  return heuristikErgebnis(text, anhaenge, "ANTHROPIC_API_KEY nicht gesetzt – Ergebnis stammt aus der Heuristik.", null);
+}
+
+// Die Heuristik liest nur Text. Hängen Bilder oder PDFs an, muss das im
+// Ergebnis stehen, sonst wirkt ein leerer Einsatz wie ein Lesefehler.
+function heuristikErgebnis(text: string, anhaenge: Anhang[], hinweis: string, fehler: string | null): ParseOutcome {
   const parsed = analyseParsed(parseHeuristic(text));
-  parsed.hinweise.unshift("ANTHROPIC_API_KEY nicht gesetzt – Ergebnis stammt aus der Heuristik.");
-  return { parsed, quelle: "heuristik", fehler: null };
+  parsed.hinweise.unshift(hinweis);
+  if (anhaenge.length > 0) {
+    parsed.hinweise.unshift(`${anhaenge.length} Anhang/Anhänge (${anhaenge.map((a) => a.name).join(", ")}) wurden nicht ausgewertet – dafür wird die Claude API benötigt.`);
+  }
+  return { parsed, quelle: "heuristik", fehler };
 }

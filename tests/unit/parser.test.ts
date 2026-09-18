@@ -23,6 +23,22 @@ describe("Heuristik-Parser", () => {
     expect(loadOut.personen.every((x) => x.rolle === "mitarbeiter")).toBe(true);
   });
 
+  it("überspringt Trennlinien und Dateiüberschriften", () => {
+    // So sieht der Rohtext aus, wenn mehrere angehängte Dateien zusammenkommen
+    const p = parseHeuristic(`--- ablaufplan.txt ---
+Artist: Reezy
+Aufbau | 07:00 Uhr | 1x Hands
+Tobias Krämer
+=====
+--- nachtrag.txt ---
+Abbau | 22:00 Uhr | 1x Hands
+Jana Weidner`);
+    expect(p.artist).toBe("Reezy");
+    expect(p.projekt).toBe("Reezy");
+    expect(p.schichten.map((s) => s.bezeichnung)).toEqual(["Aufbau", "Abbau"]);
+    expect(p.schichten.flatMap((s) => s.personen.map((x) => x.name))).toEqual(["Tobias Krämer", "Jana Weidner"]);
+  });
+
   it("liest Zeitspannen, Rollen und einzeilige Kopfzeilen", () => {
     const p = parseHeuristic(`Projekt: Messeaufbau
 Datum: 3.10.26

@@ -53,11 +53,31 @@ describe("Parser mit gemocktem Claude", () => {
     expect(parseMock).toHaveBeenCalledTimes(1);
     const args = parseMock.mock.calls[0][0];
     expect(args.output_config?.format?.type).toBe("json_schema");
-    expect(args.messages[0].content).toContain("Porsche Arena");
+    expect(JSON.stringify(args.messages[0].content)).toContain("Porsche Arena");
     expect(out.parsed.schichten).toHaveLength(3);
     expect(out.parsed.schichten[2].personen).toHaveLength(4);
     // Endzeiten fehlen → Hinweise
     expect(out.parsed.hinweise.filter((h) => h.includes("Endzeit fehlt"))).toHaveLength(3);
+  });
+
+  it("schickt Screenshots und PDFs als eigene Inhaltsblöcke vor dem Text", async () => {
+    parseMock.mockResolvedValue({ stop_reason: "end_turn", parsed_output: CLAUDE_RESULT, content: [] });
+    await parseRawText("Nachtrag: Load-Out fällt aus", [
+      { name: "s.png", mediaType: "image/png", dataBase64: "AAA" },
+      { name: "plan.pdf", mediaType: "application/pdf", dataBase64: "BBB" },
+    ]);
+    const bloecke = parseMock.mock.calls[0][0].messages[0].content as Array<Record<string, unknown>>;
+    expect(bloecke.map((b) => b.type)).toEqual(["image", "document", "text"]);
+    expect(bloecke[0].source).toMatchObject({ type: "base64", media_type: "image/png", data: "AAA" });
+    expect(bloecke[1].source).toMatchObject({ type: "base64", media_type: "application/pdf", data: "BBB" });
+    expect(String(bloecke[2].text)).toContain("Load-Out fällt aus");
+  });
+
+  it("weist das Modell auch ohne Rohtext an, aus den Anhängen zu lesen", async () => {
+    parseMock.mockResolvedValue({ stop_reason: "end_turn", parsed_output: CLAUDE_RESULT, content: [] });
+    await parseRawText("", [{ name: "s.png", mediaType: "image/png", dataBase64: "AAA" }]);
+    const bloecke = parseMock.mock.calls[0][0].messages[0].content as Array<Record<string, unknown>>;
+    expect(String(bloecke[1].text)).toMatch(/Kein Rohtext/);
   });
 
   it("fällt bei API-Fehler auf die Heuristik zurück und meldet das", async () => {
@@ -82,7 +102,7 @@ describe("Parser mit gemocktem Claude", () => {
 
   it("akzeptiert einen injizierten Client (ohne SDK)", async () => {
     delete process.env.ANTHROPIC_API_KEY;
-    const out = await parseRawText(SAMPLE, async () => CLAUDE_RESULT);
+    const out = await parseRawText(SAMPLE, [], async () => CLAUDE_RESULT);
     expect(out.quelle).toBe("claude");
     expect(out.parsed.kunde).toBe("Mannheimer Power GmbH");
   });
