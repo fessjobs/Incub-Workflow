@@ -29,8 +29,9 @@ export default defineConfig({
         url: `http://127.0.0.1:${port}/api/health`,
         reuseExistingServer: true,
         timeout: 120_000,
-        // Bewusst OHNE APP_BASE_URL: der Test prüft, dass die Links auch dann
-        // vollständig sind (Ableitung aus den Request-Headern).
-        env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: "" },
+        // Bewusst OHNE APP_BASE_URL, dafür mit der Variable, die Railway selbst
+        // setzt: der Test prüft, dass die Links auch ohne eigene Konfiguration
+        // vollständig und öffentlich erreichbar sind (127.0.0.1 gilt als intern).
+        env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: "", RAILWAY_PUBLIC_DOMAIN: "incub-workflow-production.up.railway.app" },
       },
 });

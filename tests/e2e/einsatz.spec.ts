@@ -76,11 +76,15 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     // Mitarbeiter-Link merken
     const open = page.locator('a[href*="/e/"]', { hasText: "Öffnen" }).first();
     tokenUrl = (await open.getAttribute("href"))!;
-    // Muss eine vollständige Adresse sein, sonst lässt sich der kopierte Link
-    // nicht auf dem Handy öffnen (auch ohne gesetzte APP_BASE_URL).
-    expect(tokenUrl).toMatch(/^https?:\/\/[^/]+\/e\/[0-9a-f-]{36}$/);
-    const whats = await page.getByTestId("crew-link").getAttribute("title");
-    expect(whats).toMatch(/^https?:\/\//);
+    // Muss eine vollständige, öffentlich erreichbare Adresse sein, sonst lässt
+    // sich der kopierte Link nicht auf dem Handy öffnen. Interne Adressen
+    // (railway.internal, localhost) dürfen dort nie landen.
+    expect(tokenUrl).toMatch(/^https:\/\/incub-workflow-production\.up\.railway\.app\/e\/[0-9a-f-]{36}$/);
+    const crew = await page.getByTestId("crew-link").getAttribute("title");
+    expect(crew).toMatch(/^https:\/\/incub-workflow-production\.up\.railway\.app\/e\/crew\//);
+    for (const link of [tokenUrl, crew!]) expect(link).not.toContain(".internal");
+    // Für den weiteren Testlauf lokal navigieren (die Domain ist simuliert)
+    tokenUrl = new URL(tokenUrl).pathname;
   });
 
   test("Mitarbeiter erfasst auf dem Handy und unterschreibt; Eintrag ist danach gesperrt", async ({ browser }) => {
@@ -100,7 +104,7 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     await page.getByTestId("submit").click();
     await expect(page.getByTestId("state-erfasst")).toBeVisible();
     // Zweiter Versuch über die API wird abgelehnt (einmalige Signatur)
-    const again = await page.request.post(`/api${new URL(tokenUrl).pathname}`, { data: { startDatum: DATE, start: "07:00", endeDatum: DATE, ende: "15:00", unterweisungBestaetigt: true, unterschrift: "x".repeat(200) } });
+    const again = await page.request.post(`/api${tokenUrl}`, { data: { startDatum: DATE, start: "07:00", endeDatum: DATE, ende: "15:00", unterweisungBestaetigt: true, unterschrift: "x".repeat(200) } });
     expect(again.status()).toBe(409);
     await context.close();
   });
@@ -109,8 +113,9 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     await login(page);
     await page.goto(assignmentUrl);
     const url = (await page.getByTestId("crew-link").getAttribute("title")) ?? "";
-    expect(url).toMatch(/\/e\/crew\/[0-9a-f-]{36}/);
-    await page.goto(url);
+    expect(url).toMatch(/^https:\/\/[^/]+\/e\/crew\/[0-9a-f-]{36}$/);
+    // Domain ist im Test simuliert, deshalb lokal über den Pfad öffnen
+    await page.goto(new URL(url).pathname);
     const signButtons = page.locator('[data-testid^="crew-sign-"]');
     await expect(signButtons).toHaveCount(1);
     await signButtons.first().click();

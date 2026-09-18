@@ -28,7 +28,7 @@ function CopyButton({ text, label, testId }: { text: string; label: string; test
   );
 }
 
-export function LinksPanel({ assignmentId, rows, crewUrl, baseConfigured }: { assignmentId: string; rows: LinkRow[]; crewUrl: string | null; baseConfigured: boolean }) {
+export function LinksPanel({ assignmentId, rows, crewUrl, baseConfigured, fehlkonfiguriert }: { assignmentId: string; rows: LinkRow[]; crewUrl: string | null; baseConfigured: boolean; fehlkonfiguriert?: string | null }) {
   const [open, setOpen] = useState<string | null>(null);
   void assignmentId;
   return (
@@ -37,8 +37,15 @@ export function LinksPanel({ assignmentId, rows, crewUrl, baseConfigured }: { as
         <p className="eyebrow">Mitarbeiter-Links</p>
         {crewUrl ? <CopyButton text={crewUrl} label="Crew-Link (Ansprechpartner) kopieren" testId="crew-link" /> : null}
       </div>
-      {!baseConfigured ? (
-        <p className="mt-2 text-xs text-amber-600">Hinweis: APP_BASE_URL ist nicht gesetzt. Die Links hier sind vollständig und funktionieren, im automatischen E-Mail-Versand fehlt aber die Adresse. Dafür in Railway APP_BASE_URL hinterlegen.</p>
+      {fehlkonfiguriert ? (
+        <p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          APP_BASE_URL steht auf „{fehlkonfiguriert}“. Das ist keine von außen erreichbare Adresse, Links darüber lassen sich auf dem Handy nicht öffnen.
+          Tragen Sie in Railway die öffentliche Domain ein (oder löschen Sie die Variable, dann wird sie automatisch ermittelt).
+        </p>
+      ) : !baseConfigured ? (
+        <p className="mt-2 text-xs text-amber-600">
+          Hinweis: APP_BASE_URL ist nicht gesetzt. Die Links hier werden aus dem Aufruf abgeleitet und funktionieren, im automatischen E-Mail-Versand fehlt aber die Adresse.
+        </p>
       ) : null}
       <div className="mt-3 divide-y divide-navy-100 text-sm dark:divide-navy-800">
         {rows.map((r) => (

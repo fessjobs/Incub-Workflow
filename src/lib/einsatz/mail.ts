@@ -3,22 +3,18 @@
 // Kopieren. Ohne SMTP-Konfiguration wird nichts gesendet, der Text steht
 // trotzdem in der Dispo-Ansicht bereit.
 import nodemailer from "nodemailer";
+import { envBase, normalizeBase } from "./base-url";
 import { berlinDateKey, berlinTime, formatKeyDE } from "./tz";
 
 export function isMailConfigured(): boolean {
   return Boolean(process.env.SMTP_URL);
 }
 
-// Basis-URL der App. Reihenfolge: ausdrücklich gesetzte Variable (gilt auch
-// für Mails, wo es keinen Request gibt) → aus dem laufenden Aufruf abgeleitete
-// Adresse (siehe baseUrlFromRequest) → leer, dann bleiben die Links relativ.
+// Basis-URL der App. Auflösung und Prüfung auf öffentliche Erreichbarkeit
+// liegen in base-url.ts (interne Adressen wie railway.internal taugen nicht
+// für Links, die aufs Handy gehen).
 export function appBaseUrl(fallback?: string | null): string {
-  // Leere oder nur aus Leerzeichen bestehende Werte gelten als NICHT gesetzt –
-  // sonst greift der Fallback nicht, wenn die Variable versehentlich leer
-  // angelegt wurde, und die Links blieben unvollständig.
-  const candidates = [process.env.APP_BASE_URL, process.env.NEXT_PUBLIC_APP_URL, fallback];
-  const raw = candidates.find((c) => typeof c === "string" && c.trim() !== "") ?? "";
-  return raw.trim().replace(/\/+$/, "");
+  return envBase() ?? normalizeBase(fallback) ?? "";
 }
 
 export function employeeLinkUrl(token: string, base?: string | null): string {
@@ -32,14 +28,15 @@ export function crewLinkUrl(token: string, base?: string | null): string {
 // Öffentliche Adresse aus den Proxy-Headern des laufenden Aufrufs (Railway
 // setzt x-forwarded-proto und x-forwarded-host). Nur in Server Components und
 // Route Handlern verfügbar, deshalb als Fallback an appBaseUrl übergeben.
+// Interne Hosts werden von normalizeBase verworfen.
 export async function baseUrlFromRequest(): Promise<string | null> {
   try {
     const { headers } = await import("next/headers");
     const h = await headers();
     const host = h.get("x-forwarded-host") ?? h.get("host");
     if (!host) return null;
-    const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
-    return `${proto}://${host}`;
+    const proto = h.get("x-forwarded-proto") ?? "https";
+    return normalizeBase(`${proto}://${host}`);
   } catch {
     return null;
   }

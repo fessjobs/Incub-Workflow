@@ -6,6 +6,7 @@ import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
 import { crewUrlFor, linkRows } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
+import { hasConfiguredBase, misconfiguredBase } from "@/lib/einsatz/base-url";
 import { berlinDateKey, berlinTime, dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
 import { formatDateTime } from "@/lib/format";
 import { StatusBadge } from "../status-badge";
@@ -161,7 +162,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         </div>
       ))}
 
-      {dispo ? <LinksPanel assignmentId={a.id} rows={links} crewUrl={crewUrl} baseConfigured={Boolean(process.env.APP_BASE_URL?.trim())} /> : null}
+      {dispo ? <LinksPanel assignmentId={a.id} rows={links} crewUrl={crewUrl} baseConfigured={hasConfiguredBase()} fehlkonfiguriert={misconfiguredBase()} /> : null}
 
       <div className="card p-5">
         <p className="eyebrow">Dokumente</p>
