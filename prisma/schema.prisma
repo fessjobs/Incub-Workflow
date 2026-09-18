@@ -74,6 +74,10 @@ enum UserRole {
   // Vereinfachtes Kiosk-Konto: nur Belege erfassen (eine Firma), kein Zugriff
   // auf Listen/Auswertungen/Einstellungen. Name wird pro Upload eingegeben.
   EINREICHER
+  // Disposition: ausschließlich das Einsatzmodul (Einsätze, Konkretisierungen,
+  // Stundennachweise, Auswertung, Dokumente, Kunden- und Personalstamm).
+  // Kein Zugriff auf Belege, Abgleich oder Einstellungen.
+  DISPONENT
 }
 
 model User {

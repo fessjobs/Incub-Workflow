@@ -1,5 +1,8 @@
 // Rollen für das Einsatzmodul (nutzt die bestehende Session/Auth):
-// - ADMIN und MEMBER = Dispo (Einsätze anlegen, Links, PDFs, Stammdaten)
+// - DISPONENT = ausschließlich dieses Modul: Einsätze, Konkretisierungen,
+//   Stundennachweise, Links, Auswertung, Dokumente, Kunden- und Personalstamm.
+//   Kein Zugriff auf Belege, Abgleich, Einstellungen.
+// - ADMIN und MEMBER = Dispo (wie oben, zusätzlich der Rest der App)
 // - BUCHHALTUNG = lesend + Prüfung/Freigabe + Exporte + Lohnarten
 // - EINREICHER = kein Zugriff (nur Beleg-Kiosk)
 // organizationId kommt IMMER aus der Session, nie aus dem Request.
@@ -10,15 +13,16 @@ import { getCurrentUser, requireUser } from "@/lib/auth";
 export type ModuleUser = Pick<User, "id" | "organizationId" | "role" | "name" | "email">;
 
 export function canViewModule(user: Pick<User, "role">): boolean {
-  return user.role === "ADMIN" || user.role === "MEMBER" || user.role === "BUCHHALTUNG";
+  return user.role === "ADMIN" || user.role === "MEMBER" || user.role === "BUCHHALTUNG" || user.role === "DISPONENT";
 }
 
 export function canDispo(user: Pick<User, "role">): boolean {
-  return user.role === "ADMIN" || user.role === "MEMBER";
+  return user.role === "ADMIN" || user.role === "MEMBER" || user.role === "DISPONENT";
 }
 
+// Prüfen und freigeben darf auch die Disposition – sie verantwortet die Zeiten.
 export function canReview(user: Pick<User, "role">): boolean {
-  return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
+  return user.role === "ADMIN" || user.role === "BUCHHALTUNG" || user.role === "DISPONENT";
 }
 
 export function canManageRules(user: Pick<User, "role">): boolean {
@@ -50,3 +54,7 @@ export async function apiUser(check: (u: Pick<User, "role">) => boolean = canVie
   if (!check(user)) return { user: null, status: 403 as const };
   return { user, status: 200 as const };
 }
+
+// Pfad-/Startseitenlogik liegt in roles.ts (ohne Abhängigkeiten, damit die
+// Middleware sie nutzen kann) und wird hier nur weitergereicht.
+export { homePathFor, disponentDarf, DISPONENT_PATHS } from "./roles";

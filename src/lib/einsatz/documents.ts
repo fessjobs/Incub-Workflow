@@ -24,10 +24,28 @@ export type StoreDocumentInput = {
   meta?: Prisma.InputJsonValue;
   createdById?: string | null;
   links?: Array<{ assignmentId?: string | null; employeeId?: string | null; customerId?: string | null; datum?: string | null }>;
+  // Ersetzt vorhandene Dokumente derselben Kategorie zu diesem Einsatz, statt
+  // eine weitere Fassung anzulegen. Pro Einsatz bleibt so genau ein aktueller
+  // Stundennachweis und eine aktuelle Konkretisierung übrig; die Historie
+  // steht über Hash und Zeitpunkt im Audit-Log.
+  replaceForAssignmentId?: string | null;
 };
 
-export async function storeDocument(input: StoreDocumentInput): Promise<{ id: string; sha256: string; filename: string }> {
+export async function storeDocument(input: StoreDocumentInput): Promise<{ id: string; sha256: string; filename: string; ersetzt: number }> {
   const sha256 = createHash("sha256").update(input.bytes).digest("hex");
+
+  // Vorgänger derselben Kategorie zu diesem Einsatz einsammeln (vor dem
+  // Anlegen, damit das neue Dokument nicht mitgelöscht wird).
+  const vorgaenger = input.replaceForAssignmentId
+    ? await db.document.findMany({
+        where: {
+          organizationId: input.organizationId,
+          category: input.category,
+          links: { some: { assignmentId: input.replaceForAssignmentId } },
+        },
+        select: { id: true, sha256: true, filename: true, createdAt: true },
+      })
+    : [];
   const doc = await db.document.create({
     data: {
       organizationId: input.organizationId,
@@ -50,15 +68,26 @@ export async function storeDocument(input: StoreDocumentInput): Promise<{ id: st
     },
     select: { id: true },
   });
+  if (vorgaenger.length > 0) {
+    await db.document.deleteMany({ where: { id: { in: vorgaenger.map((v) => v.id) } } });
+  }
+
   await logAudit({
     organizationId: input.organizationId,
     userId: input.createdById ?? undefined,
     action: `document.${input.category}.create`,
     entityType: "document",
     entityId: doc.id,
-    data: { filename: input.filename, sha256, size: input.bytes.length, links: input.links ?? [] },
+    data: {
+      filename: input.filename,
+      sha256,
+      size: input.bytes.length,
+      links: input.links ?? [],
+      // Nachvollziehbarkeit der ersetzten Fassungen
+      ersetzt: vorgaenger.map((v) => ({ id: v.id, sha256: v.sha256, filename: v.filename, erstelltAm: v.createdAt })),
+    },
   });
-  return { id: doc.id, sha256, filename: input.filename };
+  return { id: doc.id, sha256, filename: input.filename, ersetzt: vorgaenger.length };
 }
 
 export function safeFilename(input: string): string {

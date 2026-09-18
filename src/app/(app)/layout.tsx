@@ -13,7 +13,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Buchhaltung lesend + Freigabe/Export
   const seesEinsatz = user.role === "ADMIN" || user.role === "MEMBER" || user.role === "BUCHHALTUNG";
 
-  const nav = [
+  // Disposition: ausschließlich das Einsatzmodul
+  const nurEinsatzmodul = user.role === "DISPONENT";
+
+  const nav = nurEinsatzmodul
+    ? [
+        { href: "/einsaetze", label: "Einsätze", number: "01" },
+        { href: "/auswertung", label: "Stunden", number: "02" },
+        { href: "/dokumente", label: "Dokumente", number: "03" },
+      ]
+    : [
     { href: "/dashboard", label: "Dashboard", number: "01" },
     { href: "/belege", label: "Belege", number: "02" },
     { href: "/schnell", label: "Schnell-Upload", number: "03" },
@@ -54,7 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{user.name}</p>
               <p className="truncate text-xs text-navy-400">
-                {user.role === "ADMIN" ? "Admin" : user.role === "BUCHHALTUNG" ? "Buchhaltung" : "Mitglied"}
+                {user.role === "ADMIN" ? "Admin" : user.role === "BUCHHALTUNG" ? "Buchhaltung" : user.role === "DISPONENT" ? "Disposition" : "Mitglied"}
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -81,7 +90,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <MobileNav
         nav={nav}
         userName={user.name}
-        roleLabel={user.role === "ADMIN" ? "Admin" : user.role === "BUCHHALTUNG" ? "Buchhaltung" : "Mitglied"}
+        roleLabel={user.role === "ADMIN" ? "Admin" : user.role === "BUCHHALTUNG" ? "Buchhaltung" : user.role === "DISPONENT" ? "Disposition" : "Mitglied"}
         logout={logout}
       />
 

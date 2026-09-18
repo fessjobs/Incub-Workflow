@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { SESSION_COOKIE_NAME } from "@/lib/session";
+import { disponentDarf, homePathFor } from "@/lib/einsatz/roles";
 
 const PUBLIC_PATHS = ["/login", "/registrieren"];
 
@@ -56,9 +57,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Disponenten-Konten sehen ausschließlich das Einsatzmodul
+  if (authenticated && role === "DISPONENT" && !isPublic && !disponentDarf(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Für dieses Konto nicht freigegeben." }, { status: 403 });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/einsaetze";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (authenticated && isPublic) {
     const url = request.nextUrl.clone();
-    url.pathname = role === "EINREICHER" ? "/mitarbeiter" : "/dashboard";
+    url.pathname = homePathFor(role ?? "");
     url.search = "";
     return NextResponse.redirect(url);
   }

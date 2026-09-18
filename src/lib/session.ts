@@ -7,7 +7,7 @@ const SESSION_DAYS = 30;
 export type SessionPayload = {
   userId: string;
   organizationId: string;
-  role: "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER";
+  role: "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER" | "DISPONENT";
 };
 
 function secretKey() {
@@ -46,7 +46,7 @@ export async function readSession(): Promise<SessionPayload | null> {
     return {
       userId: payload.userId as string,
       organizationId: payload.organizationId as string,
-      role: payload.role as "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER",
+      role: payload.role as "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER" | "DISPONENT",
     };
   } catch {
     return null;

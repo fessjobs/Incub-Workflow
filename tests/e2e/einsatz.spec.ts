@@ -137,6 +137,15 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     expect(jobs.status()).toBe(200);
     await page.goto(assignmentUrl);
     await expect(page.locator('a[href^="/api/documents/"]', { hasText: /Stundennachweis/ }).first()).toBeVisible();
+
+    // Mehrfaches Erzeugen darf keine zweite Fassung anlegen: pro Einsatz genau
+    // ein Stundennachweis und eine Konkretisierung.
+    await page.getByTestId("stundennachweis-button").click();
+    await expect(page.getByTestId("pdf-link")).toBeVisible();
+    await page.reload();
+    const dateiLinks = (name: RegExp) => page.locator('a[href^="/api/documents/"]:not([href*="dl=1"])', { hasText: name });
+    await expect(dateiLinks(/Stundennachweis/)).toHaveCount(1);
+    await expect(dateiLinks(/Konkretisierung/)).toHaveCount(1);
     await page.goto(`/dokumente?category=stundennachweis&q=E2E_${RUN}`);
     await expect(page.locator('a[href^="/api/documents/"]').first()).toContainText(/Stundennachweis_E2E_/);
 

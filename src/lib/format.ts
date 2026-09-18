@@ -70,6 +70,7 @@ export const ROLE_LABELS: Record<string, string> = {
   BUCHHALTUNG: "Buchhaltung",
   MEMBER: "Mitglied",
   EINREICHER: "Mitarbeiter-Link",
+  DISPONENT: "Disposition",
 };
 
 export const STATUS_LABELS: Record<string, string> = {

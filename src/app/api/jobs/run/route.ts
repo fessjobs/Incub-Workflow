@@ -3,6 +3,7 @@
 // alternativ als angemeldeter Admin (Button in der Dispo).
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { canDispo } from "@/lib/einsatz/access";
 import { processJobsOnce } from "@/lib/einsatz/jobs/worker";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +13,9 @@ async function authorized(req: Request): Promise<boolean> {
   const secret = process.env.JOBS_SECRET;
   const header = req.headers.get("authorization") ?? "";
   if (secret && header === `Bearer ${secret}`) return true;
+  // Auch die Disposition stößt Jobs an (Knopf in der Einsatzliste)
   const user = await getCurrentUser();
-  return Boolean(user && user.role === "ADMIN");
+  return Boolean(user && canDispo(user));
 }
 
 export async function POST(req: Request) {

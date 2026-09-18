@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { homePathFor } from "@/lib/einsatz/roles";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -45,8 +46,9 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     organizationId: user.organizationId,
     role: user.role,
   });
-  // Kiosk-Konten landen direkt im vereinfachten Mitarbeiter-Bildschirm
-  redirect(user.role === "EINREICHER" ? "/mitarbeiter" : "/dashboard");
+  // Startseite je Rolle: Kiosk → Mitarbeiter-Bildschirm, Disposition →
+  // Einsatzmodul, sonst das Beleg-Dashboard.
+  redirect(homePathFor(user.role));
 }
 
 export async function logout() {

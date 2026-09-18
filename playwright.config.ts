@@ -17,7 +17,9 @@ export default defineConfig({
   retries: 0,
   reporter: [["list"]],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`,
+    // Durchgehend localhost: Session-Cookies sind hostgebunden, ein Mix aus
+    // 127.0.0.1 und localhost würde den Login zwischen Seitenaufrufen verlieren.
+    baseURL: process.env.E2E_BASE_URL ?? `http://localhost:${port}`,
     trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
     ...(chromium ? { launchOptions: { executablePath: chromium } } : {}),
@@ -25,8 +27,8 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: `PORT=${port} HOSTNAME=127.0.0.1 node .next/standalone/server.js`,
-        url: `http://127.0.0.1:${port}/api/health`,
+        command: `PORT=${port} HOSTNAME=0.0.0.0 node .next/standalone/server.js`,
+        url: `http://localhost:${port}/api/health`,
         reuseExistingServer: true,
         timeout: 120_000,
         // Bewusst OHNE APP_BASE_URL, dafür mit der Variable, die Railway selbst

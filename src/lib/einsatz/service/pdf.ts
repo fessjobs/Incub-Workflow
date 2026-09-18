@@ -66,6 +66,7 @@ export async function generateKonkretisierungPdf(orgId: string, assignmentId: st
     bytes,
     meta: { assignmentId: a.id, einsatznummer: a.einsatznummer, personen: zeilen.length },
     createdById: userId,
+    replaceForAssignmentId: a.id,
     links: [{ assignmentId: a.id, customerId: a.customerId, datum: dateOnlyKey(a.datumVon) }],
   });
   if (a.status === "ENTWURF") {
@@ -177,6 +178,7 @@ export async function generateStundennachweisPdf(orgId: string, assignmentId: st
     bytes,
     meta: { assignmentId: a.id, einsatznummer: a.einsatznummer, offen, summeStunden: round2(summe) },
     createdById: userId,
+    replaceForAssignmentId: a.id,
     links: [
       { assignmentId: a.id, customerId: a.customerId, datum: dateOnlyKey(a.datumVon) },
       ...[...employeeIds].map((employeeId) => ({ assignmentId: a.id, employeeId, customerId: a.customerId, datum: dateOnlyKey(a.datumVon) })),

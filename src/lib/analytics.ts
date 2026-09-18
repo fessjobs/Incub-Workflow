@@ -11,7 +11,7 @@ export function currentYear(): number {
   return new Date().getFullYear();
 }
 
-type ScopeInput = { organizationId: string; id: string; role: "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER" };
+type ScopeInput = { organizationId: string; id: string; role: "ADMIN" | "BUCHHALTUNG" | "MEMBER" | "EINREICHER" | "DISPONENT" };
 
 // Belegdaten-Scope: Org + (Member → nur eigene). Admin und Buchhaltung sehen
 // alles. Optional weitere Filter.
