@@ -2,6 +2,7 @@
 // Spec Abschnitt 4 und Standard-Kategorien nach Spec Abschnitt 5.
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { seedEinsatzModul } from "./seed-einsatz";
 
 const prisma = new PrismaClient();
 
@@ -114,6 +115,10 @@ async function main() {
       },
     });
   }
+
+  // Modul Einsätze & Stundennachweise (Kunden, Mitarbeiter, Lohnarten, Beispieleinsatz)
+  const admin = await prisma.user.findUnique({ where: { email: adminEmail }, select: { id: true } });
+  await seedEinsatzModul(prisma, org.id, admin?.id ?? null);
 
   console.log(`Seed abgeschlossen. Admin-Login: ${adminEmail}`);
 }
