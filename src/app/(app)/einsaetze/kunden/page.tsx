@@ -21,9 +21,14 @@ export default async function KundenPage({ searchParams }: { searchParams: Promi
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
       <div className="space-y-4">
-        <div>
-          <p className="eyebrow">Stammdaten</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Kunden (Entleiher)</h1>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">Stammdaten</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Kunden (Entleiher)</h1>
+          </div>
+          <a href="/einsaetze/kunden/import" className="btn-accent" data-testid="import-link">
+            Liste importieren
+          </a>
         </div>
         <div className="card divide-y divide-navy-100 dark:divide-navy-800">
           {customers.length === 0 ? <p className="p-5 text-sm text-navy-400">Noch keine Kunden.</p> : null}

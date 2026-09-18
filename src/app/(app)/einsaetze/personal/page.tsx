@@ -30,6 +30,11 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
             {employees.length} Personen{ohneNummer > 0 ? ` · ${ohneNummer} aktive ohne zvoove-Personalnummer (Export-Validierung schlägt an)` : ""}
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <a href="/einsaetze/personal/import" className="btn-accent" data-testid="import-link">
+            Liste importieren
+          </a>
+        </div>
         <form method="get" className="flex gap-2">
           <input name="q" defaultValue={q ?? ""} placeholder="Name oder Personalnummer" className="input" />
           <button type="submit" className="btn-secondary">

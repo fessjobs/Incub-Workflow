@@ -27,7 +27,13 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: `PORT=${port} HOSTNAME=0.0.0.0 node .next/standalone/server.js`,
+        // Der Standalone-Build enthält weder .next/static noch public – das
+        // Dockerfile kopiert beides hinein, hier muss es genauso passieren,
+        // sonst läuft die Oberfläche ohne Client-JavaScript.
+        command:
+          `rm -rf .next/standalone/.next/static .next/standalone/public && ` +
+          `cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public && ` +
+          `PORT=${port} HOSTNAME=0.0.0.0 node .next/standalone/server.js`,
         url: `http://localhost:${port}/api/health`,
         reuseExistingServer: true,
         timeout: 120_000,
