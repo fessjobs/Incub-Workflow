@@ -5,12 +5,14 @@ import { useState } from "react";
 import type { LinkRow } from "@/lib/einsatz/service/links";
 import { formatDateTime } from "@/lib/format";
 
-function CopyButton({ text, label }: { text: string; label: string }) {
+function CopyButton({ text, label, testId }: { text: string; label: string; testId?: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
       type="button"
       className="btn-secondary text-xs"
+      title={text}
+      data-testid={testId}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
@@ -33,7 +35,7 @@ export function LinksPanel({ assignmentId, rows, crewUrl, baseConfigured }: { as
     <div className="card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="eyebrow">Mitarbeiter-Links</p>
-        {crewUrl ? <CopyButton text={crewUrl} label="Crew-Link (Ansprechpartner) kopieren" /> : null}
+        {crewUrl ? <CopyButton text={crewUrl} label="Crew-Link (Ansprechpartner) kopieren" testId="crew-link" /> : null}
       </div>
       {!baseConfigured ? (
         <p className="mt-2 text-xs text-amber-600">APP_BASE_URL ist nicht gesetzt – Links werden relativ erzeugt. In Railway die öffentliche URL als APP_BASE_URL hinterlegen.</p>

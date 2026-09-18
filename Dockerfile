@@ -30,6 +30,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
+# Einsatzmodul: zvoove-Mapping (schreibbar für die automatische Ableitung) und Doku/Beispieldatei
+COPY --from=builder /app/config ./config
+COPY --from=builder /app/docs ./docs
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh && mkdir -p /data/incubWorkflow-Ablage && chown -R nextjs:nodejs /data /app
 

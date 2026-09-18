@@ -23,3 +23,7 @@ next-env.d.ts
 
 # Ablage (lokale Beleg-Dateien)
 /incubWorkflow-Ablage/
+
+# Playwright
+/test-results/
+/playwright-report/

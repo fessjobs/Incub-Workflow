@@ -33,7 +33,7 @@ export const pdf = StyleSheet.create({
   metaCell: { width: "33.33%", paddingVertical: 3, paddingRight: 8 },
   metaLabel: { fontSize: 6.5, color: MUTED, textTransform: "uppercase", letterSpacing: 1 },
   metaValue: { fontSize: 8.5, marginTop: 1 },
-  sectionTitle: { fontSize: 7, letterSpacing: 1.2, color: ORANGE, textTransform: "uppercase", marginTop: 14, marginBottom: 5, fontFamily: "Helvetica-Bold" },
+  sectionTitle: { fontSize: 7, letterSpacing: 1.2, color: ORANGE, textTransform: "uppercase", marginTop: 12, marginBottom: 5, fontFamily: "Helvetica-Bold" },
   table: { borderWidth: 1, borderColor: LINE, borderRadius: 4 },
   tr: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: LINE, minHeight: 18, alignItems: "center" },
   trLast: { borderBottomWidth: 0 },

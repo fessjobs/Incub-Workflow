@@ -34,6 +34,12 @@ services:
       STORAGE_PATH: /data/incubWorkflow-Ablage
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-4-8}
+      # Einsatzmodul
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      ANTHROPIC_PARSER_MODEL: ${ANTHROPIC_PARSER_MODEL:-claude-sonnet-4-6}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-fess.jobs Dispo <dispo@fess.jobs>}
+      JOBS_SECRET: ${JOBS_SECRET:-}
     volumes:
       # Beleg-Ablage auf dem Host, damit die PDFs direkt im Dateisystem liegen
       - ./incubWorkflow-Ablage:/data/incubWorkflow-Ablage

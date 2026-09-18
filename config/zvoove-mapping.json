@@ -1,0 +1,23 @@
+{
+  "trennzeichen": ";",
+  "zeichensatz": "windows-1252",
+  "datumsformat": "DD.MM.YYYY",
+  "dezimaltrennzeichen": ",",
+  "kopfzeile": true,
+  "zeilenende": "crlf",
+  "spalten": [
+    { "feld": "personalnummer", "kopf": "Personalnummer" },
+    { "feld": "datum", "kopf": "Datum" },
+    { "feld": "lohnart", "kopf": "Lohnart" },
+    { "feld": "stunden", "kopf": "Stunden" },
+    { "feld": "kunde", "kopf": "Kunde" },
+    { "feld": "einsatznummer", "kopf": "Auftrag" },
+    { "feld": "taetigkeit", "kopf": "Tätigkeit" },
+    { "feld": "betrag", "kopf": "Betrag" },
+    { "feld": "bemerkung", "kopf": "Bemerkung" }
+  ],
+  "pflichtfelder": ["personalnummer", "datum", "lohnart", "stunden", "kunde", "taetigkeit"],
+  "betragszeilen": true,
+  "quelle": "standard",
+  "sampleHash": null
+}

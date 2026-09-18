@@ -43,6 +43,22 @@ export type StundennachweisData = {
   hinweise: string[];
 };
 
+// Abschnitte so auf zwei Spalten verteilen, dass beide etwa gleich lang sind
+function splitBalanced<T extends { punkte: string[] }>(sections: T[]): [T[], T[]] {
+  const weight = (s: T) => s.punkte.reduce((n, p) => n + p.length, 0) + 60;
+  const total = sections.reduce((n, s) => n + weight(s), 0);
+  let acc = 0;
+  let cut = sections.length;
+  for (let i = 0; i < sections.length; i++) {
+    acc += weight(sections[i]);
+    if (acc >= total / 2) {
+      cut = i + 1;
+      break;
+    }
+  }
+  return [sections.slice(0, cut), sections.slice(cut)];
+}
+
 function SignatureCell({ row }: { row: StundennachweisRow }) {
   if (row.signature) {
     return (
@@ -137,18 +153,18 @@ function StundennachweisDocument({ data }: { data: StundennachweisData }) {
             rows={data.fahrten.map((f) => ({
               person: f.person,
               fahrzeugart: f.fahrzeugart,
-              strecken: f.strecken.map((s) => `${s.von} → ${s.nach} (${s.km} km)`).join("; "),
+              strecken: f.strecken.map((s) => `${s.von} – ${s.nach} (${s.km} km)`).join("; "),
               summe: f.summe,
             }))}
           />
         )}
 
-        <View style={{ flexDirection: "row", marginTop: 14, gap: 16 }} wrap={false}>
+        <View style={{ flexDirection: "row", marginTop: 10, gap: 16 }} wrap={false}>
           <View style={{ width: "58%" }}>
             <Text style={pdf.sectionTitle}>Bestätigung der Mitarbeiter</Text>
             {CONFIRMATION_TEXT.map((t, i) => (
               <Text key={i} style={pdf.small}>
-                ☑ {t}
+                [x] {t}
               </Text>
             ))}
             <Text style={[pdf.small, { marginTop: 4 }]}>
@@ -156,12 +172,12 @@ function StundennachweisDocument({ data }: { data: StundennachweisData }) {
               (Zeitstempel, Gerät und IP-Adresse sind protokolliert). Sicherheitsunterweisung Version {data.unterweisungVersion}.
             </Text>
           </View>
-          <View style={{ width: "42%", borderWidth: 1, borderColor: LINE, borderRadius: 6, padding: 8, backgroundColor: SOFT }}>
+          <View style={{ width: "42%", borderWidth: 1, borderColor: LINE, borderRadius: 6, padding: 6, backgroundColor: SOFT }}>
             <Text style={pdf.sectionTitle}>Bestätigung des Kunden (Entleiher)</Text>
             {data.kunde ? (
               <View>
                 <Text style={pdf.text}>{data.kunde.name}</Text>
-                {data.kunde.signature ? <Image style={[pdf.signImage, { height: 40, width: 160 }]} src={{ data: data.kunde.signature, format: "png" }} /> : null}
+                {data.kunde.signature ? <Image style={[pdf.signImage, { height: 30, width: 140 }]} src={{ data: data.kunde.signature, format: "png" }} /> : null}
                 <Text style={pdf.small}>Unterschrieben am {data.kunde.zeitpunkt}</Text>
               </View>
             ) : (
@@ -170,9 +186,7 @@ function StundennachweisDocument({ data }: { data: StundennachweisData }) {
                 <Text style={pdf.signLabel}>Name, Datum, Unterschrift des Kunden</Text>
               </View>
             )}
-            <Text style={[pdf.small, { marginTop: 4 }]}>
-              Der Entleiher bestätigt die Richtigkeit der aufgeführten Arbeitszeiten.
-            </Text>
+            <Text style={[pdf.small, { marginTop: 2 }]}>Der Entleiher bestätigt die Richtigkeit der aufgeführten Arbeitszeiten.</Text>
           </View>
         </View>
 
@@ -185,7 +199,7 @@ function StundennachweisDocument({ data }: { data: StundennachweisData }) {
         <Text style={pdf.title}>Sicherheitsunterweisung und PSA</Text>
         <Text style={pdf.subtitle}>Gilt für alle Einsätze der {VERLEIHER.name} · Bestätigung durch jeden Mitarbeiter vor Arbeitsbeginn</Text>
         <View style={{ flexDirection: "row", gap: 14, marginTop: 10 }}>
-          {[SAFETY_SECTIONS.slice(0, Math.ceil(SAFETY_SECTIONS.length / 2)), SAFETY_SECTIONS.slice(Math.ceil(SAFETY_SECTIONS.length / 2))].map((col, ci) => (
+          {splitBalanced(SAFETY_SECTIONS).map((col, ci) => (
             <View key={ci} style={{ width: "50%" }}>
               {col.map((s) => (
                 <View key={s.titel} style={{ marginBottom: 8 }} wrap={false}>

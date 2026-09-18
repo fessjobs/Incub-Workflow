@@ -32,6 +32,30 @@ Monatsverlauf, Verteilungen nach Firma/Einreicher), Excel-Export gefilterter Ans
 **Sprint 6 – Polish:** PWA/installierbar (Service Worker, Manifest), Onboarding-
 Assistent, Demo-Daten-Schalter, Erinnerungs-Widget, Dashboard-Feinschliff.
 
+## Modul „Einsätze & Stundennachweise“ (Arbeitnehmerüberlassung) ✅
+
+Für die FESS recruitment GmbH & Co. KG: Dispo fügt den Rohtext eines Einsatzes ein
+(WhatsApp/Mail) → Claude strukturiert Schichten und Personen (Fallback: regelbasierter
+Parser) → Namens-Matching gegen den Mitarbeiterstamm, Arbeitszeit-Konfliktprüfung →
+**Konkretisierung nach § 1 Abs. 1 Satz 6 AÜG** als PDF → personalisierte
+**Mitarbeiter-Links ohne Login** (`/e/<token>`, mobil, Unterschrift auf dem Handy, offlinefähig)
+und ein **Crew-Link** für den Ansprechpartner vor Ort inkl. Kundenunterschrift →
+automatisches **Stundennachweis-PDF** (Kategorie `stundennachweis` im Dokumentenspeicher) →
+Freigabe-Workflow, **Lohnarten-Regelwerk** (Nacht, Sonntag, Feiertag je Bundesland,
+Garantiestunden, Fahrtkosten, Zulagen, Spesen, Abzüge), **Auswertung** mit SQL-Summen,
+**Excel-Export** (4 Blätter) und **zvoove-CSV** für die Stundenschnellerfassung mit
+konfigurierbarem Mapping und Validierung.
+
+- Navigation: **Einsätze** (`/einsaetze`), **Stunden** (`/auswertung`), **Dokumente** (`/dokumente`)
+- Rollen: Admin/Mitglied = Dispo, Buchhaltung = Freigabe/Lohnarten/Export (lesend), Kiosk-Konten kein Zugriff
+- Umgebungsvariablen: `APP_BASE_URL` (Links), `ANTHROPIC_API_KEY` (Parser), optional `SMTP_URL`/`MAIL_FROM`,
+  `JOBS_SECRET` (externer Cron für `POST /api/jobs/run`), S3-Variablen für Unterschriften
+- zvoove: echte Beispieldatei unter `docs/zvoove-sample.csv` ablegen → Mapping wird automatisch
+  abgeleitet (`npm run zvoove:detect`), Konfiguration in `config/zvoove-mapping.json`
+- Tests: `npm test` (Unit + Integration), `npm run build && npm run test:e2e` (Playwright)
+- Ausführliche Doku mit Ablaufdiagramm, Datenmodell, Annahmen und offenen Punkten:
+  **[docs/einsatzmodul.md](./docs/einsatzmodul.md)**
+
 ## Sprint 2 (Kern-Flow) ✅
 
 - **Belege erfassen** – Foto, Handy-Kamera/Scanner, Datei-Upload und Drag&Drop,
@@ -134,7 +158,12 @@ src/
     (app)/einstellungen/    Firmen · Kategorien · Nutzer · Organisation (nur Admin)
   components/               Design-System-Bausteine
   lib/                      db, auth, session, audit
+  lib/einsatz/              Einsatzmodul: Parser, Lohnarten, PDFs, Jobs, Services
+  app/e/                    Mitarbeiter-/Crew-Link (ohne Login)
+  app/(app)/einsaetze/      Dispo-Bereich, /auswertung, /dokumente
 prisma/                     Schema, Migrationen, Seed
+config/                     zvoove-Mapping
+docs/                       einsatzmodul.md, zvoove-sample.csv (Beispiel ablegen)
 ```
 
 ## Roadmap (Spec Abschnitt 12)
