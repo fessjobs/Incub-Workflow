@@ -33,6 +33,9 @@ COPY --from=builder /app/package.json ./package.json
 # Einsatzmodul: zvoove-Mapping (schreibbar für die automatische Ableitung) und Doku/Beispieldatei
 COPY --from=builder /app/config ./config
 COPY --from=builder /app/docs ./docs
+# Der Seed (tsx) importiert Lohnarten-Vorbelegung und Zeit-Helfer aus src/lib/einsatz
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh && mkdir -p /data/incubWorkflow-Ablage && chown -R nextjs:nodejs /data /app
 
