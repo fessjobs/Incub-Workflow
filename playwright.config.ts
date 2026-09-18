@@ -29,6 +29,8 @@ export default defineConfig({
         url: `http://127.0.0.1:${port}/api/health`,
         reuseExistingServer: true,
         timeout: 120_000,
-        env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: `http://127.0.0.1:${port}` },
+        // Bewusst OHNE APP_BASE_URL: der Test prüft, dass die Links auch dann
+        // vollständig sind (Ableitung aus den Request-Headern).
+        env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: "" },
       },
 });

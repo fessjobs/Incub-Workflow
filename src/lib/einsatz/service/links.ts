@@ -38,7 +38,7 @@ export type LinkRow = {
   whatsapp: string;
 };
 
-export function linkRows(a: AssignmentDetail): LinkRow[] {
+export function linkRows(a: AssignmentDetail, base?: string | null): LinkRow[] {
   const rows: LinkRow[] = [];
   for (const s of a.shifts) {
     for (const sa of s.assignments) {
@@ -49,20 +49,20 @@ export function linkRows(a: AssignmentDetail): LinkRow[] {
         schicht: s.bezeichnung,
         email: sa.employee.email,
         mobil: sa.employee.mobil,
-        url: employeeLinkUrl(sa.token),
+        url: employeeLinkUrl(sa.token, base),
         status: sa.status,
         tokenUsedAt: sa.tokenUsedAt,
         linkSentAt: sa.linkSentAt,
         reminderSentAt: sa.reminderSentAt,
-        whatsapp: whatsappText(messageInputFor(a, s, sa)),
+        whatsapp: whatsappText(messageInputFor(a, s, sa), base),
       });
     }
   }
   return rows;
 }
 
-export function crewUrlFor(a: AssignmentDetail): string | null {
-  return a.crewToken ? crewLinkUrl(a.crewToken) : null;
+export function crewUrlFor(a: AssignmentDetail, base?: string | null): string | null {
+  return a.crewToken ? crewLinkUrl(a.crewToken, base) : null;
 }
 
 // Plant Versand + Erinnerung je Person (idempotent über dedupeKey)

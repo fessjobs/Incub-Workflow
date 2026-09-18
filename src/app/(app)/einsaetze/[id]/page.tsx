@@ -5,6 +5,7 @@ import { canDispo, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
 import { crewUrlFor, linkRows } from "@/lib/einsatz/service/links";
+import { baseUrlFromRequest } from "@/lib/einsatz/mail";
 import { berlinDateKey, berlinTime, dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
 import { formatDateTime } from "@/lib/format";
 import { StatusBadge } from "../status-badge";
@@ -26,8 +27,11 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   const dispo = canDispo(user);
   const progress = progressOf(a);
   const warnings = await warningsFor(a);
-  const links = linkRows(a);
-  const crewUrl = crewUrlFor(a);
+  // Ohne gesetzte APP_BASE_URL die Adresse aus dem laufenden Aufruf ableiten,
+  // damit die kopierten Links immer vollständig sind (Handy!).
+  const base = await baseUrlFromRequest();
+  const links = linkRows(a, base);
+  const crewUrl = crewUrlFor(a, base);
   const von = dateOnlyKey(a.datumVon);
   const bis = dateOnlyKey(a.datumBis);
 
@@ -157,7 +161,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         </div>
       ))}
 
-      {dispo ? <LinksPanel assignmentId={a.id} rows={links} crewUrl={crewUrl} baseConfigured={links.length > 0 && !links[0].url.startsWith("/")} /> : null}
+      {dispo ? <LinksPanel assignmentId={a.id} rows={links} crewUrl={crewUrl} baseConfigured={Boolean(process.env.APP_BASE_URL?.trim())} /> : null}
 
       <div className="card p-5">
         <p className="eyebrow">Dokumente</p>

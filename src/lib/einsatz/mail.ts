@@ -9,17 +9,40 @@ export function isMailConfigured(): boolean {
   return Boolean(process.env.SMTP_URL);
 }
 
-export function appBaseUrl(): string {
-  const raw = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
-  return raw.replace(/\/+$/, "");
+// Basis-URL der App. Reihenfolge: ausdrücklich gesetzte Variable (gilt auch
+// für Mails, wo es keinen Request gibt) → aus dem laufenden Aufruf abgeleitete
+// Adresse (siehe baseUrlFromRequest) → leer, dann bleiben die Links relativ.
+export function appBaseUrl(fallback?: string | null): string {
+  // Leere oder nur aus Leerzeichen bestehende Werte gelten als NICHT gesetzt –
+  // sonst greift der Fallback nicht, wenn die Variable versehentlich leer
+  // angelegt wurde, und die Links blieben unvollständig.
+  const candidates = [process.env.APP_BASE_URL, process.env.NEXT_PUBLIC_APP_URL, fallback];
+  const raw = candidates.find((c) => typeof c === "string" && c.trim() !== "") ?? "";
+  return raw.trim().replace(/\/+$/, "");
 }
 
-export function employeeLinkUrl(token: string): string {
-  return `${appBaseUrl()}/e/${token}`;
+export function employeeLinkUrl(token: string, base?: string | null): string {
+  return `${appBaseUrl(base)}/e/${token}`;
 }
 
-export function crewLinkUrl(token: string): string {
-  return `${appBaseUrl()}/e/crew/${token}`;
+export function crewLinkUrl(token: string, base?: string | null): string {
+  return `${appBaseUrl(base)}/e/crew/${token}`;
+}
+
+// Öffentliche Adresse aus den Proxy-Headern des laufenden Aufrufs (Railway
+// setzt x-forwarded-proto und x-forwarded-host). Nur in Server Components und
+// Route Handlern verfügbar, deshalb als Fallback an appBaseUrl übergeben.
+export async function baseUrlFromRequest(): Promise<string | null> {
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    if (!host) return null;
+    const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+    return `${proto}://${host}`;
+  } catch {
+    return null;
+  }
 }
 
 export type LinkMessageInput = {
@@ -35,7 +58,7 @@ export type LinkMessageInput = {
   erinnerung?: boolean;
 };
 
-export function whatsappText(i: LinkMessageInput): string {
+export function whatsappText(i: LinkMessageInput, base?: string | null): string {
   const datum = formatKeyDE(berlinDateKey(i.planStart));
   const zeit = `${berlinTime(i.planStart)}–${berlinTime(i.planEnde)} Uhr`;
   if (i.erinnerung) {
@@ -43,7 +66,7 @@ export function whatsappText(i: LinkMessageInput): string {
       `Hallo ${i.vorname},`,
       `dein Stundennachweis für *${i.projekt}* (${i.bezeichnung}, ${datum}) fehlt noch.`,
       `Bitte Zeiten prüfen, Unterweisung bestätigen und unterschreiben:`,
-      employeeLinkUrl(i.token),
+      employeeLinkUrl(i.token, base),
       ``,
       `Danke – dein fess.jobs Team`,
     ].join("\n");
@@ -56,7 +79,7 @@ export function whatsappText(i: LinkMessageInput): string {
     `🛠 ${i.bezeichnung}`,
     ``,
     `Nach der Schicht bitte hier deine Zeiten bestätigen und unterschreiben (kein Login nötig):`,
-    employeeLinkUrl(i.token),
+    employeeLinkUrl(i.token, base),
     ``,
     `Der Link ist 30 Tage gültig. Bei Fragen melde dich bei der Dispo.`,
     `Dein fess.jobs Team`,

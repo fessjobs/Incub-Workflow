@@ -76,7 +76,11 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     // Mitarbeiter-Link merken
     const open = page.locator('a[href*="/e/"]', { hasText: "Öffnen" }).first();
     tokenUrl = (await open.getAttribute("href"))!;
-    expect(tokenUrl).toMatch(/\/e\/[0-9a-f-]{36}$/);
+    // Muss eine vollständige Adresse sein, sonst lässt sich der kopierte Link
+    // nicht auf dem Handy öffnen (auch ohne gesetzte APP_BASE_URL).
+    expect(tokenUrl).toMatch(/^https?:\/\/[^/]+\/e\/[0-9a-f-]{36}$/);
+    const whats = await page.getByTestId("crew-link").getAttribute("title");
+    expect(whats).toMatch(/^https?:\/\//);
   });
 
   test("Mitarbeiter erfasst auf dem Handy und unterschreibt; Eintrag ist danach gesperrt", async ({ browser }) => {

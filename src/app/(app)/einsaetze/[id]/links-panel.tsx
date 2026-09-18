@@ -38,7 +38,7 @@ export function LinksPanel({ assignmentId, rows, crewUrl, baseConfigured }: { as
         {crewUrl ? <CopyButton text={crewUrl} label="Crew-Link (Ansprechpartner) kopieren" testId="crew-link" /> : null}
       </div>
       {!baseConfigured ? (
-        <p className="mt-2 text-xs text-amber-600">APP_BASE_URL ist nicht gesetzt – Links werden relativ erzeugt. In Railway die öffentliche URL als APP_BASE_URL hinterlegen.</p>
+        <p className="mt-2 text-xs text-amber-600">Hinweis: APP_BASE_URL ist nicht gesetzt. Die Links hier sind vollständig und funktionieren, im automatischen E-Mail-Versand fehlt aber die Adresse. Dafür in Railway APP_BASE_URL hinterlegen.</p>
       ) : null}
       <div className="mt-3 divide-y divide-navy-100 text-sm dark:divide-navy-800">
         {rows.map((r) => (
