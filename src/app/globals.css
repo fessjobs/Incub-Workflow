@@ -47,4 +47,25 @@
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
+  /* Einsatzmodul: Orange #E3682E nur als Akzent */
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50;
+    background-color: #e3682e;
+  }
+  .btn-accent:hover {
+    background-color: #cf5a22;
+  }
+  .badge-accent {
+    @apply badge;
+    background-color: rgba(227, 104, 46, 0.12);
+    color: #c2561f;
+  }
+  .input-accent {
+    @apply input;
+    border-color: rgba(227, 104, 46, 0.35);
+  }
+  .input-accent:focus {
+    border-color: #e3682e;
+    --tw-ring-color: rgba(227, 104, 46, 0.25);
+  }
 }

@@ -1,0 +1,298 @@
+/* Einsatzmodul – Mitarbeiter-Link (/e/…): hell, ruhig, viel Weißraum,
+   Orange #E3682E nur als Akzent. Mobile zuerst, große Touchflächen. */
+
+.ez {
+  --ez-orange: #e3682e;
+  --ez-orange-soft: rgba(227, 104, 46, 0.12);
+  --ez-orange-line: rgba(227, 104, 46, 0.35);
+  --ez-ink: #1a1613;
+  --ez-muted: #6b6560;
+  --ez-line: #e9e4df;
+  --ez-canvas: #faf8f6;
+  --ez-card: #ffffff;
+  --ez-green: #1e8a5b;
+  --ez-red: #c0392b;
+  background: var(--ez-canvas);
+  color: var(--ez-ink);
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ez-wrap {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 34rem;
+  padding: 1.25rem 1.1rem 4rem;
+}
+
+.ez-wordmark {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.ez-wordmark span {
+  color: var(--ez-orange);
+}
+
+.ez-card {
+  background: var(--ez-card);
+  border: 1px solid var(--ez-line);
+  border-radius: 18px;
+  padding: 1.1rem 1.1rem;
+  box-shadow: 0 1px 2px rgba(26, 22, 19, 0.03);
+}
+
+.ez-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ez-muted);
+}
+
+.ez-h1 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.ez-muted {
+  color: var(--ez-muted);
+}
+
+.ez-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ez-muted);
+  margin-bottom: 0.3rem;
+}
+
+.ez-input,
+.ez-select,
+.ez-textarea {
+  width: 100%;
+  min-height: 3.1rem;
+  border-radius: 14px;
+  border: 1.5px solid var(--ez-orange-line);
+  background: #fff;
+  color: var(--ez-ink);
+  padding: 0.75rem 0.95rem;
+  font-size: 1.05rem;
+  outline: none;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ez-input:focus,
+.ez-select:focus,
+.ez-textarea:focus {
+  border-color: var(--ez-orange);
+  box-shadow: 0 0 0 4px var(--ez-orange-soft);
+}
+.ez-input[readonly] {
+  background: var(--ez-canvas);
+  border-color: var(--ez-line);
+}
+.ez-textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.ez-btn {
+  display: flex;
+  width: 100%;
+  min-height: 3.4rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 16px;
+  background: var(--ez-orange);
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.9rem 1.2rem;
+  transition: transform 0.08s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 6px 18px rgba(227, 104, 46, 0.25);
+}
+.ez-btn:active {
+  transform: scale(0.985);
+}
+.ez-btn:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+.ez-btn-ghost {
+  background: transparent;
+  color: var(--ez-ink);
+  border: 1.5px solid var(--ez-line);
+  box-shadow: none;
+}
+.ez-btn-ghost:focus-visible,
+.ez-btn:focus-visible {
+  outline: 3px solid var(--ez-orange-soft);
+  outline-offset: 2px;
+}
+.ez-btn-small {
+  min-height: 2.6rem;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 12px;
+  width: auto;
+}
+
+.ez-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 0.85rem 0.9rem;
+  border: 1.5px solid var(--ez-line);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  min-height: 3.2rem;
+}
+.ez-check input {
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-top: 0.1rem;
+  accent-color: var(--ez-orange);
+  flex-shrink: 0;
+}
+.ez-check.is-on {
+  border-color: var(--ez-orange);
+  background: var(--ez-orange-soft);
+}
+
+.ez-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.ez-seg button {
+  min-height: 3rem;
+  border-radius: 12px;
+  border: 1.5px solid var(--ez-line);
+  background: #fff;
+  font-weight: 600;
+}
+.ez-seg button.is-on {
+  border-color: var(--ez-orange);
+  background: var(--ez-orange-soft);
+  color: var(--ez-orange);
+}
+
+.ez-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.ez-pill-orange {
+  background: var(--ez-orange-soft);
+  color: var(--ez-orange);
+}
+.ez-pill-green {
+  background: rgba(30, 138, 91, 0.12);
+  color: var(--ez-green);
+}
+.ez-pill-grey {
+  background: rgba(107, 101, 96, 0.12);
+  color: var(--ez-muted);
+}
+
+.ez-error {
+  border: 1px solid rgba(192, 57, 43, 0.35);
+  background: rgba(192, 57, 43, 0.07);
+  color: var(--ez-red);
+  border-radius: 14px;
+  padding: 0.8rem 0.95rem;
+  font-size: 0.95rem;
+}
+.ez-info {
+  border: 1px solid var(--ez-orange-line);
+  background: var(--ez-orange-soft);
+  border-radius: 14px;
+  padding: 0.8rem 0.95rem;
+  font-size: 0.95rem;
+}
+
+.ez-sig {
+  position: relative;
+  border: 1.5px dashed var(--ez-orange-line);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  touch-action: none;
+}
+.ez-sig canvas {
+  display: block;
+  width: 100%;
+  height: 11rem;
+}
+.ez-sig-hint {
+  position: absolute;
+  inset: auto 0 0.5rem 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ez-muted);
+  pointer-events: none;
+}
+
+.ez-acc summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 3rem;
+  font-weight: 600;
+}
+.ez-acc summary::-webkit-details-marker {
+  display: none;
+}
+.ez-acc[open] summary {
+  color: var(--ez-orange);
+}
+.ez-acc h4 {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ez-orange);
+  margin: 0.9rem 0 0.3rem;
+}
+.ez-acc ul {
+  padding-left: 1.1rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ez-ink);
+}
+.ez-acc li {
+  margin-bottom: 0.25rem;
+}
+
+.ez-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.ez-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 0.2rem;
+  border-bottom: 1px solid var(--ez-line);
+}
+.ez-list-item:last-child {
+  border-bottom: 0;
+}
+
+@media (min-width: 640px) {
+  .ez-wrap {
+    padding-top: 2.5rem;
+  }
+}

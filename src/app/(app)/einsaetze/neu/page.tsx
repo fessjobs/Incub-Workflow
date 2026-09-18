@@ -1,0 +1,29 @@
+import type { Metadata } from "next";
+import { db } from "@/lib/db";
+import { requireDispo } from "@/lib/einsatz/access";
+import { isParserAvailable, PARSER_MODEL } from "@/lib/einsatz/parser";
+import { ParseWizard } from "./parse-wizard";
+
+export const metadata: Metadata = { title: "Neuer Einsatz" };
+export const dynamic = "force-dynamic";
+
+export default async function NeuerEinsatzPage() {
+  const user = await requireDispo();
+  const [customers, employees] = await Promise.all([
+    db.customer.findMany({ where: { organizationId: user.organizationId, aktiv: true }, orderBy: { name: "asc" }, select: { id: true, name: true, standardEinsatzort: true, aueVertragRef: true, bundesland: true } }),
+    db.employee.findMany({ where: { organizationId: user.organizationId, status: "AKTIV" }, orderBy: [{ nachname: "asc" }, { vorname: "asc" }], select: { id: true, vorname: true, nachname: true, personalnummer: true } }),
+  ]);
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="eyebrow">Neuer Einsatz</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Aus Rohtext anlegen</h1>
+        <p className="mt-1 text-sm text-navy-400">
+          Text aus WhatsApp oder Mail einfügen. {isParserAvailable() ? `Die Auswertung läuft über die Claude API (${PARSER_MODEL}).` : "Ohne ANTHROPIC_API_KEY wird der Text regelbasiert gelesen."}{" "}
+          Danach prüfen, Personen zuordnen, speichern.
+        </p>
+      </div>
+      <ParseWizard customers={customers} employees={employees.map((e) => ({ id: e.id, name: `${e.vorname} ${e.nachname}`, personalnummer: e.personalnummer }))} />
+    </div>
+  );
+}

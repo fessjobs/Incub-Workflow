@@ -9,16 +9,27 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
 
+  // Einsatzmodul (Einsätze, Stunden, Dokumente): Dispo = Admin/Mitglied,
+  // Buchhaltung lesend + Freigabe/Export
+  const seesEinsatz = user.role === "ADMIN" || user.role === "MEMBER" || user.role === "BUCHHALTUNG";
+
   const nav = [
     { href: "/dashboard", label: "Dashboard", number: "01" },
     { href: "/belege", label: "Belege", number: "02" },
     { href: "/schnell", label: "Schnell-Upload", number: "03" },
     { href: "/auswertungen", label: "Auswertungen", number: "04" },
     { href: "/abgleich", label: "Abgleich", number: "05" },
+    ...(seesEinsatz
+      ? [
+          { href: "/einsaetze", label: "Einsätze", number: "06" },
+          { href: "/auswertung", label: "Stunden", number: "07" },
+          { href: "/dokumente", label: "Dokumente", number: "08" },
+        ]
+      : []),
     ...(isAdmin
       ? [
-          { href: "/setcards", label: "Setcards", number: "06" },
-          { href: "/einstellungen", label: "Einstellungen", number: "07" },
+          { href: "/setcards", label: "Setcards", number: "09" },
+          { href: "/einstellungen", label: "Einstellungen", number: "10" },
         ]
       : []),
   ];

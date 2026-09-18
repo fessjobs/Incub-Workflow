@@ -9,6 +9,11 @@ export async function middleware(request: NextRequest) {
 
   // Mitarbeiter-Link: komplett öffentlich (Passwort-Gate in der Seite selbst)
   if (pathname.startsWith("/mitarbeiter")) return NextResponse.next();
+  // Einsatzmodul: Token-Links für Mitarbeiter/Ansprechpartner (Schutz über
+  // unerratbare Tokens + Rate-Limit in den Routen) und Job-Runner (Secret)
+  if (pathname.startsWith("/e/") || pathname.startsWith("/api/e/") || pathname === "/api/jobs/run" || pathname === "/sw-einsatz.js") {
+    return NextResponse.next();
+  }
   // Alter Kiosk-Pfad → neuer Mitarbeiter-Link
   if (pathname.startsWith("/erfassen")) {
     const url = request.nextUrl.clone();
@@ -33,6 +38,10 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!authenticated && !isPublic) {
+    // API-Routen antworten mit 401 statt Redirect
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

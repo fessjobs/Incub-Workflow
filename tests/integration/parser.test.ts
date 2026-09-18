@@ -19,10 +19,10 @@ vi.mock("@anthropic-ai/sdk", () => {
   return { default: Anthropic };
 });
 
-import { ParsedAssignmentSchema, parseRawText, parseWithClaude } from "@/lib/einsatz/parser";
+import { ParsedAssignmentSchema, parseRawText, parseWithClaude, type ParsedAssignment } from "@/lib/einsatz/parser";
 import { SAMPLE } from "../fixtures/sample";
 
-const CLAUDE_RESULT = {
+const CLAUDE_RESULT: ParsedAssignment = {
   kunde: "Mannheimer Power GmbH",
   projekt: "Reezy",
   artist: "Reezy",
