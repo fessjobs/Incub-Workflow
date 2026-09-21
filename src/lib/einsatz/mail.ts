@@ -83,6 +83,47 @@ export function whatsappText(i: LinkMessageInput, base?: string | null): string 
   ].join("\n");
 }
 
+// Ein Link für alle: die Nachricht geht in die WhatsApp-Gruppe, jede Person
+// öffnet ihn auf dem eigenen Handy und wählt sich in der Liste aus. Deshalb
+// steht hier keine persönliche Anrede und kein einzelner Name.
+export type GruppenNachrichtInput = {
+  projekt: string;
+  kunde: string;
+  einsatzort: string;
+  datumVon: Date;
+  datumBis: Date;
+  schichten: Array<{ bezeichnung: string; planStart: Date; planEnde: Date; treffpunkt: string | null }>;
+  crewToken: string;
+};
+
+export function gruppenText(i: GruppenNachrichtInput, base?: string | null): string {
+  const von = formatKeyDE(berlinDateKey(i.datumVon));
+  const bis = formatKeyDE(berlinDateKey(i.datumBis));
+  const zeilen = [
+    `*${i.kunde} – ${i.projekt}*`,
+    `📅 ${von}${von === bis ? "" : ` – ${bis}`}`,
+    `📍 ${i.einsatzort}`,
+  ];
+  for (const s of i.schichten) {
+    const tag = formatKeyDE(berlinDateKey(s.planStart));
+    zeilen.push(`🛠 ${s.bezeichnung}: ${von === bis ? "" : `${tag}, `}${berlinTime(s.planStart)}–${berlinTime(s.planEnde)} Uhr${s.treffpunkt ? ` (Treffpunkt: ${s.treffpunkt})` : ""}`);
+  }
+  zeilen.push(
+    ``,
+    `Nach der Schicht bitte hier Zeiten bestätigen und unterschreiben – einfach den eigenen Namen antippen (kein Login nötig):`,
+    crewLinkUrl(i.crewToken, base),
+    ``,
+    `Name falsch oder jemand fehlt? Lässt sich im Link direkt korrigieren.`,
+    `Dein fess.jobs Team`
+  );
+  return zeilen.join("\n");
+}
+
+// wa.me öffnet WhatsApp mit vorbereitetem Text; die Gruppe wählt der Absender
+export function whatsappShareUrl(text: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
 export function mailSubject(i: LinkMessageInput): string {
   const datum = formatKeyDE(berlinDateKey(i.planStart));
   return i.erinnerung ? `Erinnerung: Stundennachweis ${i.projekt} (${datum})` : `Dein Einsatz: ${i.projekt} am ${datum}`;

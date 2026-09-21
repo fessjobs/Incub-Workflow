@@ -1,9 +1,11 @@
-// Mitarbeiter-Links: Versand-Jobs planen (24 h vor Schichtbeginn, Erinnerung
-// nach Schichtende) und WhatsApp-Texte zum Kopieren erzeugen.
+// Mitarbeiter-Links: ein Gruppenlink je Einsatz als Hauptweg (fertige
+// WhatsApp-Nachricht für die Gruppe), dazu die Einzellinks je Person für den
+// automatischen Versand (24 h vor Schichtbeginn, Erinnerung nach Schichtende)
+// und für Nachzügler.
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { enqueueJob } from "../jobs/queue";
-import { crewLinkUrl, employeeLinkUrl, whatsappText, type LinkMessageInput } from "../mail";
+import { crewLinkUrl, employeeLinkUrl, gruppenText, whatsappShareUrl, whatsappText, type LinkMessageInput } from "../mail";
 import { loadAssignment, type AssignmentDetail } from "./assignments";
 
 export const LINK_LEAD_HOURS = 24;
@@ -61,8 +63,34 @@ export function linkRows(a: AssignmentDetail, base?: string | null): LinkRow[] {
   return rows;
 }
 
-export function crewUrlFor(a: AssignmentDetail, base?: string | null): string | null {
-  return a.crewToken ? crewLinkUrl(a.crewToken, base) : null;
+// Der eine Link für alle: eine fertige WhatsApp-Nachricht mit allen Schichten
+// und dem Gruppenlink. Das ist der Hauptweg; die Einzellinks bleiben für
+// Nachzügler und für den automatischen Versand bestehen.
+export type Gruppenlink = { url: string; whatsapp: string; teilen: string; personen: number };
+
+export function gruppenlinkFor(a: AssignmentDetail, base?: string | null): Gruppenlink | null {
+  if (!a.crewToken) return null;
+  const schichten = a.shifts
+    .filter((s) => s.assignments.some((sa) => sa.status !== "STORNIERT"))
+    .map((s) => ({ bezeichnung: s.bezeichnung, planStart: s.planStart, planEnde: s.planEnde, treffpunkt: s.treffpunkt }));
+  const text = gruppenText(
+    {
+      projekt: a.projekt,
+      kunde: a.customer.name,
+      einsatzort: a.einsatzort,
+      datumVon: a.datumVon,
+      datumBis: a.datumBis,
+      schichten,
+      crewToken: a.crewToken,
+    },
+    base
+  );
+  return {
+    url: crewLinkUrl(a.crewToken, base),
+    whatsapp: text,
+    teilen: whatsappShareUrl(text),
+    personen: a.shifts.reduce((n, s) => n + s.assignments.filter((sa) => sa.status !== "STORNIERT").length, 0),
+  };
 }
 
 // Plant Versand + Erinnerung je Person (idempotent über dedupeKey)

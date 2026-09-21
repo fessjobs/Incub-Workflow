@@ -35,20 +35,29 @@ Assistent, Demo-Daten-Schalter, Erinnerungs-Widget, Dashboard-Feinschliff.
 ## Modul „Einsätze & Stundennachweise“ (Arbeitnehmerüberlassung) ✅
 
 Für die FESS recruitment GmbH & Co. KG: Dispo fügt den Rohtext eines Einsatzes ein
-(WhatsApp/Mail) → Claude strukturiert Schichten und Personen (Fallback: regelbasierter
+(WhatsApp/Mail) **oder hängt einen Screenshot, ein Foto, ein PDF oder eine Excel-Liste an** →
+Claude strukturiert Schichten und Personen (Fallback: regelbasierter
 Parser) → Namens-Matching gegen den Mitarbeiterstamm, Arbeitszeit-Konfliktprüfung →
-**Konkretisierung nach § 1 Abs. 1 Satz 6 AÜG** als PDF → personalisierte
-**Mitarbeiter-Links ohne Login** (`/e/<token>`, mobil, Unterschrift auf dem Handy, offlinefähig)
-und ein **Crew-Link** für den Ansprechpartner vor Ort inkl. Kundenunterschrift →
-automatisches **Stundennachweis-PDF** (Kategorie `stundennachweis` im Dokumentenspeicher) →
+**Konkretisierung nach § 1 Abs. 1 Satz 6 AÜG** als PDF → **ein Gruppenlink für alle**
+(`/e/crew/<token>`, mobil, ohne Login, offlinefähig) als fertige WhatsApp-Nachricht für die
+Gruppe: jede Person tippt den eigenen Namen an und unterschreibt, falsche Namen und
+Nachzügler korrigiert die Crew selbst, am Ende unterschreibt der Kunde →
+automatisches **Stundennachweis-PDF** (Kategorie `stundennachweis`, je Einsatz genau eines),
+das die Crew im selben Link **ansehen, teilen und herunterladen** kann →
 Freigabe-Workflow, **Lohnarten-Regelwerk** (Nacht, Sonntag, Feiertag je Bundesland,
 Garantiestunden, Fahrtkosten, Zulagen, Spesen, Abzüge), **Auswertung** mit SQL-Summen,
 **Excel-Export** (4 Blätter) und **zvoove-CSV** für die Stundenschnellerfassung mit
 konfigurierbarem Mapping und Validierung.
 
 - Navigation: **Einsätze** (`/einsaetze`), **Stunden** (`/auswertung`), **Dokumente** (`/dokumente`)
-- Rollen: Admin/Mitglied = Dispo, Buchhaltung = Freigabe/Lohnarten/Export (lesend), Kiosk-Konten kein Zugriff
-- Umgebungsvariablen: `APP_BASE_URL` (Links), `ANTHROPIC_API_KEY` (Parser), optional `SMTP_URL`/`MAIL_FROM`,
+- **Stammdaten-Import**: Excel- oder CSV-Listen für Mitarbeiter (`/einsaetze/personal/import`)
+  und Kunden (`/einsaetze/kunden/import`) – Spalten werden an den Überschriften erkannt,
+  Vorschau je Zeile vor der Übernahme, keine Dubletten
+- Rollen: Admin/Mitglied = Dispo, **Disponent = eigener Zugang nur fürs Einsatzmodul**,
+  Buchhaltung = Freigabe/Lohnarten/Export (lesend), Kiosk-Konten kein Zugriff
+- Einzellinks je Person (`/e/<token>`) bleiben für den automatischen Versand und Nachzügler
+- Umgebungsvariablen: `APP_BASE_URL` (Links; ohne sie wird die öffentliche Adresse automatisch
+  ermittelt), `ANTHROPIC_API_KEY` (Parser **und Screenshot-Auswertung**), optional `SMTP_URL`/`MAIL_FROM`,
   `JOBS_SECRET` (externer Cron für `POST /api/jobs/run`), S3-Variablen für Unterschriften
 - zvoove: echte Beispieldatei unter `docs/zvoove-sample.csv` ablegen → Mapping wird automatisch
   abgeleitet (`npm run zvoove:detect`), Konfiguration in `config/zvoove-mapping.json`

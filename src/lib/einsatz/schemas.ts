@@ -93,6 +93,26 @@ export const CrewSubmitSchema = z.object({
   eintrag: TimeEntrySubmitSchema,
 });
 
+// Die Crew korrigiert sich selbst: Name richtigstellen, Person ergänzen.
+// Beides verlangt Vor- und Nachnamen – die Konkretisierung nach AÜG benennt
+// die Person namentlich, ein einteiliger Eintrag taugt dafür nicht.
+const personName = {
+  vorname: z.string().trim().min(2, "Vorname fehlt.").max(80),
+  nachname: z.string().trim().min(2, "Nachname fehlt.").max(80),
+};
+
+export const CrewNameSchema = z.object({
+  aktion: z.literal("name-korrigieren"),
+  shiftAssignmentId: z.string().min(1),
+  ...personName,
+});
+
+export const CrewPersonSchema = z.object({
+  aktion: z.literal("person-ergaenzen"),
+  shiftId: z.string().min(1),
+  ...personName,
+});
+
 export const CustomerSignSchema = z.object({
   kundeName: z.string().trim().min(2, "Name des Kunden fehlt.").max(200),
   unterschrift: z.string().min(100, "Unterschrift fehlt."),

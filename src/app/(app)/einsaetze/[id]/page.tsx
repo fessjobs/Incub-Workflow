@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { canDispo, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
-import { crewUrlFor, linkRows } from "@/lib/einsatz/service/links";
+import { gruppenlinkFor, linkRows } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
 import { hasConfiguredBase, misconfiguredBase } from "@/lib/einsatz/base-url";
 import { berlinDateKey, berlinTime, dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
@@ -32,7 +32,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   // damit die kopierten Links immer vollständig sind (Handy!).
   const base = await baseUrlFromRequest();
   const links = linkRows(a, base);
-  const crewUrl = crewUrlFor(a, base);
+  const gruppe = gruppenlinkFor(a, base);
   const von = dateOnlyKey(a.datumVon);
   const bis = dateOnlyKey(a.datumBis);
 
@@ -162,7 +162,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         </div>
       ))}
 
-      {dispo ? <LinksPanel assignmentId={a.id} rows={links} crewUrl={crewUrl} baseConfigured={hasConfiguredBase()} fehlkonfiguriert={misconfiguredBase()} /> : null}
+      {dispo ? <LinksPanel assignmentId={a.id} rows={links} gruppe={gruppe} baseConfigured={hasConfiguredBase()} fehlkonfiguriert={misconfiguredBase()} /> : null}
 
       <div className="card p-5">
         <p className="eyebrow">Dokumente</p>

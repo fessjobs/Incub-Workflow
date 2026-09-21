@@ -53,10 +53,18 @@ und lege diese drei an:
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` ← genau so eintippen, das verbindet die Datenbank |
 | `AUTH_SECRET` | eine lange Zufallszeichenkette – erzeuge sie auf <https://generate-secret.vercel.app/32> und füge sie ein |
 | `COOKIE_SECURE` | `true` |
-| `ANTHROPIC_API_KEY` | dein Claude-API-Schlüssel – schaltet das **automatische Auslesen** der Belege frei. Ohne ihn läuft alles, die Felder werden dann manuell erfasst. Schlüssel unter <https://console.anthropic.com> erstellen. |
+| `ANTHROPIC_API_KEY` | dein Claude-API-Schlüssel – schaltet das **automatische Auslesen** der Belege frei und im Einsatzmodul das Auswerten von **Rohtext, Screenshots, Fotos und PDFs**. Ohne ihn läuft alles, Text wird regelbasiert gelesen, Bilder gar nicht. Schlüssel unter <https://console.anthropic.com> erstellen. |
 
 Optional kannst du zusätzlich setzen, um das Erst-Login zu ändern:
 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`.
+
+**`APP_BASE_URL` brauchst du normalerweise nicht.** Die Links für die Mitarbeiter
+(Gruppenlink für die WhatsApp-Gruppe) werden automatisch aus der öffentlichen
+Railway-Adresse gebildet. Nur wenn du eine **eigene Domain** verwendest, trage sie
+hier ein – vollständig, z. B. `https://dispo.fess.jobs`. Eine interne Adresse wie
+`https://incub-workflow.railway.internal` funktioniert **nicht**: die lässt sich auf
+dem Handy nicht öffnen. Die App weist im Einsatz darauf hin, wenn dort so eine
+Adresse steht.
 
 Nach dem Speichern deployt Railway automatisch neu.
 
@@ -93,6 +101,10 @@ deployt Railway die neue Version **automatisch**. Du musst nichts tun.
 - **Login schlägt fehl / man wird sofort ausgeloggt:** `AUTH_SECRET` fehlt oder ist zu
   kurz, und/oder `COOKIE_SECURE` steht nicht auf `true`.
 - **„Can't reach database“:** `DATABASE_URL` ist nicht `${{Postgres.DATABASE_URL}}`.
+- **Mitarbeiter-Link lässt sich auf dem Handy nicht öffnen:** In der Einsatz-Detailansicht
+  steht dann ein roter Hinweis. `APP_BASE_URL` zeigt auf eine interne Adresse
+  (`…railway.internal`) – entweder die öffentliche Domain eintragen oder die Variable
+  ganz löschen, dann ermittelt die App sie selbst.
 
 ## Datensicherung
 

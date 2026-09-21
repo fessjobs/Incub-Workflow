@@ -55,6 +55,26 @@ const ROLES: Role[] = [
     ],
   },
   {
+    badge: "D",
+    name: "Disposition",
+    short: "Eigener Zugang nur fürs Einsatzmodul – ohne Einblick in die Belegwelt.",
+    can: [
+      "Einsätze anlegen (Rohtext, Screenshot, Foto, PDF oder Excel-Liste) und bearbeiten",
+      "Konkretisierung und Stundennachweis erzeugen, Gruppenlink für die WhatsApp-Gruppe kopieren",
+      "Mitarbeiter- und Kundenstammdaten pflegen und importieren, Lohnarten-Regeln sehen",
+      "Stunden freigeben, Auswertung und Exporte (Excel, zvoove), Dokumente herunterladen",
+    ],
+    cannot: [
+      "Keine Belege, Auslagen, Kontoauszüge, DATEV-Exporte oder Setcards – Seiten leiten um, Schnittstellen antworten mit 403",
+      "Keine Einstellungen und keine Nutzerverwaltung",
+    ],
+    steps: [
+      "Einsätze → „+ Neuer Einsatz“: Rohtext einfügen oder Screenshot anhängen → auswerten → prüfen → speichern.",
+      "In der Detailansicht „WhatsApp-Nachricht kopieren“ und in die Gruppe schicken – ein Link für alle.",
+      "Nach dem Einsatz: Stunden → prüfen → freigeben → Export.",
+    ],
+  },
+  {
     badge: "M",
     name: "Mitglied",
     short: "Erfasst eigene Belege und gleicht die eigenen Kontoauszüge ab.",

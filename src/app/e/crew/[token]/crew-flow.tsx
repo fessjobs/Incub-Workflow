@@ -1,13 +1,17 @@
 "use client";
 
-// Crew-Gerät: Liste aller Personen des Einsatzes → jede Person prüft ihre
-// Zeiten, bestätigt die Unterweisung und unterschreibt nacheinander auf
-// diesem Gerät; am Ende unterschreibt der Kunde.
+// Gruppenlink: ein Link für alle. Jede Person öffnet ihn auf dem eigenen
+// Handy (oder alle nacheinander auf einem Crew-Gerät), sucht sich in der
+// Liste, prüft ihre Zeiten, bestätigt die Unterweisung und unterschreibt; am
+// Ende unterschreibt der Kunde. Falsch geschriebene Namen und kurzfristig
+// dazugekommene Leute korrigiert die Crew selbst – solange niemand
+// unterschrieben hat und der Kunde nicht bestätigt hat.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SafetySection } from "@/lib/einsatz/safety";
 import { SafetyAccordion } from "../../safety-accordion";
 import { SignaturePad, type SignaturePadHandle } from "../../signature-pad";
 import { FLUSH_EVENT, isNetworkError, queueSubmission } from "../../offline";
+import { PdfKarte } from "../../pdf-share";
 
 type Person = {
   shiftAssignmentId: string;
@@ -18,6 +22,7 @@ type Person = {
   endeDatum: string;
   ende: string;
   erfasst: boolean;
+  nameAenderbar: boolean;
   eintrag: { stundenGesamt: number; start: string; ende: string; pauseMinuten: number } | null;
 };
 
@@ -26,8 +31,42 @@ type CrewView = {
   einsatz: { einsatznummer: string; projekt: string; artist: string | null; kunde: string; einsatzort: string; datum: string };
   schichten: Array<{ id: string; bezeichnung: string; taetigkeit: string; datumDE: string; personen: Person[] }>;
   kunde: { name: string; zeitpunkt: string } | null;
+  korrigierbar: boolean;
   unterweisung: { version: string; abschnitte: SafetySection[]; bestaetigung: string[] };
 };
+
+// Ein Name, zwei Felder: die Konkretisierung nach AÜG benennt die Person
+// namentlich, ein einteiliger Eintrag taugt dafür nicht.
+function NameFelder({
+  vorname,
+  nachname,
+  setVorname,
+  setNachname,
+  praefix,
+}: {
+  vorname: string;
+  nachname: string;
+  setVorname: (v: string) => void;
+  setNachname: (v: string) => void;
+  praefix: string;
+}) {
+  return (
+    <div className="ez-row" style={{ marginTop: "0.5rem" }}>
+      <div>
+        <label className="ez-label" htmlFor={`${praefix}-vorname`}>
+          Vorname
+        </label>
+        <input id={`${praefix}-vorname`} className="ez-input" value={vorname} onChange={(e) => setVorname(e.target.value)} autoComplete="given-name" data-testid={`${praefix}-vorname`} />
+      </div>
+      <div>
+        <label className="ez-label" htmlFor={`${praefix}-nachname`}>
+          Nachname
+        </label>
+        <input id={`${praefix}-nachname`} className="ez-input" value={nachname} onChange={(e) => setNachname(e.target.value)} autoComplete="family-name" data-testid={`${praefix}-nachname`} />
+      </div>
+    </div>
+  );
+}
 
 function Wordmark() {
   return (
@@ -44,6 +83,10 @@ export function CrewFlow({ token }: { token: string }) {
   const [kundeMode, setKundeMode] = useState(false);
   const [queued, setQueued] = useState<Set<string>>(new Set());
   const [info, setInfo] = useState<string | null>(null);
+  // offene Korrektur: entweder ein Name (shiftAssignmentId) oder eine neue
+  // Person auf einer Schicht (shiftId)
+  const [nameOffen, setNameOffen] = useState<string | null>(null);
+  const [personOffen, setPersonOffen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -159,13 +202,13 @@ export function CrewFlow({ token }: { token: string }) {
     <>
       <Wordmark />
       <div className="ez-card" style={{ marginTop: "1rem" }}>
-        <p className="ez-eyebrow">{view.einsatz.kunde} · Crew-Gerät</p>
+        <p className="ez-eyebrow">{view.einsatz.kunde} · Stundennachweis</p>
         <h1 className="ez-h1" style={{ marginTop: "0.2rem" }}>{view.einsatz.projekt}</h1>
         <p className="ez-muted" style={{ marginTop: "0.3rem" }}>
           {view.einsatz.einsatzort} · {view.einsatz.datum} · {view.einsatz.einsatznummer}
         </p>
         <p style={{ marginTop: "0.6rem", fontSize: "0.92rem" }}>
-          Gerät an jede Person weitergeben: Zeiten prüfen, Unterweisung bestätigen, unterschreiben. Zum Schluss unterschreibt der Kunde.
+          Eigenen Namen antippen, Zeiten prüfen, Unterweisung bestätigen, unterschreiben. Das geht auf dem eigenen Handy oder nacheinander auf einem Gerät. Zum Schluss unterschreibt der Kunde.
         </p>
         <div style={{ marginTop: "0.6rem" }}>
           <span className={`ez-pill ${offen.length === 0 ? "ez-pill-green" : "ez-pill-orange"}`}>
@@ -186,34 +229,97 @@ export function CrewFlow({ token }: { token: string }) {
           {s.personen.map((p) => {
             const isQueued = queued.has(`crew:${token}:${p.shiftAssignmentId}`);
             return (
-              <div key={p.shiftAssignmentId} className="ez-list-item">
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontWeight: 600 }}>{p.name}</p>
-                  <p className="ez-muted" style={{ fontSize: "0.85rem" }}>
-                    {p.erfasst && p.eintrag ? `${p.eintrag.start}–${p.eintrag.ende}, Pause ${p.eintrag.pauseMinuten} min, ${p.eintrag.stundenGesamt.toFixed(2).replace(".", ",")} h` : `Plan ${p.start}–${p.ende}`}
-                  </p>
+              <div key={p.shiftAssignmentId}>
+                <div className="ez-list-item">
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontWeight: 600 }}>{p.name}</p>
+                    <p className="ez-muted" style={{ fontSize: "0.85rem" }}>
+                      {p.erfasst && p.eintrag ? `${p.eintrag.start}–${p.eintrag.ende}, Pause ${p.eintrag.pauseMinuten} min, ${p.eintrag.stundenGesamt.toFixed(2).replace(".", ",")} h` : `Plan ${p.start}–${p.ende}`}
+                      {view.korrigierbar && p.nameAenderbar && !isQueued ? (
+                        <>
+                          {" · "}
+                          <button
+                            type="button"
+                            className="ez-linkbtn"
+                            onClick={() => {
+                              setPersonOffen(null);
+                              setNameOffen(nameOffen === p.shiftAssignmentId ? null : p.shiftAssignmentId);
+                            }}
+                            data-testid={`crew-name-${p.shiftAssignmentId}`}
+                          >
+                            Name falsch?
+                          </button>
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                  {p.erfasst ? (
+                    <span className="ez-pill ez-pill-green">✓ unterschrieben</span>
+                  ) : isQueued ? (
+                    <span className="ez-pill ez-pill-orange">wartet auf Netz</span>
+                  ) : (
+                    <button type="button" className="ez-btn ez-btn-small" disabled={view.state === "abgelaufen"} onClick={() => setActive({ person: p, schicht: s })} data-testid={`crew-sign-${p.shiftAssignmentId}`}>
+                      Unterschreiben
+                    </button>
+                  )}
                 </div>
-                {p.erfasst ? (
-                  <span className="ez-pill ez-pill-green">✓ unterschrieben</span>
-                ) : isQueued ? (
-                  <span className="ez-pill ez-pill-orange">wartet auf Netz</span>
-                ) : (
-                  <button type="button" className="ez-btn ez-btn-small" disabled={view.state === "abgelaufen"} onClick={() => setActive({ person: p, schicht: s })} data-testid={`crew-sign-${p.shiftAssignmentId}`}>
-                    Unterschreiben
-                  </button>
-                )}
+                {nameOffen === p.shiftAssignmentId ? (
+                  <NameKorrektur
+                    person={p}
+                    onCancel={() => setNameOffen(null)}
+                    onSubmit={async (vorname, nachname) => {
+                      const res = await post(`crew:${token}:name:${p.shiftAssignmentId}`, { aktion: "name-korrigieren", shiftAssignmentId: p.shiftAssignmentId, vorname, nachname });
+                      if (res.ok) {
+                        setNameOffen(null);
+                        setInfo(res.queued ? `Ohne Netz gespeichert – „${vorname} ${nachname}“ wird übernommen, sobald wieder Empfang da ist.` : `Name geändert: ${vorname} ${nachname}`);
+                      }
+                      return res;
+                    }}
+                  />
+                ) : null}
               </div>
             );
           })}
+          {view.korrigierbar ? (
+            personOffen === s.id ? (
+              <PersonErgaenzen
+                onCancel={() => setPersonOffen(null)}
+                onSubmit={async (vorname, nachname) => {
+                  const res = await post(`crew:${token}:person:${s.id}:${vorname}${nachname}`, { aktion: "person-ergaenzen", shiftId: s.id, vorname, nachname });
+                  if (res.ok) {
+                    setPersonOffen(null);
+                    setInfo(res.queued ? `Ohne Netz gespeichert – ${vorname} ${nachname} wird eingetragen, sobald wieder Empfang da ist.` : `${vorname} ${nachname} steht jetzt auf „${s.bezeichnung}“.`);
+                  }
+                  return res;
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="ez-btn ez-btn-ghost ez-btn-small"
+                style={{ marginTop: "0.6rem" }}
+                onClick={() => {
+                  setNameOffen(null);
+                  setPersonOffen(s.id);
+                }}
+                data-testid={`crew-add-${s.id}`}
+              >
+                + Person ergänzen
+              </button>
+            )
+          ) : null}
         </div>
       ))}
 
       <div className="ez-card" style={{ marginTop: "0.8rem" }}>
         <p className="ez-eyebrow">Kundenbestätigung</p>
         {view.kunde ? (
-          <p style={{ marginTop: "0.5rem" }}>
-            <span className="ez-pill ez-pill-green">✓ {view.kunde.name}</span>
-          </p>
+          <>
+            <p style={{ marginTop: "0.5rem" }}>
+              <span className="ez-pill ez-pill-green">✓ {view.kunde.name}</span>
+            </p>
+            <PdfKarte url={`/api/e/crew/${token}/pdf`} />
+          </>
         ) : (
           <>
             <p className="ez-muted" style={{ marginTop: "0.4rem", fontSize: "0.9rem" }}>
@@ -226,6 +332,84 @@ export function CrewFlow({ token }: { token: string }) {
         )}
       </div>
     </>
+  );
+}
+
+type KorrekturErgebnis = { ok: boolean; error?: string };
+
+function NameKorrektur({ person, onCancel, onSubmit }: { person: Person; onCancel: () => void; onSubmit: (vorname: string, nachname: string) => Promise<KorrekturErgebnis> }) {
+  // Der bisherige Name steht drin: meist ist nur ein Buchstabe falsch.
+  const teile = person.name.trim().split(/\s+/);
+  const [vorname, setVorname] = useState(teile.slice(0, -1).join(" ") || person.vorname);
+  const [nachname, setNachname] = useState(teile.length > 1 ? teile[teile.length - 1] : "");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="ez-subcard" data-testid="crew-name-form">
+      <p className="ez-muted" style={{ fontSize: "0.85rem" }}>
+        Richtige Schreibweise eintragen. Der Name steht später auf dem Stundennachweis und in der Konkretisierung.
+      </p>
+      <NameFelder vorname={vorname} nachname={nachname} setVorname={setVorname} setNachname={setNachname} praefix="crew-name" />
+      {error ? <p className="ez-error" style={{ marginTop: "0.5rem" }}>{error}</p> : null}
+      <div className="ez-row" style={{ marginTop: "0.6rem" }}>
+        <button
+          type="button"
+          className="ez-btn ez-btn-small"
+          disabled={busy}
+          data-testid="crew-name-speichern"
+          onClick={async () => {
+            setError(null);
+            setBusy(true);
+            const res = await onSubmit(vorname.trim(), nachname.trim());
+            setBusy(false);
+            if (!res.ok) setError(res.error ?? "Fehler");
+          }}
+        >
+          {busy ? "Speichert …" : "Name übernehmen"}
+        </button>
+        <button type="button" className="ez-btn ez-btn-ghost ez-btn-small" onClick={onCancel}>
+          Abbrechen
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PersonErgaenzen({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (vorname: string, nachname: string) => Promise<KorrekturErgebnis> }) {
+  const [vorname, setVorname] = useState("");
+  const [nachname, setNachname] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="ez-subcard" data-testid="crew-add-form">
+      <p className="ez-muted" style={{ fontSize: "0.85rem" }}>
+        Jemand ist kurzfristig mitgekommen? Hier eintragen – die Person kann dann direkt unterschreiben.
+      </p>
+      <NameFelder vorname={vorname} nachname={nachname} setVorname={setVorname} setNachname={setNachname} praefix="crew-add" />
+      {error ? <p className="ez-error" style={{ marginTop: "0.5rem" }}>{error}</p> : null}
+      <div className="ez-row" style={{ marginTop: "0.6rem" }}>
+        <button
+          type="button"
+          className="ez-btn ez-btn-small"
+          disabled={busy}
+          data-testid="crew-add-speichern"
+          onClick={async () => {
+            setError(null);
+            setBusy(true);
+            const res = await onSubmit(vorname.trim(), nachname.trim());
+            setBusy(false);
+            if (!res.ok) setError(res.error ?? "Fehler");
+          }}
+        >
+          {busy ? "Speichert …" : "Person hinzufügen"}
+        </button>
+        <button type="button" className="ez-btn ez-btn-ghost ez-btn-small" onClick={onCancel}>
+          Abbrechen
+        </button>
+      </div>
+    </div>
   );
 }
 

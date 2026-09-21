@@ -73,14 +73,15 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toContain("application/pdf");
     expect((await res.body()).subarray(0, 4).toString()).toBe("%PDF");
-    // Mitarbeiter-Link merken
-    const open = page.locator('a[href*="/e/"]', { hasText: "Öffnen" }).first();
+    // Gruppenlink ist der Hauptweg; die Einzellinks stehen ausklappbar darunter
+    await page.getByTestId("einzellinks-toggle").click();
+    const open = page.locator('a[href*="/e/"]', { hasText: "Öffnen" }).last();
     tokenUrl = (await open.getAttribute("href"))!;
     // Muss eine vollständige, öffentlich erreichbare Adresse sein, sonst lässt
     // sich der kopierte Link nicht auf dem Handy öffnen. Interne Adressen
     // (railway.internal, localhost) dürfen dort nie landen.
     expect(tokenUrl).toMatch(/^https:\/\/incub-workflow-production\.up\.railway\.app\/e\/[0-9a-f-]{36}$/);
-    const crew = await page.getByTestId("crew-link").getAttribute("title");
+    const crew = await page.getByTestId("gruppen-link").getAttribute("title");
     expect(crew).toMatch(/^https:\/\/incub-workflow-production\.up\.railway\.app\/e\/crew\//);
     for (const link of [tokenUrl, crew!]) expect(link).not.toContain(".internal");
     // Für den weiteren Testlauf lokal navigieren (die Domain ist simuliert)
@@ -112,7 +113,7 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
   test("Crew-Link: zweite Person unterschreibt, Kunde bestätigt", async ({ page }) => {
     await login(page);
     await page.goto(assignmentUrl);
-    const url = (await page.getByTestId("crew-link").getAttribute("title")) ?? "";
+    const url = (await page.getByTestId("gruppen-link").getAttribute("title")) ?? "";
     expect(url).toMatch(/^https:\/\/[^/]+\/e\/crew\/[0-9a-f-]{36}$/);
     // Domain ist im Test simuliert, deshalb lokal über den Pfad öffnen
     await page.goto(new URL(url).pathname);

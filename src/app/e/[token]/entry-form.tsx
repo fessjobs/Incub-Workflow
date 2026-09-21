@@ -8,6 +8,7 @@ import type { TokenView } from "@/lib/einsatz/service/public-view";
 import { SafetyAccordion } from "../safety-accordion";
 import { SignaturePad, type SignaturePadHandle } from "../signature-pad";
 import { FLUSH_EVENT, getPending, isNetworkError, queueSubmission } from "../offline";
+import { PdfKarte } from "../pdf-share";
 
 type Trip = { von: string; nach: string; km: string };
 
@@ -114,13 +115,9 @@ function ReadOnly({ view, token, pending }: { view: TokenView; token: string; pe
           ) : null}
         </div>
       ) : null}
-      {view.state === "erfasst" ? (
-        <a className="ez-btn ez-btn-ghost" style={{ marginTop: "0.8rem" }} href={`/api/e/${token}/pdf`} target="_blank" rel="noreferrer">
-          Stundennachweis (PDF) öffnen
-        </a>
-      ) : null}
+      {view.state === "erfasst" ? <PdfKarte url={`/api/e/${token}/pdf`} /> : null}
       <p className="ez-muted" style={{ marginTop: "1rem", fontSize: "0.8rem" }}>
-        Die PDF steht bereit, sobald alle Personen des Einsatzes unterschrieben haben oder die Dispo sie erzeugt hat.
+        Die PDF steht bereit, sobald alle Personen des Einsatzes unterschrieben haben und der Kunde bestätigt hat.
       </p>
     </>
   );

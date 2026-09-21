@@ -1,6 +1,6 @@
 # Modul „Einsätze & Stundennachweise“ (Arbeitnehmerüberlassung)
 
-Erweiterung von incub:workflow für die FESS recruitment GmbH & Co. KG: Rohtext der Dispo → strukturierter Einsatz → Konkretisierung (§ 1 Abs. 1 Satz 6 AÜG) → personalisierte Mitarbeiter-Links mit digitaler Unterschrift → Stundennachweis-PDF → Auswertung, Lohnvorbereitung, Excel- und zvoove-Export.
+Erweiterung von incub:workflow für die FESS recruitment GmbH & Co. KG: Rohtext oder Screenshot der Dispo → strukturierter Einsatz → Konkretisierung (§ 1 Abs. 1 Satz 6 AÜG) → **ein Gruppenlink für alle** mit digitaler Unterschrift → Stundennachweis-PDF → Auswertung, Lohnvorbereitung, Excel- und zvoove-Export.
 
 Bestehende Funktionen (Belege, Auslagen, Beiblatt-PDFs, Abgleich, DATEV) sind unverändert. Das Modul nutzt dieselbe Auth (`/login`, Session-Cookie), denselben Mandanten-Schlüssel und dieselbe Ablage-Idee (Dateien als Bytes in Postgres).
 
@@ -8,18 +8,19 @@ Bestehende Funktionen (Belege, Auslagen, Beiblatt-PDFs, Abgleich, DATEV) sind un
 
 ```mermaid
 flowchart LR
-  A[Rohtext WhatsApp/Mail] -->|POST /api/assignments/parse| B[Claude Structured Output<br/>Fallback: Heuristik]
+  A[Rohtext WhatsApp/Mail<br/>und/oder Screenshot, PDF, Tabelle] -->|POST /api/assignments/parse| B[Claude Structured Output<br/>Fallback: Heuristik]
   B --> C[Namens-Matching<br/>exakt → normalisiert → Trigram]
   C --> D[Konfliktprüfung<br/>Ruhezeit 11 h · 10 h/24 h · Doppelbuchung<br/>gegen ALLE Einsätze]
   D --> E[Vorschau, editierbar<br/>/einsaetze/neu]
   E -->|speichern| F[(assignments, shifts,<br/>shift_assignments + Tokens)]
   F --> G[Konkretisierung PDF<br/>Kategorie konkretisierung]
-  F --> H[Jobs: Link-Versand 24 h vorher,<br/>Erinnerung nach Schichtende]
-  H --> I[/e/token: Zeiten, Pause,<br/>PKW, Spesen, Unterweisung, Signatur/]
-  H --> J[/e/crew/token: alle Personen<br/>+ Kunde auf einem Gerät/]
+  F --> H[Gruppenlink + WhatsApp-Nachricht<br/>Jobs: Einzelversand 24 h vorher,<br/>Erinnerung nach Schichtende]
+  H --> J[/e/crew/token: ein Link für alle<br/>Namen korrigieren, Person ergänzen,<br/>jede unterschreibt, dann der Kunde/]
+  H --> I[/e/token: Einzellink, Zeiten, Pause,<br/>PKW, Spesen, Unterweisung, Signatur/]
   I --> K[(time_entries v1, gesperrt<br/>Signatur-PNG im Blob-Speicher)]
   J --> K
-  K -->|alle unterschrieben| L[Stundennachweis PDF<br/>Kategorie stundennachweis]
+  K -->|alle unterschrieben + Kunde| L[Stundennachweis PDF<br/>Kategorie stundennachweis<br/>je Einsatz genau eines]
+  L --> Q[/Crew sieht das PDF im Link:<br/>ansehen, teilen, herunterladen/]
   K --> M[Freigabe: erfasst → geprüft → freigegeben]
   M --> N[/auswertung: Summen aus SQL/]
   N --> O[Excel 4 Blätter]
@@ -34,15 +35,16 @@ Zeitziele (Abnahme): Rohtext → PDF unter zwei Minuten (Parser ca. 5–15 s, Re
 |---|---|
 | Datenmodell | `prisma/schema.prisma` (Abschnitt „Modul Einsätze & Stundennachweise“), Migration `prisma/migrations/20260918003757_einsatz_modul/` (+ `down.sql`) |
 | Seed | `prisma/seed-einsatz.ts` (2 Kunden, 10 Mitarbeiter, Standard-Lohnarten, Beispieleinsatz `2026-0918-01`) |
-| Kernlogik | `src/lib/einsatz/` – `tz.ts` (Europe/Berlin), `hours.ts`, `holidays.ts`, `bundesland.ts`, `wage.ts` (Regelwerk), `parser.ts` (Claude + Heuristik), `matching.ts`, `conflicts.ts`, `numbering.ts`, `blob.ts`, `documents.ts`, `rate-limit.ts`, `access.ts`, `safety.ts`, `mail.ts`, `analytics.ts` |
-| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `public-view.ts` |
+| Kernlogik | `src/lib/einsatz/` – `tz.ts` (Europe/Berlin), `hours.ts`, `holidays.ts`, `bundesland.ts`, `wage.ts` (Regelwerk), `parser.ts` (Claude + Heuristik), `anhaenge.ts` (Screenshot/PDF/Tabelle), `matching.ts`, `conflicts.ts`, `numbering.ts`, `blob.ts`, `documents.ts`, `rate-limit.ts`, `access.ts`, `roles.ts`, `base-url.ts`, `safety.ts`, `mail.ts`, `analytics.ts` |
+| Stammdaten-Import | `src/lib/einsatz/import/` – `parse-table.ts` (CSV/XLSX, Spaltenerkennung), `stammdaten.ts` (Vorschau + Import für Mitarbeiter und Kunden) |
+| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `crew-roster.ts` (Selbstkorrektur der Crew), `public-view.ts` |
 | Jobs | `src/lib/einsatz/jobs/` (`queue.ts`, `handlers.ts`, `worker.ts`), Start in `src/instrumentation.ts`, Cron-Route `POST /api/jobs/run` |
 | PDFs | `src/lib/einsatz/pdf/` (`layout.tsx`, `konkretisierung.tsx`, `stundennachweis.tsx` inkl. Anlage Sicherheitsunterweisung) |
 | Exporte | `src/lib/export/stunden-excel.ts`, `src/lib/export/zvoove.ts`, `config/zvoove-mapping.json`, `scripts/zvoove-detect.ts` |
-| API | `src/app/api/assignments/parse`, `src/app/api/e/[token]`, `src/app/api/e/[token]/pdf`, `src/app/api/e/crew/[token]`, `src/app/api/documents/[id]`, `src/app/api/blobs/[id]`, `src/app/api/jobs/run` |
-| Mitarbeiter-Link | `src/app/e/` (Layout, `[token]`, `crew/[token]`, Signatur-Canvas, Offline-Puffer `offline.ts`), Service Worker `public/sw-einsatz.js` |
-| Dispo | `src/app/(app)/einsaetze/` (Liste, `neu`, `[id]`, `freigabe`, `kunden`, `personal`, `lohnarten`), `src/app/(app)/auswertung/`, `src/app/(app)/dokumente/` |
-| Tests | `tests/unit/*` (vitest), `tests/integration/parser.test.ts` (gemockter Claude-Aufruf), `tests/e2e/einsatz.spec.ts` (Playwright) |
+| API | `src/app/api/assignments/parse`, `src/app/api/e/[token]`, `src/app/api/e/[token]/pdf`, `src/app/api/e/crew/[token]`, `src/app/api/e/crew/[token]/pdf`, `src/app/api/documents/[id]`, `src/app/api/blobs/[id]`, `src/app/api/jobs/run` |
+| Mitarbeiter-Link | `src/app/e/` (Layout, `[token]`, `crew/[token]`, `pdf-share.tsx`, Signatur-Canvas, Offline-Puffer `offline.ts`), Service Worker `public/sw-einsatz.js` |
+| Dispo | `src/app/(app)/einsaetze/` (Liste, `neu`, `[id]`, `freigabe`, `kunden`, `kunden/import`, `personal`, `personal/import`, `lohnarten`), `src/app/(app)/auswertung/`, `src/app/(app)/dokumente/` |
+| Tests | `tests/unit/*` (vitest), `tests/integration/parser.test.ts` (gemockter Claude-Aufruf), `tests/e2e/*.spec.ts` (Playwright: `einsatz`, `crew`, `anhang`, `import`, `disponent`) |
 
 ## 3. Datenmodell
 
@@ -78,22 +80,65 @@ Rollback der Migration: `psql "$DATABASE_URL" -f prisma/migrations/2026091800375
 - Namens-Matching: exakt → normalisiert (ohne Diakritika, Reihenfolge egal) → Fuzzy per `pg_trgm` (`similarity ≥ 0,35`, JS-Bigram-Fallback ohne Extension). Nur exakt/normalisiert gilt als sicher; Fuzzy-Treffer erscheinen als „Vorschläge (bitte bestätigen)“ und werden nie automatisch übernommen. Neue Personen können direkt aus der Vorschau angelegt werden.
 - Arbeitszeitkonflikte laufen serverseitig gegen alle Einsätze des Mandanten (±3 Tage): < 11 h Ruhezeit, > 10 h in 24 h, Überschneidung. Speichern ist nur mit bewusstem Haken „Konflikte geprüft“ möglich.
 
+### 4a. Screenshot, Foto, PDF und Tabelle als Vorlage
+
+Der Rohtext ist nicht mehr Pflicht. `/einsaetze/neu` nimmt zusätzlich oder stattdessen Dateien an (höchstens 5, je 5 MB); `POST /api/assignments/parse` versteht dafür `multipart/form-data` (JSON mit `rawText` bleibt gültig).
+
+| Art | Weg |
+|---|---|
+| Bild (`png`, `jpg`, `gif`, `webp`) | als `image`-Block an die Claude API, **vor** dem Text |
+| PDF | als `document`-Block an die Claude API |
+| Text, CSV, TSV, Markdown, EML | serverseitig dekodiert und an den Rohtext gehängt (`--- dateiname ---`) |
+| Excel (`xlsx`, `xlsm`) | über `parse-table.ts` in Textzeilen umgewandelt und angehängt |
+
+Text- und Tabellendateien gehen damit gar nicht erst an die API: billiger, deterministisch und auch ohne `ANTHROPIC_API_KEY` über die Heuristik nutzbar (die Heuristik überspringt die Dateiüberschriften und Trennlinien). Bilder und PDFs kann die Heuristik nicht lesen – ohne API-Schlüssel steht das ausdrücklich in den Hinweisen, statt einen leeren Einsatz zu zeigen. Abgelehnte Dateien (zu groß, zu viele, unbekannter Typ) erscheinen mit Begründung in derselben Hinweisliste. Ein Screenshot lässt sich auch mit Strg + V direkt einfügen.
+
+### 4b. Stammdaten importieren
+
+`/einsaetze/personal/import` und `/einsaetze/kunden/import` (Rolle Dispo, also auch Disponent) lesen Excel- oder CSV-Listen. Die Spalten werden an den Überschriften erkannt, die Reihenfolge spielt keine Rolle; Trennzeichen (`;`, `,`, Tab, `|`) und Zeichensatz werden ermittelt.
+
+- Schritt 1 **Vorschau**: je Zeile ein Befund – neu, wird ergänzt, unverändert, Fehler. Es wird nichts gespeichert.
+- Schritt 2 **Übernehmen**: Abgleich über die Personalnummer, sonst über den exakten Namen (Kunden über den Namen). Leere Felder in der Datei überschreiben nichts, es entstehen keine Dubletten.
+- Einteilige Namen werden abgelehnt: die Konkretisierung nach AÜG benennt die Person namentlich.
+- Bundesländer werden ausgeschrieben und als Kürzel erkannt, Adresse aus Straße/PLZ/Ort zusammengesetzt, Datumsangaben deutsch und ISO.
+
 ## 5. PDFs
 
 `@react-pdf/renderer` (bereits im Projekt, reines JS, kein Chromium – läuft auf Railway ohne Zusatzpakete; Puppeteer hätte ein ~300 MB Image und Sandbox-Sonderfälle bedeutet).
 
 - `Konkretisierung_<Projekt>_<Datum>.pdf`: fess.jobs-Wortmarke (Orange `#E3682E`), Titel, Metablock, Tabelle (Nr., Name, Schicht, Beginn, Ende, Tätigkeit, Funktion), Schlusstext mit § 1 Abs. 1 Satz 6 AÜG, Unterschriftszeilen. Wird beim Speichern aus der Vorschau automatisch erzeugt (abwählbar) und setzt den Status auf „konkretisiert“.
 - `Stundennachweis_<Projekt>_<Datum>.pdf` (Querformat): Tabelle mit Ist-Zeiten, Pause, Gesamt, Tätigkeit, PKW, Spesen, Notiz, Unterschrift als Bild + Zeitstempel; Block Fahrten; Kundenbestätigung (Name + Unterschrift oder Leerzeile); Bestätigungstext; Seite 2 Anlage „Sicherheitsunterweisung und PSA“ zweispaltig mit Version/Stand im Fuß.
-- Beide landen unveränderlich im Dokumentenspeicher mit SHA-256 im Audit-Log; jede Neuerzeugung ist ein neues Dokument (die Historie bleibt).
+- Beide landen unveränderlich im Dokumentenspeicher mit SHA-256 im Audit-Log. **Je Einsatz gibt es genau ein Konkretisierungs- und genau ein Stundennachweis-PDF**: eine Neuerzeugung ersetzt die vorherige Fassung, deren SHA-256 und Dateiname im Audit-Log stehen bleiben. Vorher sammelten sich bei jeder Unterschrift neue Zwischenstände an.
 
 ## 6. Mitarbeiter-Link
 
+### 6a. Ein Link für alle (Hauptweg)
+
+`/e/crew/[token]` gilt für den ganzen Einsatz. Die Dispo kopiert in der Detailansicht eine **fertige WhatsApp-Nachricht** (Kunde, Projekt, Datum, alle Schichten mit Zeiten und Treffpunkt, genau ein Link) und schickt sie in die Gruppe; „In WhatsApp öffnen“ ruft `wa.me` mit vorbereitetem Text auf. Jede Person öffnet den Link auf dem eigenen Handy, tippt den eigenen Namen an und unterschreibt – oder alle nacheinander auf einem Crew-Gerät. Am Ende unterschreibt der Kunde (Name + Signatur); das löst die Erzeugung des Stundennachweis-PDFs aus.
+
+Die Einzellinks je Person bleiben erhalten (automatischer Versand, Nachzügler), stehen in der Detailansicht aber ausgeklappt unter dem Gruppenlink.
+
+### 6b. Die Crew korrigiert sich selbst
+
+Der Parser verliest sich bei Namen, und manchmal kommt jemand kurzfristig dazu. Beides lässt sich im Gruppenlink ohne Login richtigstellen:
+
+- **„Name falsch?“** je Person: richtige Schreibweise eintragen. Gibt es im Stamm schon jemanden mit dem Namen, wird die Einteilung dorthin umgehängt; ist der bisherige Datensatz nur für diesen Einsatz entstanden (keine Personalnummer, keine Kontaktdaten, keine zweite Einteilung), wird er umbenannt – so entstehen keine Karteileichen.
+- **„+ Person ergänzen“** je Schicht: Vor- und Nachname eintragen, die Person kann sofort unterschreiben. Vorhandene Personen werden erkannt statt doppelt angelegt; eine stornierte Einteilung wird reaktiviert.
+
+Grenzen: Eine Person, die bereits unterschrieben hat, wird nicht mehr umbenannt (der Name steht auf dem Beleg). Nach der Kundenbestätigung sind beide Aktionen gesperrt – ab da korrigiert nur noch die Dispo. Jede Änderung steht mit altem und neuem Namen, IP und Quelle `crew-link` im Audit-Log.
+
+### 6c. Der fertige Beleg
+
+Sobald der Kunde bestätigt hat, zeigt der Link den unterschriebenen Stundennachweis: **Ansehen**, **Teilen** (Web Share API mit der PDF-Datei, sonst mit dem Link) und **Herunterladen** über `GET /api/e/crew/[token]/pdf` bzw. `GET /api/e/[token]/pdf`. Das PDF entsteht in einem Hintergrund-Job – solange es fehlt, steht dort „wird gerade erstellt“ und die Seite fragt alle drei Sekunden nach (zehnmal), statt einen Fehler zu zeigen.
+
+### 6d. Einzellink und Technik
+
 - `/e/[token]`: mobil zuerst, hell, Akzent `#E3682E`, große Touchflächen. Kopf (Einsatz, Kunde, Ort, Datum, eigene Schicht), Zeiten vorbelegt, Pause, Tätigkeit, PKW (privat/Firma, beliebig viele Fahrten), Spesen (+ optionaler Betrag), Notiz, aufklappbare Unterweisung mit Pflicht-Haken, Signatur-Canvas, Absenden.
-- Danach gesperrt (Leseansicht + PDF-Download über `/api/e/[token]/pdf`). Änderungen nur durch die Dispo mit Begründung als neue Version.
-- Token: UUID v4 (122 Bit, unerratbar), 30 Tage ab Schichtende gültig, einmalige Nutzung für die Signatur (`tokenUsedAt`). Rate-Limit je IP (30 GET / 10 POST pro Minute) und Sperre nach 10 unbekannten Tokens in 15 Minuten. „Links erneuern“ erzeugt neue Tokens für alle, die noch nicht unterschrieben haben.
-- `/e/crew/[token]`: Liste aller Personen des Einsatzes, jede unterschreibt nacheinander; am Ende unterschreibt der Kunde (Feld Name + Signatur) – das löst die Neuerzeugung des Stundennachweis-PDFs aus.
+- Danach gesperrt (Leseansicht + PDF). Änderungen nur durch die Dispo mit Begründung als neue Version.
+- Token: UUID v4 (122 Bit, unerratbar), 30 Tage ab Schichtende gültig, einmalige Nutzung für die Signatur (`tokenUsedAt`). Rate-Limit je IP (30 GET / 10 POST pro Minute, 20 PDF-Abrufe) und Sperre nach 10 unbekannten Tokens in 15 Minuten. „Links erneuern“ erzeugt neue Tokens für alle, die noch nicht unterschrieben haben.
+- Die Links sind immer vollständige, öffentlich erreichbare Adressen. `base-url.ts` nimmt `APP_BASE_URL`, sonst `NEXT_PUBLIC_APP_URL`, sonst `RAILWAY_PUBLIC_DOMAIN`, sonst den Host des laufenden Aufrufs – und verwirft dabei interne Adressen (`*.railway.internal`, `localhost`, private IP-Bereiche), die sich auf dem Handy nicht öffnen lassen. Steht `APP_BASE_URL` auf so einer Adresse, sagt die Detailansicht das im Klartext.
 - Offline: Service Worker `sw-einsatz.js` (Scope `/e/`) hält Seite und letzte Token-Daten vor; Einreichungen landen bei fehlendem Netz in IndexedDB und werden beim nächsten `online`-Event/Öffnen nachgesendet (Background Sync, wo verfügbar). Fachliche Ablehnungen (z. B. bereits signiert) werden nicht endlos wiederholt.
-- Versand: beim Klick „Links planen“ werden je Person zwei Jobs angelegt – `link.versand` (24 h vor Schichtbeginn, sofort falls näher) und `link.erinnerung` (2 h nach Schichtende, nur wenn noch nicht erfasst). E-Mail über SMTP (`SMTP_URL`, `MAIL_FROM`), sonst nur der fertige WhatsApp-Text zum Kopieren in der Detailansicht.
+- Versand: beim Klick „Links planen“ werden je Person zwei Jobs angelegt – `link.versand` (24 h vor Schichtbeginn, sofort falls näher) und `link.erinnerung` (2 h nach Schichtende, nur wenn noch nicht erfasst). E-Mail über SMTP (`SMTP_URL`, `MAIL_FROM`), sonst nur der fertige Text zum Kopieren.
 
 ## 7. Lohnvorbereitung
 
@@ -126,7 +171,7 @@ Freigabe-Workflow (`/einsaetze/freigabe`): erfasst → geprüft → freigegeben,
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude-Parser (ohne Key: Heuristik) |
 | `ANTHROPIC_PARSER_MODEL` | Standard `claude-sonnet-4-6` |
-| `APP_BASE_URL` | Öffentliche URL für die Links (z. B. `https://…up.railway.app`) – ohne sie sind Links relativ |
+| `APP_BASE_URL` | Öffentliche URL für die Links (z. B. `https://…up.railway.app`). Nicht gesetzt: `NEXT_PUBLIC_APP_URL`, dann `RAILWAY_PUBLIC_DOMAIN`, dann der Host des Aufrufs. Interne Adressen (`*.railway.internal`, `localhost`, private IPs) werden verworfen |
 | `SMTP_URL`, `MAIL_FROM` | E-Mail-Versand der Links (optional) |
 | `JOBS_SECRET` | Bearer-Token für externe Cron-Aufrufe von `POST /api/jobs/run` |
 | `JOBS_WORKER` | `off` deaktiviert den In-Prozess-Worker; `JOBS_INTERVAL_MS` Intervall (Standard 60 s) |
@@ -136,8 +181,15 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 
 ## 10. Tests
 
-- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext), Konflikte, zvoove-Mapping/Validierung/Encoding; Integration: Parser mit gemocktem `@anthropic-ai/sdk`.
-- `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → Crew-Link (zweite Person + Kunde) → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung. Benötigt `DATABASE_URL` mit Seed.
+- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen); Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF.
+- `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
+  - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
+  - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
+  - `anhang.spec.ts`: Einsatz allein aus einer angehängten Datei, Begründung für nicht lesbare Anhänge.
+  - `import.spec.ts`: Mitarbeiter- und Kundenimport mit Vorschau, Übernahme und Dublettenschutz beim zweiten Lauf.
+  - `disponent.spec.ts`: Disponenten-Konto anlegen, gesperrte Bereiche und APIs, erlaubte Arbeit.
+
+  Benötigt `DATABASE_URL` mit Seed. Der Testserver kopiert `.next/static` und `public` in den Standalone-Build – genau wie das Dockerfile; ohne diesen Schritt läuft die Oberfläche ohne Client-JavaScript und die Tests prüfen nur noch Progressive Enhancement.
 
 ## 11. Getroffene Annahmen
 
@@ -156,6 +208,12 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 13. Standard-Schichtlänge 8 h, wenn der Rohtext keine Endzeit nennt (im UI markiert).
 14. Ohne `SMTP_URL` werden keine Mails versendet; der WhatsApp-Text ist immer verfügbar.
 15. Excel/zvoove enthalten nur **freigegebene** Zeiteinträge; manuelle Abzüge nur ohne Kunden-/Einsatzfilter.
+16. **Rolle Disponent**: eigener Zugang nur fürs Einsatzmodul (`/einsaetze`, `/auswertung`, `/dokumente` und die zugehörigen APIs). Alles aus der Belegwelt ist gesperrt – Seiten leiten um, APIs antworten mit 403. Die Pfadlogik liegt in `roles.ts` ohne Abhängigkeiten, damit die Edge-Middleware kein Prisma lädt.
+17. **Gruppenlink als Hauptweg**: ein Link je Einsatz statt je Person. Der Token ist der Ausweis – wer den Link hat, sieht die Namen und Planzeiten des Einsatzes und kann unterschreiben. Das entspricht dem bisherigen Crew-Link; eine zusätzliche PIN ist möglich, aber nicht umgesetzt (offener Punkt 11).
+18. **Selbstkorrektur der Crew** ist bewusst eng begrenzt: nur bis zur ersten Unterschrift der jeweiligen Person und bis zur Kundenbestätigung, immer mit Audit-Eintrag. Löschen oder Stornieren von Personen bleibt bei der Dispo.
+19. **Anhänge**: höchstens 5 Dateien à 5 MB. Bilder und PDFs gehen an die Claude API, Text- und Tabellendateien werden lokal gelesen. Word-Dateien werden nicht unterstützt (kein Parser im Repo, und ein Screenshot davon tut es auch).
+20. **Import**: Abgleich über Personalnummer, sonst exakter Name (keine Fuzzy-Suche) – ein falscher Treffer wäre hier teurer als ein Duplikat, das die Dispo sieht.
+21. **Je ein PDF pro Art und Einsatz**: die ersetzte Fassung wird gelöscht, ihr SHA-256 bleibt im Audit-Log. Wer jede Zwischenfassung aufbewahren muss, setzt `replaceForAssignmentId` in `documents.ts` außer Kraft.
 
 ## 12. Offene Punkte (Entscheidung nötig)
 
@@ -169,4 +227,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 8. **Mehrere Railway-Instanzen**: Das In-Memory-Rate-Limit und der Worker gehen von einer Instanz aus; bei Skalierung Rate-Limit in Postgres/Redis verlagern und `JOBS_WORKER=off` + externer Cron.
 9. **Datenschutz**: IP, User-Agent und Gerät werden je Signatur gespeichert (Nachweiszweck). Aufbewahrungsfristen und Löschkonzept sind noch festzulegen.
 10. **Mitarbeiter-Stammdaten**: Personalnummern für alle Aktiven pflegen (Export-Validierung), E-Mail/Mobil für den Versand.
-11. **Ansprechpartner-Rolle**: Rechte des Ansprechpartners vor Ort (Crew-Link) sind aktuell identisch mit dem Einsatz-Token; eine PIN-Absicherung ist möglich, aber nicht umgesetzt.
+11. **Absicherung des Gruppenlinks**: Wer den Link hat, sieht die Besetzung und kann unterschreiben, Namen korrigieren und Personen ergänzen. In einer WhatsApp-Gruppe ist das gewollt; wird der Link weitergeleitet, ist er trotzdem gültig. Eine PIN oder eine Bindung an die Handynummer ist möglich, aber nicht umgesetzt – bitte entscheiden, ob das nötig ist.
+12. **Von der Crew ergänzte Personen** haben keine Personalnummer und fallen deshalb in der Export-Validierung auf. Gewollt (die Dispo soll das sehen) – falls nicht, müsste der Import/zvoove-Abgleich automatisch nachziehen.
+13. **Teilen des PDFs**: Die Web Share API mit Dateien funktioniert auf iOS/Android in Safari und Chrome; ältere Desktop-Browser bekommen den Link bzw. den Hinweis, herunterzuladen. Ein Versand per Mail aus dem Link heraus ist nicht umgesetzt.
+14. **Claude Vision für Screenshots** ist ohne `ANTHROPIC_API_KEY` wirkungslos. Ist der Key auf Railway nicht gesetzt, werden Bilder und PDFs abgelehnt (mit Hinweis) – bitte setzen, sonst ist die Funktion nur halb da.
