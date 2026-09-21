@@ -118,6 +118,61 @@ export const CustomerSignSchema = z.object({
   unterschrift: z.string().min(100, "Unterschrift fehlt."),
 });
 
+// ─── Dispo: Einsatz nachträglich bearbeiten ─────────────────────────────────
+
+export const UpdateAssignmentSchema = z.object({
+  projekt: z.string().trim().min(1, "Projekt fehlt.").max(200),
+  artist: optionalText,
+  customerId: z.string().min(1, "Bitte einen Kunden wählen."),
+  einsatzort: z.string().trim().min(1, "Einsatzort fehlt.").max(300),
+  einsatzbereich: optionalText,
+  aueVertragRef: optionalText,
+  bundesland: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v.toUpperCase()))
+    .nullable()
+    .refine((v) => v === null || /^[A-Z]{2}$/.test(v), "Bundesland als zweistelliges Kürzel"),
+  notizen: optionalText,
+});
+
+export const UpdateShiftSchema = z.object({
+  bezeichnung: z.string().trim().min(1, "Bezeichnung fehlt.").max(120),
+  taetigkeit: z.string().trim().max(120).default(""),
+  datum: dateKey,
+  start: timeHHmm,
+  endeDatum: dateKey,
+  ende: timeHHmm,
+  treffpunkt: optionalText,
+  anzahlSoll: z.number().int().min(0).max(999).nullable().default(null),
+  garantieStunden: z.number().min(0).max(24).nullable().default(null),
+});
+
+export const RenamePersonSchema = z.object({
+  vorname: z.string().trim().min(2, "Vorname fehlt.").max(80),
+  nachname: z.string().trim().min(2, "Nachname fehlt.").max(80),
+});
+
+// Namen aus der Zwischenablage: erst prüfen, dann übernehmen
+export const PastePreviewSchema = z.object({
+  shiftId: z.string().min(1),
+  text: z.string().min(1, "Bitte Namen einfügen.").max(20000),
+});
+
+export const PasteApplySchema = z.object({
+  shiftId: z.string().min(1),
+  personen: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(120),
+        rolle: z.enum(["MITARBEITER", "ANSPRECHPARTNER", "SPARE"]).default("MITARBEITER"),
+        employeeId: z.string().nullable().default(null),
+        neuAnlegen: z.boolean().default(false),
+      })
+    )
+    .min(1, "Keine Person ausgewählt."),
+});
+
 // ─── Dispo: Korrektur nach Signatur ─────────────────────────────────────────
 
 export const CorrectionSchema = z.object({

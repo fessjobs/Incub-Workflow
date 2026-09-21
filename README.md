@@ -53,6 +53,10 @@ konfigurierbarem Mapping und Validierung.
 - **Stammdaten-Import**: Excel- oder CSV-Listen für Mitarbeiter (`/einsaetze/personal/import`)
   und Kunden (`/einsaetze/kunden/import`) – Spalten werden an den Überschriften erkannt,
   Vorschau je Zeile vor der Übernahme, keine Dubletten
+- **Alles änderbar bis zur Kundenbestätigung**: Kopfdaten, Schichtzeiten und Besetzung lassen
+  sich in der Detailansicht nachträglich bearbeiten; **Namen per Copy-Paste** je Schicht
+  einfügen (eine Person je Zeile, „Nachname, Vorname“ wird gedreht, Rollenkürzel erkannt).
+  **Namen bleiben immer änderbar** – auch nachdem der Kunde unterschrieben hat
 - Rollen: Admin/Mitglied = Dispo, **Disponent = eigener Zugang nur fürs Einsatzmodul**,
   Buchhaltung = Freigabe/Lohnarten/Export (lesend), Kiosk-Konten kein Zugriff
 - Einzellinks je Person (`/e/<token>`) bleiben für den automatischen Versand und Nachzügler

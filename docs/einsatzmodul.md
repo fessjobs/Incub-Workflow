@@ -37,7 +37,7 @@ Zeitziele (Abnahme): Rohtext → PDF unter zwei Minuten (Parser ca. 5–15 s, Re
 | Seed | `prisma/seed-einsatz.ts` (2 Kunden, 10 Mitarbeiter, Standard-Lohnarten, Beispieleinsatz `2026-0918-01`) |
 | Kernlogik | `src/lib/einsatz/` – `tz.ts` (Europe/Berlin), `hours.ts`, `holidays.ts`, `bundesland.ts`, `wage.ts` (Regelwerk), `parser.ts` (Claude + Heuristik), `anhaenge.ts` (Screenshot/PDF/Tabelle), `matching.ts`, `conflicts.ts`, `numbering.ts`, `blob.ts`, `documents.ts`, `rate-limit.ts`, `access.ts`, `roles.ts`, `base-url.ts`, `safety.ts`, `mail.ts`, `analytics.ts` |
 | Stammdaten-Import | `src/lib/einsatz/import/` – `parse-table.ts` (CSV/XLSX, Spaltenerkennung), `stammdaten.ts` (Vorschau + Import für Mitarbeiter und Kunden) |
-| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `crew-roster.ts` (Selbstkorrektur der Crew), `public-view.ts` |
+| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `besetzung.ts` (Namen lesen, Besetzung und Kopfdaten ändern), `crew-roster.ts` (dieselbe Logik über den Gruppenlink, mit engeren Grenzen), `public-view.ts` |
 | Jobs | `src/lib/einsatz/jobs/` (`queue.ts`, `handlers.ts`, `worker.ts`), Start in `src/instrumentation.ts`, Cron-Route `POST /api/jobs/run` |
 | PDFs | `src/lib/einsatz/pdf/` (`layout.tsx`, `konkretisierung.tsx`, `stundennachweis.tsx` inkl. Anlage Sicherheitsunterweisung) |
 | Exporte | `src/lib/export/stunden-excel.ts`, `src/lib/export/zvoove.ts`, `config/zvoove-mapping.json`, `scripts/zvoove-detect.ts` |
@@ -101,6 +101,33 @@ Text- und Tabellendateien gehen damit gar nicht erst an die API: billiger, deter
 - Schritt 2 **Übernehmen**: Abgleich über die Personalnummer, sonst über den exakten Namen (Kunden über den Namen). Leere Felder in der Datei überschreiben nichts, es entstehen keine Dubletten.
 - Einteilige Namen werden abgelehnt: die Konkretisierung nach AÜG benennt die Person namentlich.
 - Bundesländer werden ausgeschrieben und als Kürzel erkannt, Adresse aus Straße/PLZ/Ort zusammengesetzt, Datumsangaben deutsch und ISO.
+
+### 4c. Einsatz nachträglich bearbeiten
+
+Ein Einsatz ist bis zur Kundenbestätigung ein Entwurf. Was wann geht, entscheidet `bearbeitbarkeit()` in `service/besetzung.ts`:
+
+| Stand | Kopfdaten | Schichtzeiten | Besetzung | Namen |
+|---|---|---|---|---|
+| angelegt, nichts unterschrieben | ✅ | ✅ | ✅ | ✅ |
+| erste Unterschrift liegt vor | ✅ | ❌ (Zeitkorrektur je Person) | ✅ | ✅ |
+| Kunde hat bestätigt | ❌ | ❌ | ❌ | ✅ |
+| Zeiten freigegeben | ❌ | ❌ | ❌ | ✅ |
+| abgeschlossen/abgerechnet | ❌ | ❌ | ❌ | ✅ |
+
+**Namen bleiben immer änderbar** – Leute heiraten, und auf dem Nachweis muss der richtige Name stehen. „Name ändern“ je Person hängt die Einteilung auf einen vorhandenen Stammsatz um oder benennt einen Datensatz um, der nur für diese eine Einteilung entstanden ist. Hat die Person schon unterschrieben, sagt die Oberfläche das: der neue Name erscheint erst auf einem neu erzeugten Stundennachweis, die bisherige Fassung bleibt mit ihrer Prüfsumme im Protokoll.
+
+Schichtzeiten ändern zieht die Planzeiten der eingeteilten Personen mit – außer bei denen, die schon unterschrieben haben – und rechnet den Einsatzzeitraum (`datumVon`/`datumBis`) aus allen Schichten neu, in Berliner Tagen.
+
+### 4d. Namen aus der Zwischenablage
+
+Je Schicht gibt es „+ Namen einfügen“: Liste hineinkopieren, prüfen, übernehmen. `namenAusText()` liest
+
+- eine Person je Zeile, zusätzlich am Semikolon getrennt,
+- „Nachname, Vorname“ gedreht – aber nur, wenn genau zwei Teile dastehen, der zweite ein einzelnes Wort ist und der erste als Nachname durchgeht („von der Heide, Jana“ ✅, „Max Mustermann, Erika Musterfrau“ bleibt eine Aufzählung),
+- Aufzählungszeichen, Nummerierung und Rollenkürzel ((AP), (Spare), Vorarbeiter …),
+- und wirft Dubletten sowie Kopf-, Datums- und Schichtzeilen eines mitkopierten Plans raus.
+
+Danach läuft derselbe Abgleich wie beim Anlegen (exakt → normalisiert → Trigram). Die Vorschau zeigt je Zeile die Zuordnung zur Auswahl: sicherer Treffer, Vorschlag, neu anlegen oder nicht übernehmen. Wer schon auf der Schicht steht, ist vorausgewählt auf „nicht übernehmen“.
 
 ## 5. PDFs
 
@@ -181,12 +208,13 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 
 ## 10. Tests
 
-- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen); Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF.
+- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text und die Bearbeitbarkeits-Regeln; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF.
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
   - `anhang.spec.ts`: Einsatz allein aus einer angehängten Datei, Begründung für nicht lesbare Anhänge.
   - `import.spec.ts`: Mitarbeiter- und Kundenimport mit Vorschau, Übernahme und Dublettenschutz beim zweiten Lauf.
+  - `bearbeiten.spec.ts`: Namen per Copy-Paste ergänzen (gedrehte Namen, Rollenkürzel, Dubletten), Kopfdaten und Schichtzeiten ändern, Namen richtigstellen vor und nach der Kundenbestätigung, Sperren danach.
   - `disponent.spec.ts`: Disponenten-Konto anlegen, gesperrte Bereiche und APIs, erlaubte Arbeit.
 
   Benötigt `DATABASE_URL` mit Seed. Der Testserver kopiert `.next/static` und `public` in den Standalone-Build – genau wie das Dockerfile; ohne diesen Schritt läuft die Oberfläche ohne Client-JavaScript und die Tests prüfen nur noch Progressive Enhancement.
@@ -214,6 +242,10 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 19. **Anhänge**: höchstens 5 Dateien à 5 MB. Bilder und PDFs gehen an die Claude API, Text- und Tabellendateien werden lokal gelesen. Word-Dateien werden nicht unterstützt (kein Parser im Repo, und ein Screenshot davon tut es auch).
 20. **Import**: Abgleich über Personalnummer, sonst exakter Name (keine Fuzzy-Suche) – ein falscher Treffer wäre hier teurer als ein Duplikat, das die Dispo sieht.
 21. **Je ein PDF pro Art und Einsatz**: die ersetzte Fassung wird gelöscht, ihr SHA-256 bleibt im Audit-Log. Wer jede Zwischenfassung aufbewahren muss, setzt `replaceForAssignmentId` in `documents.ts` außer Kraft.
+22. **Die Kundenbestätigung ist die Grenze** für Kopfdaten, Schichtzeiten und Besetzung – nicht die Konkretisierung. Das PDF lässt sich jederzeit neu erzeugen, die Unterschrift des Kunden nicht.
+23. **Namen sind immer änderbar**, auch nach der Bestätigung und auch nach der Unterschrift der Person. Die Alternative – Namen einfrieren – wäre in der Praxis falsch (Heirat, Schreibfehler, Namenszusätze). Die Rückverfolgbarkeit hängt am Audit-Log und an der Prüfsumme der ersetzten PDF-Fassung, nicht an der Unveränderlichkeit des Stammsatzes.
+24. **Umbenennen hängt um statt zu duplizieren**: Gibt es den neuen Namen schon im Stamm, wird die Einteilung dorthin verschoben. Nur ein Datensatz ohne Personalnummer, Kontaktdaten und zweite Einteilung wird umbenannt – sonst würde ein Tippfehler bei einer Person deren gesamte Historie umbenennen.
+25. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
 
 ## 12. Offene Punkte (Entscheidung nötig)
 
@@ -231,3 +263,5 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 12. **Von der Crew ergänzte Personen** haben keine Personalnummer und fallen deshalb in der Export-Validierung auf. Gewollt (die Dispo soll das sehen) – falls nicht, müsste der Import/zvoove-Abgleich automatisch nachziehen.
 13. **Teilen des PDFs**: Die Web Share API mit Dateien funktioniert auf iOS/Android in Safari und Chrome; ältere Desktop-Browser bekommen den Link bzw. den Hinweis, herunterzuladen. Ein Versand per Mail aus dem Link heraus ist nicht umgesetzt.
 14. **Claude Vision für Screenshots** ist ohne `ANTHROPIC_API_KEY` wirkungslos. Ist der Key auf Railway nicht gesetzt, werden Bilder und PDFs abgelehnt (mit Hinweis) – bitte setzen, sonst ist die Funktion nur halb da.
+15. **Dokumente nach einer Änderung**: Kopf-, Schicht- und Namensänderungen erzeugen die PDFs **nicht** automatisch neu – die Oberfläche weist darauf hin, den Knopf drückt die Dispo. Soll das automatisch laufen (jede Änderung stößt die Neuerzeugung an), bitte sagen; es wäre ein Job wie der Abschluss-Check.
+16. **Personen entfernen** geht über „Stornieren“ (bleibt sichtbar und im Protokoll), nicht über Löschen. Wer eine versehentlich eingefügte Person wirklich aus der Liste haben will, braucht eine echte Löschfunktion – bewusst nicht gebaut.

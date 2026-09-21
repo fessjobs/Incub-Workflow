@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { canDispo, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
+import { bearbeitbarkeit } from "@/lib/einsatz/service/besetzung";
+import { db } from "@/lib/db";
 import { gruppenlinkFor, linkRows } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
 import { hasConfiguredBase, misconfiguredBase } from "@/lib/einsatz/base-url";
@@ -13,6 +15,9 @@ import { StatusBadge } from "../status-badge";
 import { ActionButtons } from "./action-buttons";
 import { LinksPanel } from "./links-panel";
 import { CorrectionForm } from "./correction-form";
+import { EditKopf, EditSchicht } from "./edit-forms";
+import { PasteNames } from "./paste-names";
+import { RenamePerson } from "./rename-person";
 import { cancelShiftAssignmentAction } from "../actions";
 
 export const metadata: Metadata = { title: "Einsatz" };
@@ -35,6 +40,9 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   const gruppe = gruppenlinkFor(a, base);
   const von = dateOnlyKey(a.datumVon);
   const bis = dateOnlyKey(a.datumBis);
+  // Wie weit der Einsatz noch offen ist – Kunde und Freigabe sind die Grenzen
+  const offen = bearbeitbarkeit(a);
+  const kunden = dispo ? await db.customer.findMany({ where: { organizationId: user.organizationId, aktiv: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }) : [];
 
   return (
     <div className="space-y-6">
@@ -67,6 +75,24 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         <ActionButtons assignmentId={a.id} status={a.status} dispo={dispo} />
       </div>
 
+      {dispo ? (
+        <EditKopf
+          assignmentId={a.id}
+          kunden={kunden}
+          gesperrt={offen.kopf ? null : offen.grund}
+          werte={{
+            projekt: a.projekt,
+            artist: a.artist ?? "",
+            customerId: a.customerId,
+            einsatzort: a.einsatzort,
+            einsatzbereich: a.einsatzbereich ?? "",
+            aueVertragRef: a.aueVertragRef ?? "",
+            bundesland: a.bundesland ?? "",
+            notizen: a.notizen ?? "",
+          }}
+        />
+      ) : null}
+
       {warnings.length > 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
           <p className="font-semibold">Warnungen</p>
@@ -97,6 +123,23 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
                 {s.garantieStunden !== null ? ` · Garantie ${Number(s.garantieStunden)} h` : ""}
               </p>
             </div>
+            {dispo && offen.schichten ? (
+              <EditSchicht
+                shiftId={s.id}
+                gesperrt={null}
+                werte={{
+                  bezeichnung: s.bezeichnung,
+                  taetigkeit: s.taetigkeit,
+                  datum: berlinDateKey(s.planStart),
+                  start: berlinTime(s.planStart),
+                  endeDatum: berlinDateKey(s.planEnde),
+                  ende: berlinTime(s.planEnde),
+                  treffpunkt: s.treffpunkt ?? "",
+                  anzahlSoll: s.anzahlSoll === null ? "" : String(s.anzahlSoll),
+                  garantieStunden: s.garantieStunden === null ? "" : String(Number(s.garantieStunden)),
+                }}
+              />
+            ) : null}
           </div>
           <div className="divide-y divide-navy-100 dark:divide-navy-800">
             {s.assignments.map((sa) => {
@@ -104,7 +147,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
               return (
                 <div key={sa.id} className={`grid gap-2 px-4 py-3 text-sm md:grid-cols-[1.4fr_1fr_1fr_auto] md:items-center ${sa.status === "STORNIERT" ? "opacity-50" : ""}`}>
                   <div>
-                    <p className="font-medium">
+                    <p className="font-medium" data-testid={`person-name-${sa.id}`}>
                       {sa.employee.vorname} {sa.employee.nachname}
                       <span className="ml-2 text-xs text-navy-400">{ROLE[sa.rolle]}</span>
                     </p>
@@ -147,6 +190,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
                   </div>
                   <div className="flex flex-wrap gap-2 md:justify-end">
                     {dispo && e ? <CorrectionForm entry={{ id: e.id, startDatum: berlinDateKey(e.istStart), start: berlinTime(e.istStart), endeDatum: berlinDateKey(e.istEnde), ende: berlinTime(e.istEnde), pauseMinuten: e.pauseMinuten, taetigkeit: e.taetigkeit ?? "", notiz: e.notiz ?? "", pkw: e.pkw, pkwArt: e.pkwArt, spesen: e.spesen, spesenBetrag: e.spesenBetrag === null ? null : Number(e.spesenBetrag), review: e.review }} name={`${sa.employee.vorname} ${sa.employee.nachname}`} /> : null}
+                    {dispo ? <RenamePerson shiftAssignmentId={sa.id} vorname={sa.employee.vorname} nachname={sa.employee.nachname} unterschrieben={Boolean(e?.unterschriftZeitpunkt)} /> : null}
                     {dispo && !e ? (
                       <form action={cancelShiftAssignmentAction.bind(null, sa.id)}>
                         <button type="submit" className="btn-secondary text-xs">
@@ -159,6 +203,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
               );
             })}
           </div>
+          {dispo && offen.besetzung ? <PasteNames shiftId={s.id} schicht={s.bezeichnung} /> : null}
         </div>
       ))}
 

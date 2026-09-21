@@ -209,7 +209,9 @@ function parseShiftHeader(line: string): Omit<ParsedShift, "personen" | "datum">
   return { bezeichnung: bezeichnung || "Schicht", taetigkeit, start, ende, anzahlSoll };
 }
 
-function personFromLine(line: string): ParsedPerson {
+// Eine Zeile einer Namensliste: Aufzählungszeichen und Rollenkürzel ab,
+// Rolle erkannt. Wird auch beim Einfügen von Namen in der Dispo benutzt.
+export function personFromLine(line: string): ParsedPerson {
   let rolle: ParsedPerson["rolle"] = "mitarbeiter";
   let name = line.replace(/^[\-•*\d.)\s]+/, "").trim();
   if (/\b(ap|ansprechpartner|vorarbeiter|crew\s*chief|chef)\b/i.test(name)) rolle = "ansprechpartner";
