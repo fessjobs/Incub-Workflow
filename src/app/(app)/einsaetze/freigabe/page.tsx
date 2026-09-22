@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireReviewer } from "@/lib/einsatz/access";
+import { canRate, requireReviewer } from "@/lib/einsatz/access";
+import { erfahrungFuer, erfahrungOder } from "@/lib/einsatz/service/personal";
+import { erfahrungKurz } from "../rating-badges";
 import { berlinDateKey, berlinTime, formatKeyDE, isValidDateKey, fromBerlin, addDaysToKey } from "@/lib/einsatz/tz";
 import { ReviewTable, type ReviewRow } from "./review-table";
 
@@ -27,11 +29,15 @@ export default async function FreigabePage({ searchParams }: { searchParams: Pro
       where,
       orderBy: [{ istStart: "asc" }],
       take: 300,
-      include: { shiftAssignment: { include: { employee: true, shift: { include: { assignment: { include: { customer: true } } } } } }, trips: true },
+      include: { shiftAssignment: { include: { employee: true, bewertung: true, shift: { include: { assignment: { include: { customer: true } } } } } }, trips: true },
     }),
     db.customer.findMany({ where: { organizationId: user.organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.monthLock.findMany({ where: { organizationId: user.organizationId } }),
   ]);
+
+  // Erfahrung und Beurteilung nur für Rollen, die das dürfen
+  const darfBewerten = canRate(user);
+  const erfahrung = darfBewerten ? await erfahrungFuer(user.organizationId, [...new Set(entries.map((e) => e.shiftAssignment.employeeId))]) : new Map();
 
   const rows: ReviewRow[] = entries.map((e) => {
     const sa = e.shiftAssignment;
@@ -56,6 +62,10 @@ export default async function FreigabePage({ searchParams }: { searchParams: Pro
       version: e.version,
       gesperrt: locks.some((l) => l.jahr === y && l.monat === m),
       abweichung: Math.abs(e.istStart.getTime() - sa.planStart.getTime()) / 60000 > 30 || Math.abs(e.istEnde.getTime() - sa.planEnde.getTime()) / 60000 > 30,
+      shiftAssignmentId: sa.id,
+      bewertung: sa.bewertung?.wert ?? null,
+      bewertungNotiz: sa.bewertung?.notiz ?? null,
+      erfahrung: darfBewerten ? erfahrungKurz(erfahrungOder(erfahrung, sa.employeeId), e.taetigkeit ?? sa.shift.taetigkeit) : "",
     };
   });
 
@@ -86,7 +96,7 @@ export default async function FreigabePage({ searchParams }: { searchParams: Pro
           Filtern
         </button>
       </form>
-      <ReviewTable rows={rows} review={review} />
+      <ReviewTable rows={rows} review={review} darfBewerten={darfBewerten} />
     </div>
   );
 }

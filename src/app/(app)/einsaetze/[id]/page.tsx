@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canDispo, requireModuleUser } from "@/lib/einsatz/access";
+import { canDispo, canRate, canReview, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
 import { bearbeitbarkeit } from "@/lib/einsatz/service/besetzung";
+import { erfahrungFuer, erfahrungOder } from "@/lib/einsatz/service/personal";
 import { db } from "@/lib/db";
 import { gruppenlinkFor, linkRows } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
@@ -19,6 +20,8 @@ import { EditKopf, EditSchicht } from "./edit-forms";
 import { PasteNames } from "./paste-names";
 import { RenamePerson } from "./rename-person";
 import { Zeitvorgabe } from "./zeitvorgabe";
+import { RatePerson } from "./rate-person";
+import { BilanzBadge, ErfahrungZeile } from "../rating-badges";
 import { cancelShiftAssignmentAction } from "../actions";
 
 export const metadata: Metadata = { title: "Einsatz" };
@@ -44,6 +47,15 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   // Wie weit der Einsatz noch offen ist – Kunde und Freigabe sind die Grenzen
   const offen = bearbeitbarkeit(a);
   const kunden = dispo ? await db.customer.findMany({ where: { organizationId: user.organizationId, aktiv: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }) : [];
+  // Interne Beurteilung und Erfahrung: nur fürs Backend, nie im Link oder PDF
+  const darfBewerten = canRate(user);
+  const darfFreigeben = canReview(user);
+  const personen = a.shifts.flatMap((s) => s.assignments.map((sa) => sa.employeeId));
+  const erfahrung = darfBewerten ? await erfahrungFuer(user.organizationId, [...new Set(personen)]) : new Map();
+  const offeneZeiten = a.shifts.reduce(
+    (n, s) => n + s.assignments.filter((sa) => sa.status !== "STORNIERT" && sa.timeEntries.some((t) => t.unterschriftZeitpunkt && t.review !== "FREIGEGEBEN")).length,
+    0
+  );
 
   return (
     <div className="space-y-6">
@@ -73,7 +85,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
             {a.confirmations[0] ? <span className="badge bg-emerald-100 text-emerald-700">Kunde: {a.confirmations[0].kundeName}</span> : null}
           </div>
         </div>
-        <ActionButtons assignmentId={a.id} status={a.status} dispo={dispo} />
+        <ActionButtons assignmentId={a.id} status={a.status} dispo={dispo} freigeben={darfFreigeben} offeneZeiten={offeneZeiten} />
       </div>
 
       {dispo ? (
@@ -158,6 +170,13 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
                     <p className="text-xs text-navy-400">
                       {sa.employee.personalnummer ? `PN ${sa.employee.personalnummer}` : "ohne Personalnummer"} · <StatusBadge status={sa.status} />
                     </p>
+                    {darfBewerten ? (
+                      <p className="mt-1">
+                        <a href={`/einsaetze/personal/${sa.employeeId}`} className="hover:underline">
+                          <ErfahrungZeile e={erfahrungOder(erfahrung, sa.employeeId)} maxTaetigkeiten={2} />
+                        </a>
+                      </p>
+                    ) : null}
                   </div>
                   <div className="text-xs text-navy-500">
                     {e ? (
@@ -194,6 +213,9 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
                   </div>
                   <div className="flex flex-wrap gap-2 md:justify-end">
                     {dispo && e ? <CorrectionForm entry={{ id: e.id, startDatum: berlinDateKey(e.istStart), start: berlinTime(e.istStart), endeDatum: berlinDateKey(e.istEnde), ende: berlinTime(e.istEnde), pauseMinuten: e.pauseMinuten, taetigkeit: e.taetigkeit ?? "", notiz: e.notiz ?? "", pkw: e.pkw, pkwArt: e.pkwArt, spesen: e.spesen, spesenBetrag: e.spesenBetrag === null ? null : Number(e.spesenBetrag), review: e.review }} name={`${sa.employee.vorname} ${sa.employee.nachname}`} /> : null}
+                    {darfBewerten && e?.unterschriftZeitpunkt ? (
+                      <RatePerson shiftAssignmentId={sa.id} wert={sa.bewertung?.wert ?? null} notiz={sa.bewertung?.notiz ?? null} name={`${sa.employee.vorname} ${sa.employee.nachname}`} />
+                    ) : null}
                     {dispo ? <RenamePerson shiftAssignmentId={sa.id} vorname={sa.employee.vorname} nachname={sa.employee.nachname} unterschrieben={Boolean(e?.unterschriftZeitpunkt)} /> : null}
                     {dispo && !e ? (
                       <form action={cancelShiftAssignmentAction.bind(null, sa.id)}>

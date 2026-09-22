@@ -53,6 +53,11 @@ konfigurierbarem Mapping und Validierung.
 - **Stammdaten-Import**: Excel- oder CSV-Listen für Mitarbeiter (`/einsaetze/personal/import`)
   und Kunden (`/einsaetze/kunden/import`) – Spalten werden an den Überschriften erkannt,
   Vorschau je Zeile vor der Übernahme, keine Dubletten
+- **Erfahrung und Beurteilung (nur Backend)**: hinter jeder Person die Zahl der
+  geleisteten Schichten je Tätigkeit, dazu eine interne Beurteilung je Einsatz
+  (negativ / neutral / positiv mit Notiz) und die Bilanz in der Personalübersicht.
+  Stundenzettel lassen sich am Einsatz in einem Rutsch freigeben. Für Admin,
+  Disposition und Buchhaltung – nie im Mitarbeiter-Link, auf einem PDF oder im Export
 - **Kurzanleitung beim Öffnen des Links**: Wer den Link zum ersten Mal öffnet, bekommt in
   fünf Zeilen erklärt, was zu tun ist – samt Hinweis, die Sicherheitsunterweisung **vor**
   Arbeitsbeginn zu lesen. Danach über das **?** oben rechts erreichbar

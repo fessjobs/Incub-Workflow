@@ -1,7 +1,7 @@
 // Zeiten für alle übernehmen: Die erste Person erfasst, ihre Zeiten gelten
 // als Vorgabe für die Übrigen – vorausgefüllt, jede unterschreibt selbst.
 import { expect, test, type Page } from "@playwright/test";
-import { tutorialWeg } from "./helpers";
+import { tutorialWeg, unterschriftAngekommen } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -77,7 +77,7 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
     await page.getByTestId("unterweisung-check").check();
     await drawSignature(page);
     await page.getByTestId("crew-submit").click();
-    await expect(page.locator('[data-testid^="crew-sign-"]')).toHaveCount(2);
+    await unterschriftAngekommen(page, 1, 3);
   });
 
   test("Zeiten für alle übernehmen füllt die Übrigen vor", async ({ page }) => {
@@ -105,7 +105,7 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
     await page.getByTestId("unterweisung-check").check();
     await drawSignature(page);
     await page.getByTestId("crew-submit").click();
-    await expect(page.locator('[data-testid^="crew-sign-"]')).toHaveCount(1);
+    await unterschriftAngekommen(page, 2, 3);
   });
 
   test("Auch der Einzellink übernimmt die Vorgabe", async ({ page }) => {

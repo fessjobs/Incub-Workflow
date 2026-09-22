@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { reviewAction } from "../actions";
+import { RatePerson } from "../[id]/rate-person";
 
 export type ReviewRow = {
   id: string;
@@ -24,9 +25,14 @@ export type ReviewRow = {
   version: number;
   gesperrt: boolean;
   abweichung: boolean;
+  // Interne Beurteilung: nur fürs Backend, nur für Rollen mit dem Recht dazu
+  shiftAssignmentId: string;
+  bewertung: "NEGATIV" | "NEUTRAL" | "POSITIV" | null;
+  bewertungNotiz: string | null;
+  erfahrung: string;
 };
 
-export function ReviewTable({ rows, review }: { rows: ReviewRow[]; review: "ERFASST" | "GEPRUEFT" | "FREIGEGEBEN" }) {
+export function ReviewTable({ rows, review, darfBewerten }: { rows: ReviewRow[]; review: "ERFASST" | "GEPRUEFT" | "FREIGEGEBEN"; darfBewerten: boolean }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
@@ -83,12 +89,13 @@ export function ReviewTable({ rows, review }: { rows: ReviewRow[]; review: "ERFA
               <th className="px-3 py-2">Tätigkeit</th>
               <th className="px-3 py-2">PKW / Spesen</th>
               <th className="px-3 py-2">Hinweise</th>
+              {darfBewerten ? <th className="px-3 py-2">Beurteilung</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-navy-100 dark:divide-navy-800">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-navy-400">
+                <td colSpan={darfBewerten ? 10 : 9} className="px-3 py-6 text-center text-navy-400">
                   Keine Einträge in diesem Status.
                 </td>
               </tr>
@@ -114,6 +121,7 @@ export function ReviewTable({ rows, review }: { rows: ReviewRow[]; review: "ERFA
                 <td className="px-3 py-2">
                   {r.name}
                   <span className="block text-xs text-navy-400">{r.personalnummer ? `PN ${r.personalnummer}` : "ohne PN"}</span>
+                  {darfBewerten && r.erfahrung ? <span className="block text-xs text-navy-400">{r.erfahrung}</span> : null}
                 </td>
                 <td className="px-3 py-2">
                   <Link href={`/einsaetze/${r.assignmentId}`} className="hover:underline">
@@ -139,6 +147,15 @@ export function ReviewTable({ rows, review }: { rows: ReviewRow[]; review: "ERFA
                   {r.version > 1 ? <span className="badge bg-navy-100 text-navy-600">v{r.version}</span> : null}
                   {r.gesperrt ? <span className="badge bg-navy-900 text-white">Monat gesperrt</span> : null}
                 </td>
+                {darfBewerten ? (
+                  <td className="px-3 py-2">
+                    {r.unterschrieben ? (
+                      <RatePerson shiftAssignmentId={r.shiftAssignmentId} wert={r.bewertung} notiz={r.bewertungNotiz} name={r.name} />
+                    ) : (
+                      <span className="text-xs text-navy-400">erst nach Unterschrift</span>
+                    )}
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

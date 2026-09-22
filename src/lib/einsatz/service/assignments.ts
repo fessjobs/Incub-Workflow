@@ -180,6 +180,8 @@ export const assignmentInclude = {
         include: {
           employee: true,
           timeEntries: { where: { aktuell: true }, include: { trips: { orderBy: { reihenfolge: "asc" as const } } } },
+          // Interne Beurteilung – wird nur im Backend angezeigt
+          bewertung: true,
         },
       },
     },

@@ -9,7 +9,9 @@ import type { Conflict } from "@/lib/einsatz/conflicts";
 import { createAssignmentAction } from "../actions";
 
 type Customer = { id: string; name: string; standardEinsatzort: string | null; aueVertragRef: string | null; bundesland: string | null };
-type Employee = { id: string; name: string; personalnummer: string | null };
+// erfahrung/auffaellig kommen aus dem Backend (Erfahrungsscore und
+// Beurteilungsbilanz) und stehen nur hier – nie im Mitarbeiter-Link.
+type Employee = { id: string; name: string; personalnummer: string | null; erfahrung: string; auffaellig: boolean };
 type Candidate = { employeeId: string; name: string; personalnummer: string | null; score: number; method: string };
 
 type PreviewPerson = { name: string; rolle: "MITARBEITER" | "ANSPRECHPARTNER" | "SPARE"; employeeId: string | null; sicher: boolean; kandidaten: Candidate[]; neuAnlegen?: boolean };
@@ -399,12 +401,22 @@ export function ParseWizard({ customers, employees }: { customers: Customer[]; e
                                 <option key={e.id} value={e.id}>
                                   {e.name}
                                   {e.personalnummer ? ` · ${e.personalnummer}` : ""}
+                                  {e.erfahrung ? ` · ${e.erfahrung}` : ""}
                                 </option>
                               ))}
                             </optgroup>
                             <option value="__neu">+ Neu anlegen: {p.name}</option>
                           </select>
                           {p.sicher ? <span className="mt-1 block text-[11px] text-emerald-600">automatisch zugeordnet</span> : p.kandidaten.length > 0 && !p.employeeId ? <span className="mt-1 block text-[11px] text-amber-600">unsicherer Treffer – bitte bestätigen</span> : null}
+                          {(() => {
+                            const stamm = p.employeeId ? employeeOptions.find((x) => x.id === p.employeeId) : null;
+                            if (!stamm?.erfahrung) return null;
+                            return (
+                              <span className={`mt-1 block text-[11px] ${stamm.auffaellig ? "text-red-600" : "text-navy-400"}`} data-testid={`erfahrung-${i}-${j}`}>
+                                {stamm.erfahrung}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-2 pr-3">
                           <select className="input-accent" value={p.rolle} onChange={(e) => updatePerson(i, j, { rolle: e.target.value as PreviewPerson["rolle"] })}>

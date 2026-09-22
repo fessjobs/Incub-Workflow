@@ -1,7 +1,7 @@
 // Gruppenlink: ein Link für alle. Namen korrigieren, Person ergänzen,
 // unterschreiben, Kunde bestätigt, PDF ansehen und teilen.
 import { expect, test, type Page } from "@playwright/test";
-import { tutorialWeg } from "./helpers";
+import { tutorialWeg, unterschriftAngekommen } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -120,12 +120,13 @@ test.describe.serial("Gruppenlink", () => {
     // Alle offenen Personen nacheinander – jede unterschreibt einzeln
     const offen = page.locator('[data-testid^="crew-sign-"]');
     await expect(offen.first()).toBeVisible();
-    for (let rest = await offen.count(); rest > 0; rest--) {
+    const gesamt = await offen.count();
+    for (let rest = gesamt; rest > 0; rest--) {
       await offen.first().click();
       await page.getByTestId("unterweisung-check").check();
       await drawSignature(page);
       await page.getByTestId("crew-submit").click();
-      await expect(offen).toHaveCount(rest - 1);
+      await unterschriftAngekommen(page, gesamt - rest + 1, gesamt);
     }
     await expect(page.locator('[data-testid^="crew-sign-"]')).toHaveCount(0);
 

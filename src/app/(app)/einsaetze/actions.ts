@@ -6,9 +6,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { canDispo, canReview, requireDispo, requireModuleUser, requireReviewer } from "@/lib/einsatz/access";
+import { canDispo, canReview, requireDispo, requireModuleUser, requireRater, requireReviewer } from "@/lib/einsatz/access";
 import { processJobsOnce } from "@/lib/einsatz/jobs/worker";
-import { CorrectionSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
+import { CorrectionSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
+import { setzeBewertung } from "@/lib/einsatz/service/personal";
 import { aktualisiereKopf, aktualisiereSchicht, ergaenzePersonen, loescheZeitvorgabe, setzeNamen, vorschauNamen, BesetzungError, type VorschauZeile } from "@/lib/einsatz/service/besetzung";
 import { fromBerlin, keyToDateOnly } from "@/lib/einsatz/tz";
 import { AssignmentError, createAssignment, renewTokens, setAssignmentStatus, type CreateResult } from "@/lib/einsatz/service/assignments";
@@ -260,6 +261,47 @@ export async function clearZeitvorgabeAction(shiftId: string): Promise<ActionRes
     await loescheZeitvorgabe(user.organizationId, shiftId, { userId: user.id, ip: null, quelle: "dispo" });
     revalidatePath("/einsaetze");
     return { ok: true, message: "Zeitvorgabe zurückgenommen. Neue Erfassungen starten wieder mit den Planzeiten." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ─── Interne Bewertung und Freigabe am Einsatz ──────────────────────────────
+
+export async function rateAction(shiftAssignmentId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireRater();
+  const parsed = RatingSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    await setzeBewertung({ id: user.id, organizationId: user.organizationId }, shiftAssignmentId, parsed.data.wert, parsed.data.notiz ?? null);
+    revalidatePath("/einsaetze");
+    return { ok: true, message: parsed.data.wert === null ? "Bewertung zurückgenommen." : "Bewertung gespeichert." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// Alle unterschriebenen Zeiten eines Einsatzes auf einmal freigeben – der
+// Stundenzettel in einem Rutsch statt Zeile für Zeile in der Freigabeliste.
+export async function releaseAssignmentAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireReviewer();
+  try {
+    const eintraege = await db.timeEntry.findMany({
+      where: {
+        organizationId: user.organizationId,
+        aktuell: true,
+        review: { not: "FREIGEGEBEN" },
+        unterschriftZeitpunkt: { not: null },
+        shiftAssignment: { status: { not: "STORNIERT" }, shift: { assignmentId } },
+      },
+      select: { id: true },
+    });
+    if (eintraege.length === 0) return { ok: false, error: "Nichts freizugeben: Es gibt keine unterschriebenen, offenen Zeiten." };
+    const n = await reviewTimeEntries({ id: user.id, organizationId: user.organizationId }, eintraege.map((e) => e.id), "FREIGEGEBEN");
+    revalidatePath(`/einsaetze/${assignmentId}`);
+    revalidatePath("/einsaetze/freigabe");
+    revalidatePath("/auswertung");
+    return { ok: true, message: `${n} Zeiteintrag/-einträge freigegeben.` };
   } catch (err) {
     return fail(err);
   }

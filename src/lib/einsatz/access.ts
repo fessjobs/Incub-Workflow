@@ -25,6 +25,19 @@ export function canReview(user: Pick<User, "role">): boolean {
   return user.role === "ADMIN" || user.role === "BUCHHALTUNG" || user.role === "DISPONENT";
 }
 
+// Interne Beurteilung nach einem Einsatz: Admin, Disposition und Buchhaltung.
+// Bewusst dieselbe Runde wie die Freigabe, aber als eigene Funktion – wer
+// bewerten darf, kann sich unabhängig von der Freigabe ändern.
+export function canRate(user: Pick<User, "role">): boolean {
+  return user.role === "ADMIN" || user.role === "BUCHHALTUNG" || user.role === "DISPONENT";
+}
+
+export async function requireRater() {
+  const user = await requireUser();
+  if (!canRate(user)) redirect("/einsaetze");
+  return user;
+}
+
 export function canManageRules(user: Pick<User, "role">): boolean {
   return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
 }

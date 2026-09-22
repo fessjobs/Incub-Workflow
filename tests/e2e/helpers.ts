@@ -11,3 +11,11 @@ export async function tutorialWeg(page: Page): Promise<void> {
     await expect(page.getByTestId("tutorial")).toHaveCount(0);
   }
 }
+
+// Nach dem Absenden verschwindet der „Unterschreiben"-Knopf sofort – auch
+// dann, wenn die Einreichung mangels Netz nur zwischengespeichert wurde
+// („wartet auf Netz"). Wer prüfen will, dass der Server sie angenommen hat,
+// muss auf den Zähler schauen: der stammt aus der Antwort des Servers.
+export async function unterschriftAngekommen(page: Page, unterschrieben: number, gesamt: number): Promise<void> {
+  await expect(page.getByText(`${unterschrieben} von ${gesamt} unterschrieben`)).toBeVisible();
+}

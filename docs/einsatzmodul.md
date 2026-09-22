@@ -33,11 +33,11 @@ Zeitziele (Abnahme): Rohtext → PDF unter zwei Minuten (Parser ca. 5–15 s, Re
 
 | Bereich | Pfad |
 |---|---|
-| Datenmodell | `prisma/schema.prisma` (Abschnitt „Modul Einsätze & Stundennachweise“), Migrationen `prisma/migrations/20260918003757_einsatz_modul/`, `20260918091612_disponent_rolle/`, `20260922090000_schicht_zeitvorgabe/` (jeweils mit `down.sql`) |
+| Datenmodell | `prisma/schema.prisma` (Abschnitt „Modul Einsätze & Stundennachweise“), Migrationen `prisma/migrations/20260918003757_einsatz_modul/`, `20260918091612_disponent_rolle/`, `20260922090000_schicht_zeitvorgabe/`, `20260922140000_erfahrung_bewertung/` (jeweils mit `down.sql`) |
 | Seed | `prisma/seed-einsatz.ts` (2 Kunden, 10 Mitarbeiter, Standard-Lohnarten, Beispieleinsatz `2026-0918-01`) |
 | Kernlogik | `src/lib/einsatz/` – `tz.ts` (Europe/Berlin), `hours.ts`, `holidays.ts`, `bundesland.ts`, `wage.ts` (Regelwerk), `parser.ts` (Claude + Heuristik), `anhaenge.ts` (Screenshot/PDF/Tabelle), `matching.ts`, `conflicts.ts`, `numbering.ts`, `blob.ts`, `documents.ts`, `rate-limit.ts`, `access.ts`, `roles.ts`, `base-url.ts`, `safety.ts`, `mail.ts`, `analytics.ts` |
 | Stammdaten-Import | `src/lib/einsatz/import/` – `parse-table.ts` (CSV/XLSX, Spaltenerkennung), `stammdaten.ts` (Vorschau + Import für Mitarbeiter und Kunden) |
-| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `besetzung.ts` (Namen lesen, Besetzung und Kopfdaten ändern), `crew-roster.ts` (dieselbe Logik über den Gruppenlink, mit engeren Grenzen), `public-view.ts` |
+| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `besetzung.ts` (Namen lesen, Besetzung und Kopfdaten ändern), `crew-roster.ts` (dieselbe Logik über den Gruppenlink, mit engeren Grenzen), `personal.ts` (Erfahrung je Tätigkeit, interne Beurteilung), `public-view.ts` |
 | Jobs | `src/lib/einsatz/jobs/` (`queue.ts`, `handlers.ts`, `worker.ts`), Start in `src/instrumentation.ts`, Cron-Route `POST /api/jobs/run` |
 | PDFs | `src/lib/einsatz/pdf/` (`layout.tsx`, `konkretisierung.tsx`, `stundennachweis.tsx` inkl. Anlage Sicherheitsunterweisung) |
 | Exporte | `src/lib/export/stunden-excel.ts`, `src/lib/export/zvoove.ts`, `config/zvoove-mapping.json`, `scripts/zvoove-detect.ts` |
@@ -208,6 +208,30 @@ Regelwerk in `wage_rules`, alle Werte in der Oberfläche (`/einsaetze/lohnarten`
 
 Freigabe-Workflow (`/einsaetze/freigabe`): erfasst → geprüft → freigegeben, Bulk-Aktionen, Warnhinweise (ohne Unterschrift, Plan/Ist > 30 min, Version). Nur freigegebene Zeiten gehen in die Exporte. Gesperrte Monate (`month_locks`) verhindern Erfassung, Korrektur und Status-Änderung.
 
+### 7a. Erfahrung und interne Beurteilung (nur Backend)
+
+Nichts davon erscheint im Mitarbeiter-Link, auf einem PDF oder in einem Export. Sichtbar und setzbar für **Admin, Disposition und Buchhaltung**; normale Mitglieder sehen es nicht.
+
+**Erfahrung** (`service/personal.ts`): Eine Schicht zählt als geleistet, sobald die Person ihre Zeiten **erfasst und unterschrieben** hat – nicht erst nach der Freigabe (die hinkt Tage hinterher) und nicht schon bei der Einteilung (da war noch niemand da). Gezählt wird je Tätigkeit (Freitext, für die Zählung normalisiert, angezeigt in der gepflegten Schreibweise) mit Schichten und Stunden. Daraus die grobe Stufe:
+
+| Schichten | Stufe |
+|---|---|
+| 0 | neu |
+| 1–7 | eingearbeitet |
+| 8–24 | geübt |
+| ab 25 | erfahren |
+
+**Beurteilung**: je Person und Schicht genau eine – negativ / neutral / positiv, optional mit kurzer Notiz (max. 500 Zeichen). Gesetzt wird sie dort, wo man ohnehin ist: in der Einsatz-Detailansicht neben der Person und in der Freigabeliste. Erst möglich, wenn die Person unterschrieben hat. Ein zweiter Klick auf dieselbe Stufe nimmt die Bewertung zurück. Jede Änderung steht mit alt/neu im Audit-Log (`shift_rating.set`, `shift_rating.delete`).
+
+**Wo es auftaucht:**
+- `/einsaetze/personal` – je Person Schichten, Stufe, Top-Tätigkeiten und Bilanz (`+2 / ∘1 / −0`), sortierbar nach Schichten oder auffälligen Bewertungen
+- `/einsaetze/personal/[id]` – Profil: Erfahrung je Tätigkeit als Tabelle, Verlauf aller Beurteilungen mit Einsatz, Datum und Notiz
+- `/einsaetze/[id]` – Erfahrung unter jedem Namen, Bewertungsknöpfe neben Unterschriebenen, **„Stundenzettel freigeben“** für alle unterschriebenen, offenen Zeiten des Einsatzes auf einmal
+- `/einsaetze/freigabe` – Beurteilung direkt in der Zeile, dazu die Erfahrung für genau diese Tätigkeit
+- `/einsaetze/neu` – bei der Namenszuordnung steht die Erfahrung hinter jedem Vorschlag; überwiegt Negatives, erscheint der Hinweis in Rot. **Blockiert nichts** – die Dispo entscheidet.
+
+Migration `20260922140000_erfahrung_bewertung` (Tabelle `shift_ratings`, Enum `RatingWert`, mit `down.sql`).
+
 ## 8. Exporte
 
 - Excel (`exceljs`): Blatt „Zeiteinträge“ (Rohform), „Je Person“, „Je Kunde“, „Lohnarten“ (je Person und Monat, inkl. Abzüge). Spaltenbreiten, Zahlenformate, Filterzeile, SUBTOTAL-Summenzeile.
@@ -230,10 +254,11 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 
 ## 10. Tests
 
-- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text und die Bearbeitbarkeits-Regeln; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF.
+- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text, die Bearbeitbarkeits-Regeln, Erfahrungsstufen und Bewertungsbilanz; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF.
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
+  - `bewertung.spec.ts`: neue Person startet bei null Schichten → nach der Unterschrift zählt die Schicht samt Tätigkeit → bewerten mit Notiz → Stundenzettel am Einsatz freigeben → Personalliste und Profil zeigen Erfahrung und Bilanz → **nichts davon im Mitarbeiter-Link oder in der öffentlichen Schnittstelle** → Bewertung zurücknehmen.
   - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.
   - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.
   - `anhang.spec.ts`: Einsatz allein aus einer angehängten Datei, Begründung für nicht lesbare Anhänge.
@@ -271,7 +296,12 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 24. **Umbenennen hängt um statt zu duplizieren**: Gibt es den neuen Namen schon im Stamm, wird die Einteilung dorthin verschoben. Nur ein Datensatz ohne Personalnummer, Kontaktdaten und zweite Einteilung wird umbenannt – sonst würde ein Tippfehler bei einer Person deren gesamte Historie umbenennen.
 25. **Die Zeitvorgabe füllt nur vor, sie erfasst nicht**: „Zeiten für alle übernehmen“ legt keine Einträge für andere an. Jede Person prüft und unterschreibt selbst – ein Stundennachweis mit fremdbestimmten Zeiten ohne eigene Unterschrift wäre als Nachweis wertlos. Sie gilt je Schicht, nicht je Einsatz, und erst ab der ersten unterschriebenen Erfassung.
 26. **Die Kurzanleitung wird pro Browser gemerkt, nicht pro Person**: Wer den Link regelmäßig bekommt, sieht sie einmal. Auf einem geteilten Crew-Gerät bekommt sie damit nur die erste Person zu sehen – dafür ist sie über das ? erreichbar, und die Schritte stehen ohnehin im Formular.
-27. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
+27. **Geleistet = unterschrieben**: Der Erfahrungszähler steigt mit der eigenen Unterschrift der Person, nicht mit der Freigabe und nicht mit der Einteilung. Wer eingeteilt war, aber nicht erschienen ist, taucht damit nicht als erfahren auf.
+28. **Beurteilung je Einsatz statt je Person**: Eine Bewertung hängt an genau einer Schicht, nicht am Stammsatz. Die Personalübersicht rechnet daraus die Bilanz. So bleibt nachvollziehbar, wann und wofür jemand wie beurteilt wurde – und eine einzelne schlechte Schicht überschreibt nicht das Gesamtbild.
+29. **Der Hinweis bei der Einteilung blockiert nicht**: Überwiegt Negatives, steht das rot bei der Person – die Dispo entscheidet trotzdem selbst. Eine harte Sperre wäre in der Praxis (kurzfristige Besetzung, wenig Auswahl) mehr im Weg als hilfreich.
+30. **Erfahrungsstufen** (neu / eingearbeitet ab 1 / geübt ab 8 / erfahren ab 25) sind eine Annahme. Die nackte Zahl steht immer daneben; die Schwellen liegen in `STUFEN` in `service/personal.ts` und sind in einer Zeile geändert.
+31. **Beurteilungen sind Beschäftigtendaten.** Sie liegen zwar nur im Backend, unterliegen aber der DSGVO: Betroffene haben ein Auskunftsrecht (Art. 15) auch auf interne Notizen. Deshalb sollten die Notizen sachlich und nachvollziehbar formuliert sein („zweimal unentschuldigt zu spät“ statt einer Charakterbeurteilung). Löschfristen sind noch festzulegen – siehe offener Punkt 9.
+32. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
 
 ## 12. Offene Punkte (Entscheidung nötig)
 
@@ -283,7 +313,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 6. **Objektspeicher**: DB-Ablage reicht für den Start; bei vielen Unterschriften/PDFs S3-Variablen setzen (Adapter vorhanden) und ggf. den Adapter gegen den echten Bucket testen.
 7. **BullMQ**: Falls Redis später bereitsteht, kann `lib/einsatz/jobs/queue.ts` durch einen BullMQ-Adapter ersetzt werden (Schnittstelle `enqueueJob`/`registerJobHandler`/`runDueJobs`).
 8. **Mehrere Railway-Instanzen**: Das In-Memory-Rate-Limit und der Worker gehen von einer Instanz aus; bei Skalierung Rate-Limit in Postgres/Redis verlagern und `JOBS_WORKER=off` + externer Cron.
-9. **Datenschutz**: IP, User-Agent und Gerät werden je Signatur gespeichert (Nachweiszweck). Aufbewahrungsfristen und Löschkonzept sind noch festzulegen.
+9. **Datenschutz**: IP, User-Agent und Gerät werden je Signatur gespeichert (Nachweiszweck), dazu jetzt interne Beurteilungen je Einsatz. Beides sind Beschäftigtendaten mit Auskunftsrecht nach Art. 15 DSGVO. Aufbewahrungsfristen und Löschkonzept sind noch festzulegen – bei den Beurteilungen wäre ein automatisches Löschen nach z. B. 24 Monaten sinnvoll; bitte mit der Personalverantwortung abstimmen, ob und wie der Betriebsrat (falls vorhanden) zu beteiligen ist.
 10. **Mitarbeiter-Stammdaten**: Personalnummern für alle Aktiven pflegen (Export-Validierung), E-Mail/Mobil für den Versand.
 11. **Absicherung des Gruppenlinks**: Wer den Link hat, sieht die Besetzung und kann unterschreiben, Namen korrigieren und Personen ergänzen. In einer WhatsApp-Gruppe ist das gewollt; wird der Link weitergeleitet, ist er trotzdem gültig. Eine PIN oder eine Bindung an die Handynummer ist möglich, aber nicht umgesetzt – bitte entscheiden, ob das nötig ist.
 12. **Von der Crew ergänzte Personen** haben keine Personalnummer und fallen deshalb in der Export-Validierung auf. Gewollt (die Dispo soll das sehen) – falls nicht, müsste der Import/zvoove-Abgleich automatisch nachziehen.

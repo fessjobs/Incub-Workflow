@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { generateKonkretisierungAction, generateStundennachweisAction, renewTokensAction, scheduleLinksAction, setStatusAction, type ActionResult } from "../actions";
+import { generateKonkretisierungAction, generateStundennachweisAction, releaseAssignmentAction, renewTokensAction, scheduleLinksAction, setStatusAction, type ActionResult } from "../actions";
 
-export function ActionButtons({ assignmentId, status, dispo }: { assignmentId: string; status: string; dispo: boolean }) {
+export function ActionButtons({ assignmentId, status, dispo, freigeben, offeneZeiten }: { assignmentId: string; status: string; dispo: boolean; freigeben: boolean; offeneZeiten: number }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string; documentId?: string } | null>(null);
@@ -35,6 +35,18 @@ export function ActionButtons({ assignmentId, status, dispo }: { assignmentId: s
         <button type="button" className="btn-secondary" disabled={pending} onClick={() => run(() => generateStundennachweisAction(assignmentId))} data-testid="stundennachweis-button">
           Stundennachweis erzeugen
         </button>
+        {freigeben ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={pending || offeneZeiten === 0}
+            title={offeneZeiten === 0 ? "Keine unterschriebenen, offenen Zeiten" : undefined}
+            onClick={() => run(() => releaseAssignmentAction(assignmentId))}
+            data-testid="freigeben-button"
+          >
+            Stundenzettel freigeben{offeneZeiten > 0 ? ` (${offeneZeiten})` : ""}
+          </button>
+        ) : null}
         {dispo ? (
           <>
             {status !== "ABGESCHLOSSEN" && status !== "ABGERECHNET" ? (

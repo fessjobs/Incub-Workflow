@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { requireDispo } from "@/lib/einsatz/access";
+import { canRate, requireDispo } from "@/lib/einsatz/access";
+import { erfahrungFuer, erfahrungOder } from "@/lib/einsatz/service/personal";
+import { erfahrungKurz } from "../rating-badges";
 import { isParserAvailable, PARSER_MODEL } from "@/lib/einsatz/parser";
 import { ParseWizard } from "./parse-wizard";
 
@@ -13,6 +15,10 @@ export default async function NeuerEinsatzPage() {
     db.customer.findMany({ where: { organizationId: user.organizationId, aktiv: true }, orderBy: { name: "asc" }, select: { id: true, name: true, standardEinsatzort: true, aueVertragRef: true, bundesland: true } }),
     db.employee.findMany({ where: { organizationId: user.organizationId, status: "AKTIV" }, orderBy: [{ nachname: "asc" }, { vorname: "asc" }], select: { id: true, vorname: true, nachname: true, personalnummer: true } }),
   ]);
+  // Erfahrung und Beurteilungsbilanz als Hinweis bei der Zuordnung – blockiert
+  // nichts, macht aber sichtbar, wen man da gerade einteilt.
+  const erfahrung = canRate(user) ? await erfahrungFuer(user.organizationId, employees.map((e) => e.id)) : new Map();
+
   return (
     <div className="space-y-6">
       <div>
@@ -24,7 +30,16 @@ export default async function NeuerEinsatzPage() {
           Danach prüfen, Personen zuordnen, speichern.
         </p>
       </div>
-      <ParseWizard customers={customers} employees={employees.map((e) => ({ id: e.id, name: `${e.vorname} ${e.nachname}`, personalnummer: e.personalnummer }))} />
+      <ParseWizard
+        customers={customers}
+        employees={employees.map((e) => ({
+          id: e.id,
+          name: `${e.vorname} ${e.nachname}`,
+          personalnummer: e.personalnummer,
+          erfahrung: erfahrungKurz(erfahrungOder(erfahrung, e.id)),
+          auffaellig: erfahrungOder(erfahrung, e.id).bilanz.negativ > erfahrungOder(erfahrung, e.id).bilanz.positiv,
+        }))}
+      />
     </div>
   );
 }

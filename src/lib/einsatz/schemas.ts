@@ -179,6 +179,14 @@ export const PasteApplySchema = z.object({
     .min(1, "Keine Person ausgewählt."),
 });
 
+// ─── Backend: interne Bewertung nach dem Einsatz ────────────────────────────
+
+export const RatingSchema = z.object({
+  // null nimmt eine gesetzte Bewertung zurück
+  wert: z.enum(["NEGATIV", "NEUTRAL", "POSITIV"]).nullable(),
+  notiz: z.string().trim().max(500, "Notiz zu lang (max. 500 Zeichen).").transform((v) => (v === "" ? null : v)).nullable().optional(),
+});
+
 // ─── Dispo: Korrektur nach Signatur ─────────────────────────────────────────
 
 export const CorrectionSchema = z.object({
