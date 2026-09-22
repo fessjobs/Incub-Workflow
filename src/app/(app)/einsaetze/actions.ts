@@ -10,6 +10,7 @@ import { canDispo, canReview, requireDispo, requireModuleUser, requireRater, req
 import { processJobsOnce } from "@/lib/einsatz/jobs/worker";
 import { CorrectionSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
 import { setzeBewertung } from "@/lib/einsatz/service/personal";
+import { loescheEinsatz, loeschePerson, loescheZeiterfassung, LoeschError } from "@/lib/einsatz/service/loeschen";
 import { aktualisiereKopf, aktualisiereSchicht, ergaenzePersonen, loescheZeitvorgabe, setzeNamen, vorschauNamen, BesetzungError, type VorschauZeile } from "@/lib/einsatz/service/besetzung";
 import { fromBerlin, keyToDateOnly } from "@/lib/einsatz/tz";
 import { AssignmentError, createAssignment, renewTokens, setAssignmentStatus, type CreateResult } from "@/lib/einsatz/service/assignments";
@@ -20,7 +21,7 @@ import { correctTimeEntry, reviewTimeEntries, TimeEntryError } from "@/lib/einsa
 export type ActionResult = { ok: true; message?: string; documentId?: string } | { ok: false; error: string };
 
 function fail(err: unknown): ActionResult {
-  if (err instanceof AssignmentError || err instanceof TimeEntryError || err instanceof BesetzungError) return { ok: false, error: err.message };
+  if (err instanceof AssignmentError || err instanceof TimeEntryError || err instanceof BesetzungError || err instanceof LoeschError) return { ok: false, error: err.message };
   const message = err instanceof Error ? err.message : "Unbekannter Fehler";
   console.error("Einsatz-Action fehlgeschlagen:", message);
   return { ok: false, error: message };
@@ -302,6 +303,53 @@ export async function releaseAssignmentAction(assignmentId: string): Promise<Act
     revalidatePath("/einsaetze/freigabe");
     revalidatePath("/auswertung");
     return { ok: true, message: `${n} Zeiteintrag/-einträge freigegeben.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ─── Löschen ────────────────────────────────────────────────────────────────
+
+// Erfassung einer Person für eine Schicht löschen. Die Einteilung bleibt und
+// steht danach wieder auf „geplant" – die Person kann neu erfassen.
+// Der zweite Parameter bleibt ungenutzt: alle Lösch-Actions haben dieselbe
+// Form (id, bestaetigung), damit sie sich gleich binden lassen.
+export async function deleteEntryAction(shiftAssignmentId: string, _bestaetigung: string | null = null): Promise<ActionResult> {
+  void _bestaetigung;
+  const user = await requireReviewer();
+  try {
+    const res = await loescheZeiterfassung(user, shiftAssignmentId);
+    revalidatePath(`/einsaetze/${res.assignmentId}`);
+    revalidatePath("/einsaetze/freigabe");
+    revalidatePath("/auswertung");
+    return { ok: true, message: `Erfassung von ${res.person} (${res.schicht}) gelöscht – die Einteilung steht wieder auf „geplant".` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function deleteAssignmentAction(assignmentId: string, bestaetigung: string | null): Promise<ActionResult> {
+  const user = await requireDispo();
+  try {
+    const res = await loescheEinsatz(user, assignmentId, bestaetigung);
+    revalidatePath("/einsaetze");
+    revalidatePath("/dokumente");
+    revalidatePath("/auswertung");
+    const teile = [`${res.schichten} Schicht(en)`, `${res.personen} Einteilung(en)`];
+    if (res.eintraege > 0) teile.push(`${res.eintraege} Erfassung(en)`);
+    if (res.dokumente > 0) teile.push(`${res.dokumente} PDF(s)`);
+    return { ok: true, message: `Einsatz ${res.einsatznummer} „${res.projekt}" gelöscht: ${teile.join(", ")}.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function deleteEmployeeAction(employeeId: string, bestaetigung: string | null): Promise<ActionResult> {
+  const user = await requireDispo();
+  try {
+    const res = await loeschePerson(user, employeeId, bestaetigung);
+    revalidatePath("/einsaetze/personal");
+    return { ok: true, message: `${res.name} gelöscht${res.einteilungen > 0 ? ` (samt ${res.einteilungen} Einteilung(en))` : ""}.` };
   } catch (err) {
     return fail(err);
   }

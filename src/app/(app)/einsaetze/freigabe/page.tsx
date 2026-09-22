@@ -96,7 +96,7 @@ export default async function FreigabePage({ searchParams }: { searchParams: Pro
           Filtern
         </button>
       </form>
-      <ReviewTable rows={rows} review={review} darfBewerten={darfBewerten} />
+      <ReviewTable rows={rows} review={review} darfBewerten={darfBewerten} darfLoeschen />
     </div>
   );
 }

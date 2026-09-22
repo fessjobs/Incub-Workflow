@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { reviewAction } from "../actions";
 import { RatePerson } from "../[id]/rate-person";
+import { DeleteButton } from "../delete-button";
+import { deleteEntryAction } from "../actions";
 
 export type ReviewRow = {
   id: string;
@@ -32,7 +34,7 @@ export type ReviewRow = {
   erfahrung: string;
 };
 
-export function ReviewTable({ rows, review, darfBewerten }: { rows: ReviewRow[]; review: "ERFASST" | "GEPRUEFT" | "FREIGEGEBEN"; darfBewerten: boolean }) {
+export function ReviewTable({ rows, review, darfBewerten, darfLoeschen }: { rows: ReviewRow[]; review: "ERFASST" | "GEPRUEFT" | "FREIGEGEBEN"; darfBewerten: boolean; darfLoeschen: boolean }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
@@ -146,6 +148,23 @@ export function ReviewTable({ rows, review, darfBewerten }: { rows: ReviewRow[];
                   {r.abweichung ? <span className="badge bg-amber-100 text-amber-700">Plan/Ist &gt; 30 min</span> : null}
                   {r.version > 1 ? <span className="badge bg-navy-100 text-navy-600">v{r.version}</span> : null}
                   {r.gesperrt ? <span className="badge bg-navy-900 text-white">Monat gesperrt</span> : null}
+                  {darfLoeschen ? (
+                    <div className="mt-1">
+                      <DeleteButton
+                        testId={`zeit-loeschen-${r.shiftAssignmentId}`}
+                        label="Löschen"
+                        frage={`Erfassung von ${r.name} (${r.datum}, ${r.schicht}) löschen?`}
+                        mitgeht={[
+                          `${r.stunden.toFixed(2).replace(".", ",")} h${r.version > 1 ? ` (alle ${r.version} Versionen)` : ""}`,
+                          r.unterschrieben ? "die Unterschrift" : "noch keine Unterschrift",
+                          "eine gesetzte Beurteilung dieser Schicht",
+                        ]}
+                        bestaetigungWort={null}
+                        gesperrtGrund={review === "FREIGEGEBEN" ? "freigegeben – erst zurücknehmen" : r.gesperrt ? "Monat gesperrt" : null}
+                        onDelete={() => deleteEntryAction(r.shiftAssignmentId)}
+                      />
+                    </div>
+                  ) : null}
                 </td>
                 {darfBewerten ? (
                   <td className="px-3 py-2">

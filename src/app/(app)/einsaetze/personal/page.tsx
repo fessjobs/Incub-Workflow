@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { canRate, requireDispo } from "@/lib/einsatz/access";
 import { bilanzUrteil, erfahrungFuer, erfahrungOder, stufe } from "@/lib/einsatz/service/personal";
+import { pruefePersonLoeschbar } from "@/lib/einsatz/service/loeschen";
 import { BilanzBadge, ErfahrungZeile } from "../rating-badges";
+import { DeleteButton } from "../delete-button";
+import { deleteEmployeeAction } from "../actions";
 import { EmployeeForm } from "./employee-form";
 
 export const metadata: Metadata = { title: "Personal" };
@@ -34,6 +37,9 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
     liste.sort((a, b) => rang[bilanzUrteil(erfahrungOder(erfahrung, a.id).bilanz)] - rang[bilanzUrteil(erfahrungOder(erfahrung, b.id).bilanz)]);
   }
   const bewertet = darfBewerten ? [...erfahrung.values()].filter((e) => e.bilanz.positiv + e.bilanz.neutral + e.bilanz.negativ > 0).length : 0;
+  // Ob eine Person gelöscht werden darf, hängt an ihren Einteilungen –
+  // einmal für die ganze Liste prüfen, damit der Knopf nicht lügt.
+  const loeschbar = new Map(await Promise.all(liste.map(async (e) => [e.id, await pruefePersonLoeschbar(user, user.organizationId, e.id)] as const)));
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
@@ -95,6 +101,19 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
                   <a href={`/einsaetze/personal?edit=${e.id}`} className="btn-secondary">
                     Bearbeiten
                   </a>
+                  <DeleteButton
+                    testId={`person-loeschen-${e.id}`}
+                    label="Löschen"
+                    frage={`${e.vorname} ${e.nachname} wirklich aus dem Stamm löschen?`}
+                    mitgeht={
+                      (loeschbar.get(e.id)?.einteilungen ?? 0) > 0
+                        ? [`${loeschbar.get(e.id)!.einteilungen} Einteilung(en) in Einsätzen – ohne erfasste Zeiten`, "alle Stammdaten dieser Person"]
+                        : ["nur die Stammdaten – diese Person war nie eingeteilt"]
+                    }
+                    bestaetigungWort={loeschbar.get(e.id)?.bestaetigungNoetig ? e.nachname : null}
+                    gesperrtGrund={loeschbar.get(e.id)?.moeglich ? null : loeschbar.get(e.id)?.grund ?? null}
+                    onDelete={deleteEmployeeAction.bind(null, e.id)}
+                  />
                 </div>
               </div>
             );

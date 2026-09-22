@@ -37,7 +37,7 @@ Zeitziele (Abnahme): Rohtext → PDF unter zwei Minuten (Parser ca. 5–15 s, Re
 | Seed | `prisma/seed-einsatz.ts` (2 Kunden, 10 Mitarbeiter, Standard-Lohnarten, Beispieleinsatz `2026-0918-01`) |
 | Kernlogik | `src/lib/einsatz/` – `tz.ts` (Europe/Berlin), `hours.ts`, `holidays.ts`, `bundesland.ts`, `wage.ts` (Regelwerk), `parser.ts` (Claude + Heuristik), `anhaenge.ts` (Screenshot/PDF/Tabelle), `matching.ts`, `conflicts.ts`, `numbering.ts`, `blob.ts`, `documents.ts`, `rate-limit.ts`, `access.ts`, `roles.ts`, `base-url.ts`, `safety.ts`, `mail.ts`, `analytics.ts` |
 | Stammdaten-Import | `src/lib/einsatz/import/` – `parse-table.ts` (CSV/XLSX, Spaltenerkennung), `stammdaten.ts` (Vorschau + Import für Mitarbeiter und Kunden) |
-| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `besetzung.ts` (Namen lesen, Besetzung und Kopfdaten ändern), `crew-roster.ts` (dieselbe Logik über den Gruppenlink, mit engeren Grenzen), `personal.ts` (Erfahrung je Tätigkeit, interne Beurteilung), `public-view.ts` |
+| Services | `src/lib/einsatz/service/` – `assignments.ts`, `time-entries.ts`, `pdf.ts`, `links.ts`, `besetzung.ts` (Namen lesen, Besetzung und Kopfdaten ändern), `crew-roster.ts` (dieselbe Logik über den Gruppenlink, mit engeren Grenzen), `personal.ts` (Erfahrung je Tätigkeit, interne Beurteilung), `loeschen.ts` (Stunden, Einsätze und Personal löschen), `public-view.ts` |
 | Jobs | `src/lib/einsatz/jobs/` (`queue.ts`, `handlers.ts`, `worker.ts`), Start in `src/instrumentation.ts`, Cron-Route `POST /api/jobs/run` |
 | PDFs | `src/lib/einsatz/pdf/` (`layout.tsx`, `konkretisierung.tsx`, `stundennachweis.tsx` inkl. Anlage Sicherheitsunterweisung) |
 | Exporte | `src/lib/export/stunden-excel.ts`, `src/lib/export/zvoove.ts`, `config/zvoove-mapping.json`, `scripts/zvoove-detect.ts` |
@@ -232,6 +232,35 @@ Nichts davon erscheint im Mitarbeiter-Link, auf einem PDF oder in einem Export. 
 
 Migration `20260922140000_erfahrung_bewertung` (Tabelle `shift_ratings`, Enum `RatingWert`, mit `down.sql`).
 
+### 7b. Löschen im Backend
+
+Gelöscht wird wirklich gelöscht – kein verstecktes Storno. Damit trotzdem nachvollziehbar bleibt, was verschwunden ist, schreibt jede Löschung einen **vollständigen Abzug ins Audit-Log**: wer, wann, was genau, bei PDFs inklusive Prüfsumme und Dateiname. Die Logik liegt in `service/loeschen.ts`.
+
+Zwei Grenzen gelten **immer**, für jede Rolle, auch für den Admin:
+
+- **Freigegebene Zeiten** lassen sich nicht löschen – erst die Freigabe zurücknehmen.
+- Ein **gesperrter Monat** bleibt gesperrt.
+
+| Was | Wer | Bedingung |
+|---|---|---|
+| **Stunden** (Erfassung einer Person für eine Schicht) | Admin, Disposition, Buchhaltung | nicht freigegeben |
+| **Einsatz** ohne Unterschriften und ohne Kundenbestätigung | Disposition | – |
+| **Einsatz** mit Unterschriften oder Kundenbestätigung | nur Admin | Einsatznummer eintippen |
+| **Einsatz** abgerechnet | niemand | – |
+| **Person** ohne Einteilungen | Disposition | – |
+| **Person** mit Einteilungen, aber ohne erfasste Zeiten | nur Admin | Nachnamen eintippen |
+| **Person** mit unterschriebenen Zeiten | niemand | stattdessen auf inaktiv setzen |
+
+**Stunden löschen** entfernt alle Versionen der Erfassung, die Fahrten, die Unterschrift (PNG im Blob-Speicher) und die interne Beurteilung dieser Schicht. Die Einteilung bleibt bestehen und steht wieder auf „geplant" – der Link, den die Person schon hat, funktioniert weiter, sie kann neu erfassen.
+
+**Einsatz löschen** nimmt Schichten, Einteilungen, Erfassungen, Fahrten, Beurteilungen, die Kundenbestätigung und die PDFs mit, die nur an diesem Einsatz hängen. Ein PDF, das noch woanders verlinkt ist, bleibt bestehen; beides steht im Protokoll.
+
+**Person löschen** entfernt Stammdaten und Einteilungen. Wer schon unterschrieben hat, bleibt stehen – dort ist „inaktiv setzen" der richtige Weg, damit die Historie intakt bleibt.
+
+Gelöscht wird nur, was die Oberfläche auch anbietet: Wo eine Löschung nicht möglich ist, steht statt des Knopfes die Begründung im Klartext. Vor jeder Löschung zeigt ein Dialog, was genau mitgeht; wo zusätzlich getippt werden muss, bleibt der Knopf bis dahin inaktiv.
+
+Der S3-Adapter kann (noch) nicht löschen: Liegen Unterschriften in einem Bucket statt in der Datenbank, verschwindet die Referenz, die Datei bleibt liegen.
+
 ## 8. Exporte
 
 - Excel (`exceljs`): Blatt „Zeiteinträge“ (Rohform), „Je Person“, „Je Kunde“, „Lohnarten“ (je Person und Monat, inkl. Abzüge). Spaltenbreiten, Zahlenformate, Filterzeile, SUBTOTAL-Summenzeile.
@@ -258,6 +287,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
+  - `loeschen.spec.ts`: Stunden löschen (Einteilung bleibt, steht wieder auf „geplant", Erfahrung sinkt) → freigegebene Zeiten sind gesperrt, mit Begründung statt Knopf → nach Rücknahme der Freigabe löscht der Admin den Einsatz mit getippter Nummer (falsches Wort hält den Knopf zu, der Link liefert danach 404) → Person ohne Einteilungen löschen → Person mit unterschriebenen Zeiten bleibt stehen.
   - `bewertung.spec.ts`: neue Person startet bei null Schichten → nach der Unterschrift zählt die Schicht samt Tätigkeit → bewerten mit Notiz → Stundenzettel am Einsatz freigeben → Personalliste und Profil zeigen Erfahrung und Bilanz → **nichts davon im Mitarbeiter-Link oder in der öffentlichen Schnittstelle** → Bewertung zurücknehmen.
   - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.
   - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.
@@ -301,7 +331,10 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 29. **Der Hinweis bei der Einteilung blockiert nicht**: Überwiegt Negatives, steht das rot bei der Person – die Dispo entscheidet trotzdem selbst. Eine harte Sperre wäre in der Praxis (kurzfristige Besetzung, wenig Auswahl) mehr im Weg als hilfreich.
 30. **Erfahrungsstufen** (neu / eingearbeitet ab 1 / geübt ab 8 / erfahren ab 25) sind eine Annahme. Die nackte Zahl steht immer daneben; die Schwellen liegen in `STUFEN` in `service/personal.ts` und sind in einer Zeile geändert.
 31. **Beurteilungen sind Beschäftigtendaten.** Sie liegen zwar nur im Backend, unterliegen aber der DSGVO: Betroffene haben ein Auskunftsrecht (Art. 15) auch auf interne Notizen. Deshalb sollten die Notizen sachlich und nachvollziehbar formuliert sein („zweimal unentschuldigt zu spät“ statt einer Charakterbeurteilung). Löschfristen sind noch festzulegen – siehe offener Punkt 9.
-32. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
+32. **Löschen heißt löschen**: kein Soft-Delete-Flag, das die Daten still weiterschleppt. Die Nachvollziehbarkeit hängt am Audit-Log, das einen vollständigen Abzug samt PDF-Prüfsummen behält – nicht daran, dass Zeilen in der Datenbank liegen bleiben.
+33. **Die Freigabe ist die Grenze, nicht die Rolle**: Auch der Admin kommt an freigegebene Zeiten und gesperrte Monate nicht heran. Wer wirklich muss, nimmt erst die Freigabe zurück bzw. entsperrt den Monat – das ist dann eine eigene, protokollierte Handlung.
+34. **Personen mit Unterschrift werden nicht gelöscht, sondern inaktiv gesetzt.** Ein unterschriebener Stundennachweis benennt die Person; verschwindet der Stammsatz, steht der Nachweis ohne Bezug da.
+35. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
 
 ## 12. Offene Punkte (Entscheidung nötig)
 

@@ -6,6 +6,7 @@ import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
 import { bearbeitbarkeit } from "@/lib/einsatz/service/besetzung";
 import { erfahrungFuer, erfahrungOder } from "@/lib/einsatz/service/personal";
+import { pruefeEinsatzLoeschbar } from "@/lib/einsatz/service/loeschen";
 import { db } from "@/lib/db";
 import { gruppenlinkFor, linkRows } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
@@ -22,6 +23,8 @@ import { RenamePerson } from "./rename-person";
 import { Zeitvorgabe } from "./zeitvorgabe";
 import { RatePerson } from "./rate-person";
 import { BilanzBadge, ErfahrungZeile } from "../rating-badges";
+import { DeleteButton } from "../delete-button";
+import { deleteAssignmentAction, deleteEntryAction } from "../actions";
 import { cancelShiftAssignmentAction } from "../actions";
 
 export const metadata: Metadata = { title: "Einsatz" };
@@ -52,6 +55,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   const darfFreigeben = canReview(user);
   const personen = a.shifts.flatMap((s) => s.assignments.map((sa) => sa.employeeId));
   const erfahrung = darfBewerten ? await erfahrungFuer(user.organizationId, [...new Set(personen)]) : new Map();
+  const loeschbar = dispo ? pruefeEinsatzLoeschbar(user, a) : null;
   const offeneZeiten = a.shifts.reduce(
     (n, s) => n + s.assignments.filter((sa) => sa.status !== "STORNIERT" && sa.timeEntries.some((t) => t.unterschriftZeitpunkt && t.review !== "FREIGEGEBEN")).length,
     0
@@ -217,6 +221,21 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
                       <RatePerson shiftAssignmentId={sa.id} wert={sa.bewertung?.wert ?? null} notiz={sa.bewertung?.notiz ?? null} name={`${sa.employee.vorname} ${sa.employee.nachname}`} />
                     ) : null}
                     {dispo ? <RenamePerson shiftAssignmentId={sa.id} vorname={sa.employee.vorname} nachname={sa.employee.nachname} unterschrieben={Boolean(e?.unterschriftZeitpunkt)} /> : null}
+                    {darfFreigeben && e ? (
+                      <DeleteButton
+                        testId={`zeit-loeschen-${sa.id}`}
+                        label="Stunden löschen"
+                        frage={`Erfassung von ${sa.employee.vorname} ${sa.employee.nachname} löschen?`}
+                        mitgeht={[
+                          `${Number(e.stundenGesamt).toFixed(2).replace(".", ",")} h am ${formatKeyDE(berlinDateKey(e.istStart))}${e.version > 1 ? ` (alle ${e.version} Versionen)` : ""}`,
+                          e.unterschriftZeitpunkt ? "die Unterschrift" : "noch keine Unterschrift",
+                          "eine gesetzte Beurteilung dieser Schicht",
+                        ]}
+                        bestaetigungWort={null}
+                        gesperrtGrund={e.review === "FREIGEGEBEN" ? "freigegeben – erst Freigabe zurücknehmen" : null}
+                        onDelete={deleteEntryAction.bind(null, sa.id)}
+                      />
+                    ) : null}
                     {dispo && !e ? (
                       <form action={cancelShiftAssignmentAction.bind(null, sa.id)}>
                         <button type="submit" className="btn-secondary text-xs">
@@ -260,6 +279,32 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
           </ul>
         )}
       </div>
+
+      {dispo && loeschbar ? (
+        <div className="card p-5" data-testid="einsatz-loeschen-karte">
+          <p className="eyebrow">Einsatz löschen</p>
+          <p className="mt-1 text-sm text-navy-400">
+            Entfernt den Einsatz mit allen Schichten, Einteilungen, Erfassungen und den dazugehörigen PDFs. Was gelöscht wurde, bleibt mit allen Daten im Protokoll.
+          </p>
+          <div className="mt-3">
+            <DeleteButton
+              testId="einsatz-loeschen"
+              label={`Einsatz ${a.einsatznummer} löschen`}
+              frage={`Einsatz ${a.einsatznummer} „${a.projekt}“ wirklich löschen?`}
+              mitgeht={[
+                `${a.shifts.length} Schicht(en) mit ${a.shifts.reduce((n, s) => n + s.assignments.length, 0)} Einteilung(en)`,
+                loeschbar.unterschriften > 0 ? `${loeschbar.unterschriften} unterschriebene Erfassung(en)` : "keine erfassten Zeiten",
+                loeschbar.kundeBestaetigt ? "die Bestätigung des Kunden" : "keine Kundenbestätigung",
+                loeschbar.dokumente > 0 ? `${loeschbar.dokumente} PDF(s) aus dem Dokumentenspeicher` : "keine PDFs",
+              ]}
+              bestaetigungWort={loeschbar.bestaetigungNoetig ? a.einsatznummer : null}
+              gesperrtGrund={loeschbar.moeglich ? null : loeschbar.grund}
+              onDelete={deleteAssignmentAction.bind(null, a.id)}
+              weiterNach="/einsaetze"
+            />
+          </div>
+        </div>
+      ) : null}
 
       {a.rawInput ? (
         <details className="card p-5">

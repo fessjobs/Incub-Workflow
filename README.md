@@ -53,6 +53,10 @@ konfigurierbarem Mapping und Validierung.
 - **Stammdaten-Import**: Excel- oder CSV-Listen für Mitarbeiter (`/einsaetze/personal/import`)
   und Kunden (`/einsaetze/kunden/import`) – Spalten werden an den Überschriften erkannt,
   Vorschau je Zeile vor der Übernahme, keine Dubletten
+- **Löschen im Backend**: Stunden, ganze Einsätze und Personen lassen sich löschen –
+  mit Ansage, was mitgeht, und vollständigem Abzug im Protokoll. Freigegebene Zeiten und
+  gesperrte Monate sind für alle tabu; bei Unterschriften muss ein Admin die Einsatznummer
+  eintippen
 - **Erfahrung und Beurteilung (nur Backend)**: hinter jeder Person die Zahl der
   geleisteten Schichten je Tätigkeit, dazu eine interne Beurteilung je Einsatz
   (negativ / neutral / positiv mit Notiz) und die Bilanz in der Personalübersicht.
