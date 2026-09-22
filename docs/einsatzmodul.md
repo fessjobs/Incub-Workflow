@@ -33,7 +33,7 @@ Zeitziele (Abnahme): Rohtext → PDF unter zwei Minuten (Parser ca. 5–15 s, Re
 
 | Bereich | Pfad |
 |---|---|
-| Datenmodell | `prisma/schema.prisma` (Abschnitt „Modul Einsätze & Stundennachweise“), Migration `prisma/migrations/20260918003757_einsatz_modul/` (+ `down.sql`) |
+| Datenmodell | `prisma/schema.prisma` (Abschnitt „Modul Einsätze & Stundennachweise“), Migrationen `prisma/migrations/20260918003757_einsatz_modul/`, `20260918091612_disponent_rolle/`, `20260922090000_schicht_zeitvorgabe/` (jeweils mit `down.sql`) |
 | Seed | `prisma/seed-einsatz.ts` (2 Kunden, 10 Mitarbeiter, Standard-Lohnarten, Beispieleinsatz `2026-0918-01`) |
 | Kernlogik | `src/lib/einsatz/` – `tz.ts` (Europe/Berlin), `hours.ts`, `holidays.ts`, `bundesland.ts`, `wage.ts` (Regelwerk), `parser.ts` (Claude + Heuristik), `anhaenge.ts` (Screenshot/PDF/Tabelle), `matching.ts`, `conflicts.ts`, `numbering.ts`, `blob.ts`, `documents.ts`, `rate-limit.ts`, `access.ts`, `roles.ts`, `base-url.ts`, `safety.ts`, `mail.ts`, `analytics.ts` |
 | Stammdaten-Import | `src/lib/einsatz/import/` – `parse-table.ts` (CSV/XLSX, Spaltenerkennung), `stammdaten.ts` (Vorschau + Import für Mitarbeiter und Kunden) |
@@ -154,11 +154,19 @@ Der Parser verliest sich bei Namen, und manchmal kommt jemand kurzfristig dazu. 
 
 Grenzen: Eine Person, die bereits unterschrieben hat, wird nicht mehr umbenannt (der Name steht auf dem Beleg). Nach der Kundenbestätigung sind beide Aktionen gesperrt – ab da korrigiert nur noch die Dispo. Jede Änderung steht mit altem und neuem Namen, IP und Quelle `crew-link` im Audit-Log.
 
-### 6c. Der fertige Beleg
+### 6c. Zeiten für alle übernehmen
+
+Bei einem Einsatz arbeiten fast alle dieselbe Schicht. Hat die erste Person ihre Ist-Zeiten eingetragen und unterschrieben, steht auf der Schicht ein Knopf: **„Zeiten von X für alle N Übrigen übernehmen“**. Danach sind Beginn, Ende und Pause bei allen noch offenen Erfassungen vorausgefüllt – im Gruppenlink und im Einzellink – mit einem Hinweis, von wem sie stammen und dass sich abweichen lässt.
+
+**Unterschreiben muss weiterhin jede Person selbst.** Die Vorgabe füllt nur das Formular vor; eine Zeit ohne eigene Unterschrift wäre als Nachweis wertlos. Wer anders gearbeitet hat, ändert die Felder und unterschreibt seine eigenen Zeiten.
+
+Gespeichert wird die Vorgabe auf der Schicht (`vorgabeStart`, `vorgabeEnde`, `vorgabePause`, `vorgabeVon`, `vorgabeAm`, Migration `20260922090000_schicht_zeitvorgabe`) – also pro Schicht, nicht pro Einsatz: „Load-Out 21:30“ bekommt nicht die Zeiten von „Aufbau 07:00“. Die Dispo sieht die Vorgabe in der Schichtzeile und kann sie zurücknehmen; danach starten neue Erfassungen wieder mit den Planzeiten. Wer sie gesetzt hat, mit welchen Zeiten und für wie viele Offene, steht im Audit-Log.
+
+### 6d. Der fertige Beleg
 
 Sobald der Kunde bestätigt hat, zeigt der Link den unterschriebenen Stundennachweis: **Ansehen**, **Teilen** (Web Share API mit der PDF-Datei, sonst mit dem Link) und **Herunterladen** über `GET /api/e/crew/[token]/pdf` bzw. `GET /api/e/[token]/pdf`. Das PDF entsteht in einem Hintergrund-Job – solange es fehlt, steht dort „wird gerade erstellt“ und die Seite fragt alle drei Sekunden nach (zehnmal), statt einen Fehler zu zeigen.
 
-### 6d. Einzellink und Technik
+### 6e. Einzellink und Technik
 
 - `/e/[token]`: mobil zuerst, hell, Akzent `#E3682E`, große Touchflächen. Kopf (Einsatz, Kunde, Ort, Datum, eigene Schicht), Zeiten vorbelegt, Pause, Tätigkeit, PKW (privat/Firma, beliebig viele Fahrten), Spesen (+ optionaler Betrag), Notiz, aufklappbare Unterweisung mit Pflicht-Haken, Signatur-Canvas, Absenden.
 - Danach gesperrt (Leseansicht + PDF). Änderungen nur durch die Dispo mit Begründung als neue Version.
@@ -212,6 +220,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
+  - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.
   - `anhang.spec.ts`: Einsatz allein aus einer angehängten Datei, Begründung für nicht lesbare Anhänge.
   - `import.spec.ts`: Mitarbeiter- und Kundenimport mit Vorschau, Übernahme und Dublettenschutz beim zweiten Lauf.
   - `bearbeiten.spec.ts`: Namen per Copy-Paste ergänzen (gedrehte Namen, Rollenkürzel, Dubletten), Kopfdaten und Schichtzeiten ändern, Namen richtigstellen vor und nach der Kundenbestätigung, Sperren danach.
@@ -245,7 +254,8 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 22. **Die Kundenbestätigung ist die Grenze** für Kopfdaten, Schichtzeiten und Besetzung – nicht die Konkretisierung. Das PDF lässt sich jederzeit neu erzeugen, die Unterschrift des Kunden nicht.
 23. **Namen sind immer änderbar**, auch nach der Bestätigung und auch nach der Unterschrift der Person. Die Alternative – Namen einfrieren – wäre in der Praxis falsch (Heirat, Schreibfehler, Namenszusätze). Die Rückverfolgbarkeit hängt am Audit-Log und an der Prüfsumme der ersetzten PDF-Fassung, nicht an der Unveränderlichkeit des Stammsatzes.
 24. **Umbenennen hängt um statt zu duplizieren**: Gibt es den neuen Namen schon im Stamm, wird die Einteilung dorthin verschoben. Nur ein Datensatz ohne Personalnummer, Kontaktdaten und zweite Einteilung wird umbenannt – sonst würde ein Tippfehler bei einer Person deren gesamte Historie umbenennen.
-25. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
+25. **Die Zeitvorgabe füllt nur vor, sie erfasst nicht**: „Zeiten für alle übernehmen“ legt keine Einträge für andere an. Jede Person prüft und unterschreibt selbst – ein Stundennachweis mit fremdbestimmten Zeiten ohne eigene Unterschrift wäre als Nachweis wertlos. Sie gilt je Schicht, nicht je Einsatz, und erst ab der ersten unterschriebenen Erfassung.
+26. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
 
 ## 12. Offene Punkte (Entscheidung nötig)
 

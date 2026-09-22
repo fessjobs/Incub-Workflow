@@ -53,6 +53,9 @@ konfigurierbarem Mapping und Validierung.
 - **Stammdaten-Import**: Excel- oder CSV-Listen für Mitarbeiter (`/einsaetze/personal/import`)
   und Kunden (`/einsaetze/kunden/import`) – Spalten werden an den Überschriften erkannt,
   Vorschau je Zeile vor der Übernahme, keine Dubletten
+- **Zeiten für alle übernehmen**: Hat die erste Person im Gruppenlink ihre Zeiten
+  eingetragen, lassen sie sich für alle Übrigen derselben Schicht übernehmen – deren
+  Formulare sind dann vorausgefüllt. Unterschreiben muss weiterhin jede selbst
 - **Alles änderbar bis zur Kundenbestätigung**: Kopfdaten, Schichtzeiten und Besetzung lassen
   sich in der Detailansicht nachträglich bearbeiten; **Namen per Copy-Paste** je Schicht
   einfügen (eine Person je Zeile, „Nachname, Vorname“ wird gedreht, Rollenkürzel erkannt).

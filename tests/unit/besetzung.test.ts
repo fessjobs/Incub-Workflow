@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bearbeitbarkeit, nameKey, namenAusText, teileEingabe } from "@/lib/einsatz/service/besetzung";
+import { bearbeitbarkeit, nameKey, namenAusText, teileEingabe, zeitvorgabeVon } from "@/lib/einsatz/service/besetzung";
 
 describe("Namen aus eingefügtem Text", () => {
   it("liest eine Person je Zeile", () => {
@@ -88,5 +88,42 @@ describe("Was wann geändert werden darf", () => {
 
   it("ein abgeschlossener Einsatz ist zu", () => {
     expect(bearbeitbarkeit({ ...leer, status: "ABGESCHLOSSEN" })).toMatchObject({ kopf: false, schichten: false, besetzung: false, namen: true });
+  });
+});
+
+describe("Zeitvorgabe je Schicht", () => {
+  const leer = { vorgabeStart: null, vorgabeEnde: null, vorgabePause: null, vorgabeVon: null, vorgabeAm: null };
+
+  it("ohne gesetzte Vorgabe gibt es keine", () => {
+    expect(zeitvorgabeVon(leer)).toBeNull();
+    // Halb gesetzt zählt nicht – sonst stünde im Formular eine Zeit ohne Ende
+    expect(zeitvorgabeVon({ ...leer, vorgabeStart: new Date("2026-09-18T05:00:00Z") })).toBeNull();
+  });
+
+  it("rechnet die gespeicherten Zeitpunkte in Berliner Zeit um", () => {
+    const v = zeitvorgabeVon({
+      vorgabeStart: new Date("2026-09-18T05:00:00Z"),
+      vorgabeEnde: new Date("2026-09-18T13:30:00Z"),
+      vorgabePause: 45,
+      vorgabeVon: "Samira Gülhan",
+      vorgabeAm: new Date("2026-09-18T14:00:00Z"),
+    });
+    expect(v).toMatchObject({ startDatum: "2026-09-18", start: "07:00", endeDatum: "2026-09-18", ende: "15:30", pauseMinuten: 45, von: "Samira Gülhan" });
+  });
+
+  it("trägt eine Schicht über Mitternacht richtig aus", () => {
+    const v = zeitvorgabeVon({
+      vorgabeStart: new Date("2026-09-18T19:30:00Z"),
+      vorgabeEnde: new Date("2026-09-19T01:30:00Z"),
+      vorgabePause: 0,
+      vorgabeVon: "Ali Demir",
+      vorgabeAm: new Date(),
+    });
+    expect(v).toMatchObject({ startDatum: "2026-09-18", start: "21:30", endeDatum: "2026-09-19", ende: "03:30" });
+  });
+
+  it("eine Pause von 0 Minuten ist eine gültige Vorgabe", () => {
+    const v = zeitvorgabeVon({ vorgabeStart: new Date("2026-09-18T05:00:00Z"), vorgabeEnde: new Date("2026-09-18T13:00:00Z"), vorgabePause: 0, vorgabeVon: "X", vorgabeAm: new Date() });
+    expect(v?.pauseMinuten).toBe(0);
   });
 });

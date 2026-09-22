@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { SAFETY_SECTIONS, SAFETY_VERSION, CONFIRMATION_TEXT } from "../safety";
 import { berlinDateKey, berlinTime, dateOnlyKey, formatKeyDE } from "../tz";
 import { tokenState, type TokenState } from "./time-entries";
+import { zeitvorgabeVon, type Zeitvorgabe } from "./besetzung";
 
 type SAWithAll = Prisma.ShiftAssignmentGetPayload<{
   include: {
@@ -39,6 +40,8 @@ export type TokenView = {
   schicht: { bezeichnung: string; taetigkeit: string; treffpunkt: string | null; startDatum: string; start: string; endeDatum: string; ende: string; datumDE: string };
   person: { vorname: string; nachname: string };
   eintrag: EntryView | null;
+  // Von einer Kollegin/einem Kollegen für die ganze Schicht übernommene Zeiten
+  vorgabe: Zeitvorgabe;
   unterweisung: { version: string; abschnitte: typeof SAFETY_SECTIONS; bestaetigung: string[] };
 };
 
@@ -88,6 +91,7 @@ export function tokenView(sa: SAWithAll): TokenView {
     },
     person: { vorname: sa.employee.vorname, nachname: sa.employee.nachname },
     eintrag: entry ? entryView(entry) : null,
+    vorgabe: zeitvorgabeVon(sa.shift),
     unterweisung: { version: SAFETY_VERSION, abschnitte: SAFETY_SECTIONS, bestaetigung: CONFIRMATION_TEXT },
   };
 }

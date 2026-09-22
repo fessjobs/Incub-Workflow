@@ -156,10 +156,13 @@ export function EntryForm({ token }: { token: string }) {
       }
       const v = (await res.json()) as TokenView;
       setView(v);
-      setStartDatum(v.schicht.startDatum);
-      setStart(v.schicht.start);
-      setEndeDatum(v.schicht.endeDatum);
-      setEnde(v.schicht.ende);
+      // Hat jemand seine Zeiten für die ganze Schicht übernommen, stehen die
+      // hier schon drin – sonst die Planzeiten.
+      setStartDatum(v.vorgabe?.startDatum ?? v.schicht.startDatum);
+      setStart(v.vorgabe?.start ?? v.schicht.start);
+      setEndeDatum(v.vorgabe?.endeDatum ?? v.schicht.endeDatum);
+      setEnde(v.vorgabe?.ende ?? v.schicht.ende);
+      if (v.vorgabe) setPause(String(v.vorgabe.pauseMinuten));
       setTaetigkeit(v.schicht.taetigkeit);
     } catch {
       setLoadError("Keine Verbindung. Sobald wieder Netz da ist, bitte neu laden.");
@@ -290,6 +293,11 @@ export function EntryForm({ token }: { token: string }) {
       >
         <div className="ez-card" style={{ display: "grid", gap: "0.7rem" }}>
           <p className="ez-eyebrow">Arbeitszeit</p>
+          {view.vorgabe ? (
+            <div className="ez-info" data-testid="vorgabe-hinweis">
+              Zeiten von {view.vorgabe.von} übernommen: {view.vorgabe.start}–{view.vorgabe.ende} Uhr, Pause {view.vorgabe.pauseMinuten} min. Wenn es bei dir anders war, hier ändern.
+            </div>
+          ) : null}
           <div className="ez-row">
             <div>
               <label className="ez-label" htmlFor="startDatum">Start (Datum)</label>

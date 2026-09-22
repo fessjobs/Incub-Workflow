@@ -26,10 +26,13 @@ type Person = {
   eintrag: { stundenGesamt: number; start: string; ende: string; pauseMinuten: number } | null;
 };
 
+// Zeiten, die eine Person für die ganze Schicht übernommen hat
+type Zeitvorgabe = { start: string; ende: string; startDatum: string; endeDatum: string; pauseMinuten: number; von: string; am: string } | null;
+
 type CrewView = {
   state: "offen" | "abgelaufen";
   einsatz: { einsatznummer: string; projekt: string; artist: string | null; kunde: string; einsatzort: string; datum: string };
-  schichten: Array<{ id: string; bezeichnung: string; taetigkeit: string; datumDE: string; personen: Person[] }>;
+  schichten: Array<{ id: string; bezeichnung: string; taetigkeit: string; datumDE: string; vorgabe: Zeitvorgabe; personen: Person[] }>;
   kunde: { name: string; zeitpunkt: string } | null;
   korrigierbar: boolean;
   unterweisung: { version: string; abschnitte: SafetySection[]; bestaetigung: string[] };
@@ -308,6 +311,17 @@ export function CrewFlow({ token }: { token: string }) {
               </button>
             )
           ) : null}
+
+          <ZeitenFuerAlle
+            schicht={s}
+            token={token}
+            gesperrt={view.state === "abgelaufen" || view.kunde !== null}
+            onUebernehmen={async (shiftAssignmentId) => {
+              const res = await post(`crew:${token}:zeiten:${s.id}`, { aktion: "zeiten-fuer-alle", shiftAssignmentId });
+              if (res.ok && !res.queued) setInfo(`Zeiten für „${s.bezeichnung}“ übernommen – bei den Übrigen sind sie vorausgefüllt.`);
+              return res;
+            }}
+          />
         </div>
       ))}
 
@@ -332,6 +346,66 @@ export function CrewFlow({ token }: { token: string }) {
         )}
       </div>
     </>
+  );
+}
+
+// Bei einem Einsatz arbeiten fast alle dieselbe Schicht. Hat die erste Person
+// ihre Zeiten eingetragen, lassen sie sich für alle übrigen übernehmen: die
+// Formulare sind dann vorausgefüllt. Unterschreiben muss jede selbst.
+function ZeitenFuerAlle({
+  schicht,
+  token,
+  gesperrt,
+  onUebernehmen,
+}: {
+  schicht: CrewView["schichten"][number];
+  token: string;
+  gesperrt: boolean;
+  onUebernehmen: (shiftAssignmentId: string) => Promise<{ ok: boolean; error?: string; queued?: boolean }>;
+}) {
+  const [fehler, setFehler] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  void token;
+
+  const erfasst = schicht.personen.filter((p) => p.erfasst && p.eintrag);
+  const offen = schicht.personen.filter((p) => !p.erfasst);
+  const v = schicht.vorgabe;
+
+  if (v) {
+    return (
+      <p className="ez-muted" style={{ marginTop: "0.6rem", fontSize: "0.85rem" }} data-testid={`zeiten-uebernommen-${schicht.id}`}>
+        Zeiten von {v.von} gelten für diese Schicht: {v.start}–{v.ende} Uhr, Pause {v.pauseMinuten} min. Sie sind bei allen vorausgefüllt und lassen sich einzeln ändern.
+      </p>
+    );
+  }
+  // Erst anbieten, wenn jemand erfasst hat und noch jemand offen ist
+  if (gesperrt || erfasst.length === 0 || offen.length === 0) return null;
+
+  const quelle = erfasst[0];
+  const e = quelle.eintrag!;
+
+  return (
+    <div style={{ marginTop: "0.6rem" }}>
+      <button
+        type="button"
+        className="ez-btn ez-btn-ghost ez-btn-small"
+        disabled={busy}
+        data-testid={`zeiten-fuer-alle-${schicht.id}`}
+        onClick={async () => {
+          setFehler(null);
+          setBusy(true);
+          const res = await onUebernehmen(quelle.shiftAssignmentId);
+          setBusy(false);
+          if (!res.ok) setFehler(res.error ?? "Fehler");
+        }}
+      >
+        {busy ? "Übernimmt …" : `Zeiten von ${quelle.vorname} für alle ${offen.length} Übrigen übernehmen`}
+      </button>
+      <p className="ez-muted" style={{ marginTop: "0.3rem", fontSize: "0.82rem" }}>
+        {e.start}–{e.ende} Uhr, Pause {e.pauseMinuten} min. Jede Person prüft und unterschreibt weiterhin selbst.
+      </p>
+      {fehler ? <p className="ez-error" style={{ marginTop: "0.4rem" }}>{fehler}</p> : null}
+    </div>
   );
 }
 
@@ -427,11 +501,14 @@ function PersonForm({
   onCancel: () => void;
   onSubmit: (body: unknown) => Promise<{ ok: boolean; error?: string }>;
 }) {
-  const [startDatum, setStartDatum] = useState(person.startDatum);
-  const [start, setStart] = useState(person.start);
-  const [endeDatum, setEndeDatum] = useState(person.endeDatum);
-  const [ende, setEnde] = useState(person.ende);
-  const [pause, setPause] = useState("30");
+  // Hat jemand seine Zeiten für die Schicht übernommen, stehen die hier
+  // schon drin – sonst die Planzeiten.
+  const v = schicht.vorgabe;
+  const [startDatum, setStartDatum] = useState(v?.startDatum ?? person.startDatum);
+  const [start, setStart] = useState(v?.start ?? person.start);
+  const [endeDatum, setEndeDatum] = useState(v?.endeDatum ?? person.endeDatum);
+  const [ende, setEnde] = useState(v?.ende ?? person.ende);
+  const [pause, setPause] = useState(String(v?.pauseMinuten ?? 30));
   const [pkw, setPkw] = useState(false);
   const [pkwArt, setPkwArt] = useState<"PRIVAT" | "FIRMA" | null>(null);
   const [km, setKm] = useState("");
@@ -487,6 +564,11 @@ function PersonForm({
       </div>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "grid", gap: "0.8rem", marginTop: "0.8rem" }}>
         <div className="ez-card" style={{ display: "grid", gap: "0.7rem" }}>
+          {v ? (
+            <div className="ez-info" data-testid="vorgabe-hinweis">
+              Zeiten von {v.von} übernommen: {v.start}–{v.ende} Uhr, Pause {v.pauseMinuten} min. Wenn es bei dir anders war, hier ändern.
+            </div>
+          ) : null}
           <div className="ez-row">
             <div>
               <label className="ez-label">Start (Datum)</label>

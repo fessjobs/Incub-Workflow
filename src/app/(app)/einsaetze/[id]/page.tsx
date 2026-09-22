@@ -18,6 +18,7 @@ import { CorrectionForm } from "./correction-form";
 import { EditKopf, EditSchicht } from "./edit-forms";
 import { PasteNames } from "./paste-names";
 import { RenamePerson } from "./rename-person";
+import { Zeitvorgabe } from "./zeitvorgabe";
 import { cancelShiftAssignmentAction } from "../actions";
 
 export const metadata: Metadata = { title: "Einsatz" };
@@ -122,6 +123,9 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
                 {s.anzahlSoll !== null ? ` · Soll ${s.anzahlSoll}` : ""}
                 {s.garantieStunden !== null ? ` · Garantie ${Number(s.garantieStunden)} h` : ""}
               </p>
+              {dispo && s.vorgabeStart && s.vorgabeEnde && s.vorgabePause !== null ? (
+                <Zeitvorgabe shiftId={s.id} start={berlinTime(s.vorgabeStart)} ende={berlinTime(s.vorgabeEnde)} pauseMinuten={s.vorgabePause} von={s.vorgabeVon ?? "–"} />
+              ) : null}
             </div>
             {dispo && offen.schichten ? (
               <EditSchicht

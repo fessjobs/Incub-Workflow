@@ -9,7 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { canDispo, canReview, requireDispo, requireModuleUser, requireReviewer } from "@/lib/einsatz/access";
 import { processJobsOnce } from "@/lib/einsatz/jobs/worker";
 import { CorrectionSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
-import { aktualisiereKopf, aktualisiereSchicht, ergaenzePersonen, setzeNamen, vorschauNamen, BesetzungError, type VorschauZeile } from "@/lib/einsatz/service/besetzung";
+import { aktualisiereKopf, aktualisiereSchicht, ergaenzePersonen, loescheZeitvorgabe, setzeNamen, vorschauNamen, BesetzungError, type VorschauZeile } from "@/lib/einsatz/service/besetzung";
 import { fromBerlin, keyToDateOnly } from "@/lib/einsatz/tz";
 import { AssignmentError, createAssignment, renewTokens, setAssignmentStatus, type CreateResult } from "@/lib/einsatz/service/assignments";
 import { scheduleLinkJobs } from "@/lib/einsatz/service/links";
@@ -248,6 +248,18 @@ export async function addNamesAction(input: unknown): Promise<ActionResult> {
     if (res.neuAngelegt > 0) teile.push(`${res.neuAngelegt} neu im Stamm`);
     if (res.uebersprungen.length > 0) teile.push(`übersprungen: ${res.uebersprungen.map((u) => `${u.name} (${u.grund})`).join(", ")}`);
     return { ok: true, message: `${teile.join(" · ")}.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// Von der Crew übernommene Zeitvorgabe einer Schicht zurücknehmen
+export async function clearZeitvorgabeAction(shiftId: string): Promise<ActionResult> {
+  const user = await requireDispo();
+  try {
+    await loescheZeitvorgabe(user.organizationId, shiftId, { userId: user.id, ip: null, quelle: "dispo" });
+    revalidatePath("/einsaetze");
+    return { ok: true, message: "Zeitvorgabe zurückgenommen. Neue Erfassungen starten wieder mit den Planzeiten." };
   } catch (err) {
     return fail(err);
   }

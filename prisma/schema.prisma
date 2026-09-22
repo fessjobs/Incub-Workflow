@@ -724,6 +724,14 @@ model Shift {
   anzahlSoll      Int?
   // Optionale Garantiestunden je Schicht (überschreibt die Regel-Vorgabe)
   garantieStunden Decimal? @db.Decimal(5, 2)
+  // Von der Crew übernommene Ist-Zeiten: Wer als Erstes erfasst, kann seine
+  // Zeiten für alle auf dieser Schicht als Vorgabe setzen. Die Vorgabe füllt
+  // die Formulare der Übrigen vor – unterschreiben muss jede Person selbst.
+  vorgabeStart    DateTime?
+  vorgabeEnde     DateTime?
+  vorgabePause    Int?
+  vorgabeVon      String?
+  vorgabeAm       DateTime?
   sortOrder       Int      @default(0)
   createdById     String?
   createdAt       DateTime @default(now())

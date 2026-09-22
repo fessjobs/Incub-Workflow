@@ -113,6 +113,12 @@ export const CrewPersonSchema = z.object({
   ...personName,
 });
 
+// Zeiten der ersten Person für alle auf derselben Schicht übernehmen
+export const CrewZeitenSchema = z.object({
+  aktion: z.literal("zeiten-fuer-alle"),
+  shiftAssignmentId: z.string().min(1),
+});
+
 export const CustomerSignSchema = z.object({
   kundeName: z.string().trim().min(2, "Name des Kunden fehlt.").max(200),
   unterschrift: z.string().min(100, "Unterschrift fehlt."),

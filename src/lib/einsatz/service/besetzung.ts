@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { normalizeName, personFromLine } from "../parser";
 import { matchNames, type MatchCandidate } from "../matching";
-import { berlinDateKey, keyToDateOnly } from "../tz";
+import { berlinDateKey, berlinTime, keyToDateOnly } from "../tz";
 import { TOKEN_DAYS } from "./assignments";
 
 export class BesetzungError extends Error {
@@ -428,4 +428,86 @@ export async function aktualisiereSchicht(actor: { id: string; organizationId: s
   });
 
   await logAudit({ organizationId: actor.organizationId, userId: actor.id, action: "shift.update", entityType: "shift", entityId: shift.id, data: { assignmentId: shift.assignmentId, vorher, nachher: { ...input } } });
+}
+
+// ─── Zeitvorgabe je Schicht ─────────────────────────────────────────────────
+
+// Bei einem Einsatz arbeiten fast alle dieselbe Schicht. Wer als Erstes
+// erfasst, kann seine Ist-Zeiten für alle auf derselben Schicht übernehmen:
+// die Formulare der Übrigen sind dann vorausgefüllt. Unterschreiben muss
+// weiterhin jede Person selbst – eine Zeit ohne eigene Unterschrift wäre
+// als Nachweis wertlos.
+export type Zeitvorgabe = { start: string; ende: string; startDatum: string; endeDatum: string; pauseMinuten: number; von: string; am: string } | null;
+
+export function zeitvorgabeVon(shift: { vorgabeStart: Date | null; vorgabeEnde: Date | null; vorgabePause: number | null; vorgabeVon: string | null; vorgabeAm: Date | null }): Zeitvorgabe {
+  if (!shift.vorgabeStart || !shift.vorgabeEnde || shift.vorgabePause === null) return null;
+  return {
+    startDatum: berlinDateKey(shift.vorgabeStart),
+    start: berlinTime(shift.vorgabeStart),
+    endeDatum: berlinDateKey(shift.vorgabeEnde),
+    ende: berlinTime(shift.vorgabeEnde),
+    pauseMinuten: shift.vorgabePause,
+    von: shift.vorgabeVon ?? "",
+    am: (shift.vorgabeAm ?? new Date()).toISOString(),
+  };
+}
+
+// Übernimmt die Ist-Zeiten einer bereits unterschriebenen Erfassung als
+// Vorgabe für die ganze Schicht.
+export async function uebernimmZeitenFuerAlle(
+  organizationId: string,
+  shiftAssignmentId: string,
+  kontext: { userId: string | null; ip: string | null; quelle: string }
+): Promise<{ schichtId: string; offen: number }> {
+  const sa = await db.shiftAssignment.findFirst({
+    where: { id: shiftAssignmentId, organizationId },
+    include: {
+      employee: { select: { vorname: true, nachname: true } },
+      shift: { select: { id: true, bezeichnung: true, assignmentId: true } },
+      timeEntries: { where: { aktuell: true } },
+    },
+  });
+  if (!sa) throw new BesetzungError("Erfassung nicht gefunden.", 404);
+  const eintrag = sa.timeEntries[0];
+  if (!eintrag || !eintrag.unterschriftZeitpunkt) {
+    throw new BesetzungError("Erst eigene Zeiten eintragen und unterschreiben, dann lassen sie sich übernehmen.", 409);
+  }
+
+  const von = `${sa.employee.vorname} ${sa.employee.nachname}`;
+  await db.shift.update({
+    where: { id: sa.shift.id },
+    data: { vorgabeStart: eintrag.istStart, vorgabeEnde: eintrag.istEnde, vorgabePause: eintrag.pauseMinuten, vorgabeVon: von, vorgabeAm: new Date() },
+  });
+
+  // Wie viele profitieren davon – nur wer noch nicht unterschrieben hat
+  const offen = await db.shiftAssignment.count({
+    where: { shiftId: sa.shift.id, status: { not: "STORNIERT" }, id: { not: sa.id }, timeEntries: { none: { unterschriftZeitpunkt: { not: null } } } },
+  });
+
+  await logAudit({
+    organizationId,
+    userId: kontext.userId ?? undefined,
+    action: "shift.zeitvorgabe",
+    entityType: "shift",
+    entityId: sa.shift.id,
+    data: {
+      assignmentId: sa.shift.assignmentId,
+      schicht: sa.shift.bezeichnung,
+      von,
+      start: eintrag.istStart.toISOString(),
+      ende: eintrag.istEnde.toISOString(),
+      pauseMinuten: eintrag.pauseMinuten,
+      offen,
+      ip: kontext.ip,
+      quelle: kontext.quelle,
+    },
+  });
+  return { schichtId: sa.shift.id, offen };
+}
+
+export async function loescheZeitvorgabe(organizationId: string, shiftId: string, kontext: { userId: string | null; ip: string | null; quelle: string }): Promise<void> {
+  const shift = await db.shift.findFirst({ where: { id: shiftId, organizationId }, select: { id: true, assignmentId: true } });
+  if (!shift) throw new BesetzungError("Schicht nicht gefunden.", 404);
+  await db.shift.update({ where: { id: shift.id }, data: { vorgabeStart: null, vorgabeEnde: null, vorgabePause: null, vorgabeVon: null, vorgabeAm: null } });
+  await logAudit({ organizationId, userId: kontext.userId ?? undefined, action: "shift.zeitvorgabe_geloescht", entityType: "shift", entityId: shift.id, data: { assignmentId: shift.assignmentId, ip: kontext.ip, quelle: kontext.quelle } });
 }

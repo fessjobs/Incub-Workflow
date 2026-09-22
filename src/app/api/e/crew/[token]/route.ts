@@ -5,10 +5,11 @@
 // ergänzt Personen, solange noch nichts unterschrieben bzw. bestätigt ist.
 import { NextResponse } from "next/server";
 import { checkRateLimit, clientIp, registerTokenMiss, tooManyTokenMisses } from "@/lib/einsatz/rate-limit";
-import { CrewNameSchema, CrewPersonSchema, CrewSubmitSchema, CustomerSignSchema } from "@/lib/einsatz/schemas";
+import { CrewNameSchema, CrewPersonSchema, CrewSubmitSchema, CrewZeitenSchema, CustomerSignSchema } from "@/lib/einsatz/schemas";
 import { entryView } from "@/lib/einsatz/service/public-view";
 import { customerSign, loadCrewByToken, submitTimeEntry, TimeEntryError } from "@/lib/einsatz/service/time-entries";
 import { ergaenzePerson, korrigiereName, RosterError } from "@/lib/einsatz/service/crew-roster";
+import { uebernimmZeitenFuerAlle, zeitvorgabeVon } from "@/lib/einsatz/service/besetzung";
 import { SAFETY_SECTIONS, SAFETY_VERSION, CONFIRMATION_TEXT } from "@/lib/einsatz/safety";
 import { berlinDateKey, berlinTime, dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
 import { db } from "@/lib/db";
@@ -34,6 +35,8 @@ function crewView(a: CrewLoaded) {
       bezeichnung: s.bezeichnung,
       taetigkeit: s.taetigkeit,
       datumDE: formatKeyDE(berlinDateKey(s.planStart)),
+      // Von einer Person für die ganze Schicht übernommene Ist-Zeiten
+      vorgabe: zeitvorgabeVon(s),
       personen: s.assignments
         .filter((sa) => sa.status !== "STORNIERT")
         .map((sa) => {
@@ -103,17 +106,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   try {
     const name = CrewNameSchema.safeParse(body);
     const person = CrewPersonSchema.safeParse(body);
+    const zeiten = CrewZeitenSchema.safeParse(body);
     const kunde = CustomerSignSchema.safeParse(body);
     if (name.success) {
       await korrigiereName(a.id, name.data.shiftAssignmentId, name.data, { ip, userAgent });
     } else if (person.success) {
       await ergaenzePerson(a.id, person.data.shiftId, person.data, { ip, userAgent });
+    } else if (zeiten.success) {
+      // Zuordnung muss zu diesem Einsatz gehören
+      const gehoert = await db.shiftAssignment.findFirst({ where: { id: zeiten.data.shiftAssignmentId, shift: { assignmentId: a.id } }, select: { id: true } });
+      if (!gehoert) return NextResponse.json({ error: "Person gehört nicht zu diesem Einsatz." }, { status: 403 });
+      await uebernimmZeitenFuerAlle(a.organizationId, gehoert.id, { userId: null, ip, quelle: "crew-link" });
     } else if (kunde.success) {
       await customerSign(a.id, kunde.data, meta);
     } else if (typeof (body as { aktion?: unknown })?.aktion === "string") {
       // Die Aktion war gemeint, die Angaben stimmen nicht – die Meldung des
       // passenden Schemas ist hilfreicher als ein pauschales "ungültig".
-      const fehler = (body as { aktion: string }).aktion === "person-ergaenzen" ? person : name;
+      const aktion = (body as { aktion: string }).aktion;
+      const fehler = aktion === "person-ergaenzen" ? person : aktion === "zeiten-fuer-alle" ? zeiten : name;
       return NextResponse.json({ error: fehler.success ? "Ungültige Daten." : fehler.error.errors[0].message }, { status: 400 });
     } else {
       const eintrag = CrewSubmitSchema.safeParse(body);
