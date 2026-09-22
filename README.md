@@ -50,9 +50,10 @@ Garantiestunden, Fahrtkosten, Zulagen, Spesen, Abzüge), **Auswertung** mit SQL-
 konfigurierbarem Mapping und Validierung.
 
 - Navigation: **Einsätze** (`/einsaetze`), **Stunden** (`/auswertung`), **Dokumente** (`/dokumente`)
-- **Stammdaten-Import**: Excel- oder CSV-Listen für Mitarbeiter (`/einsaetze/personal/import`)
-  und Kunden (`/einsaetze/kunden/import`) – Spalten werden an den Überschriften erkannt,
-  Vorschau je Zeile vor der Übernahme, keine Dubletten
+- **Stammdaten-Import**: Excel-, CSV- **und PDF-Listen** für Mitarbeiter
+  (`/einsaetze/personal/import`) und Kunden (`/einsaetze/kunden/import`) – Spalten werden
+  an den Überschriften erkannt, Vorschau je Zeile vor der Übernahme, keine Dubletten.
+  PDFs (auch eingescannte) liest die Claude API aus; Excel und CSV gehen ohne Schlüssel
 - **Löschen im Backend**: Stunden, ganze Einsätze und Personen lassen sich löschen –
   mit Ansage, was mitgeht, und vollständigem Abzug im Protokoll. Freigegebene Zeiten und
   gesperrte Monate sind für alle tabu; bei Unterschriften muss ein Admin die Einsatznummer

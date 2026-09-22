@@ -4,7 +4,7 @@
 import ExcelJS from "exceljs";
 import { decodeSample } from "@/lib/export/zvoove";
 
-export type Tabelle = { kopf: string[]; zeilen: string[][]; quelle: "csv" | "xlsx" };
+export type Tabelle = { kopf: string[]; zeilen: string[][]; quelle: "csv" | "xlsx" | "pdf" };
 
 const DELIMITERS = [";", ",", "\t", "|"] as const;
 
@@ -30,6 +30,11 @@ export function splitCsvLine(line: string, delimiter: string): string[] {
   }
   out.push(cur);
   return out.map((c) => c.trim());
+}
+
+export function isPdf(bytes: Buffer, filename: string): boolean {
+  if (filename.toLowerCase().endsWith(".pdf")) return true;
+  return bytes.subarray(0, 5).toString("latin1") === "%PDF-";
 }
 
 export function detectDelimiter(headerLine: string): string {
@@ -95,6 +100,12 @@ export async function parseTabelle(bytes: Buffer, filename: string): Promise<Tab
   const lower = filename.toLowerCase();
   if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm")) return parseXlsx(bytes);
   if (lower.endsWith(".csv") || lower.endsWith(".txt") || lower.endsWith(".tsv")) return parseCsv(bytes);
+  // PDF liest das Modell aus (eigenes Modul, damit die Anthropic-Abhängigkeit
+  // nicht an CSV und Excel klebt)
+  if (isPdf(bytes, filename)) {
+    const { parsePdfTabelle } = await import("./pdf-tabelle");
+    return parsePdfTabelle(bytes, filename);
+  }
   // Unbekannte Endung: an der Signatur entscheiden (xlsx ist ein ZIP)
   if (bytes.subarray(0, 2).toString() === "PK") return parseXlsx(bytes);
   return parseCsv(bytes);

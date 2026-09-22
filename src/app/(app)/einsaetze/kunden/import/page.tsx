@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { requireDispo } from "@/lib/einsatz/access";
+import { isParserAvailable } from "@/lib/einsatz/parser";
 import { ImportPanel } from "../../import-panel";
 import { kundenSchrittAction } from "../../import-actions";
 
@@ -11,10 +12,11 @@ export default async function KundenImportPage() {
   return (
     <ImportPanel
       titel="Kunden importieren"
-      hinweis="Excel- oder CSV-Liste hochladen. Vorhandene Kunden werden am Namen erkannt und ergänzt statt doppelt angelegt."
+      hinweis="Excel-, CSV- oder PDF-Liste hochladen. Vorhandene Kunden werden am Namen erkannt und ergänzt statt doppelt angelegt."
       beispielSpalten={["Name", "Adresse", "PLZ", "Ort", "USt-ID", "Ansprechpartner", "E-Mail", "Telefon", "Einsatzort", "Bundesland", "AÜ-Vertrag"]}
       action={kundenSchrittAction}
       zurueckHref="/einsaetze/kunden"
+      pdfMoeglich={isParserAvailable()}
     />
   );
 }

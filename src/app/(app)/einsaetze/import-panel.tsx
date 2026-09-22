@@ -19,6 +19,8 @@ type Props = {
   beispielSpalten: string[];
   action: (prev: SchrittErgebnis | null, formData: FormData) => Promise<SchrittErgebnis>;
   zurueckHref: string;
+  // PDF-Listen liest die Claude API aus; ohne Schlüssel gibt es nur Excel/CSV
+  pdfMoeglich: boolean;
 };
 
 const BEFUND_STIL: Record<string, string> = {
@@ -29,7 +31,7 @@ const BEFUND_STIL: Record<string, string> = {
 };
 const BEFUND_TEXT: Record<string, string> = { neu: "neu", aktualisierung: "wird ergänzt", unveraendert: "unverändert", fehler: "Fehler" };
 
-export function ImportPanel({ titel, hinweis, beispielSpalten, action, zurueckHref }: Props) {
+export function ImportPanel({ titel, hinweis, beispielSpalten, action, zurueckHref, pdfMoeglich }: Props) {
   const router = useRouter();
   const [datei, setDatei] = useState<File | null>(null);
   const [aktualisieren, setAktualisieren] = useState(true);
@@ -68,13 +70,13 @@ export function ImportPanel({ titel, hinweis, beispielSpalten, action, zurueckHr
         <div className="card space-y-4 p-5">
           <div>
             <label className="label" htmlFor="datei">
-              Datei (Excel .xlsx oder CSV)
+              Datei (Excel .xlsx, CSV{pdfMoeglich ? " oder PDF" : ""})
             </label>
             <input
               id="datei"
               name="datei"
               type="file"
-              accept=".xlsx,.xlsm,.csv,.txt,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".xlsx,.xlsm,.csv,.txt,.tsv,.pdf,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               className="input-accent"
               data-testid="import-datei"
               required
@@ -82,6 +84,11 @@ export function ImportPanel({ titel, hinweis, beispielSpalten, action, zurueckHr
             />
             <p className="mt-2 text-xs text-navy-400">
               Die Spalten werden an den Überschriften erkannt, die Reihenfolge ist egal. Erkannt werden unter anderem: {beispielSpalten.join(", ")}.
+            </p>
+            <p className="mt-1 text-xs text-navy-400">
+              {pdfMoeglich
+                ? "Ein PDF – auch eine eingescannte Liste – wird von der Claude API ausgelesen. Die Vorschau zeigt danach, was erkannt wurde; gespeichert wird erst nach deiner Bestätigung."
+                : "PDF-Listen bräuchten die Claude API (ANTHROPIC_API_KEY ist nicht gesetzt). Excel und CSV gehen ohne."}
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm">

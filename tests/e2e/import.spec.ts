@@ -78,3 +78,23 @@ test.describe.serial("Stammdaten-Import", () => {
     await expect(page.getByText(`Testkunde ${RUN} GmbH`)).toBeVisible();
   });
 });
+
+test.describe("PDF-Liste", () => {
+  test("das Dateifeld nimmt PDFs an und meldet fehlende API-Konfiguration im Klartext", async ({ page }) => {
+    await login(page);
+    await page.goto("/einsaetze/personal/import");
+
+    await expect(page.getByTestId("import-datei")).toHaveAttribute("accept", /\.pdf/);
+
+    // Der Testserver läuft ohne ANTHROPIC_API_KEY – genau der Fall, der auch
+    // in Produktion auftritt, wenn der Schlüssel fehlt.
+    await page.getByTestId("import-datei").setInputFiles({ name: "personal.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\nnur die Signatur zählt hier", "latin1") });
+    await page.getByTestId("vorschau-button").click();
+
+    const meldung = page.getByRole("alert").first();
+    await expect(meldung).toContainText("ANTHROPIC_API_KEY");
+    await expect(meldung).toContainText(/Excel oder CSV/);
+    // Nichts angelegt, keine Vorschau
+    await expect(page.getByTestId("import-button")).toHaveCount(0);
+  });
+});

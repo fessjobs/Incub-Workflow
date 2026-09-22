@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectDelimiter, erkenneSpalten, normalisiereKopf, parseCsv, splitCsvLine } from "@/lib/einsatz/import/parse-table";
+import { detectDelimiter, erkenneSpalten, isPdf, normalisiereKopf, parseCsv, splitCsvLine } from "@/lib/einsatz/import/parse-table";
 import { leseBundesland, leseKundeZeile, leseMitarbeiterZeile, parseDatum, teileName } from "@/lib/einsatz/import/stammdaten";
 
 describe("Tabellen einlesen", () => {
@@ -98,5 +98,21 @@ describe("Kundenzeilen", () => {
 
   it("verlangt einen Namen", () => {
     expect(leseKundeZeile(["", "Str. 1"], sp).fehler).toMatch(/Kundenname/);
+  });
+});
+
+describe("PDF erkennen", () => {
+  it("erkennt PDF an der Endung und an der Signatur", () => {
+    expect(isPdf(Buffer.from("irgendwas"), "liste.pdf")).toBe(true);
+    expect(isPdf(Buffer.from("irgendwas"), "LISTE.PDF")).toBe(true);
+    // Ohne passende Endung entscheidet die Dateisignatur
+    expect(isPdf(Buffer.from("%PDF-1.7\n..."), "export")).toBe(true);
+  });
+
+  it("hält andere Formate auseinander", () => {
+    expect(isPdf(Buffer.from("Name;Vorname"), "liste.csv")).toBe(false);
+    // xlsx ist ein ZIP
+    expect(isPdf(Buffer.from("PK\u0003\u0004"), "liste.xlsx")).toBe(false);
+    expect(isPdf(Buffer.from("PDF steht im Text"), "notiz.txt")).toBe(false);
   });
 });
