@@ -1,6 +1,7 @@
 // Einsatz nachträglich bearbeiten: Namen einfügen, Kopf und Schicht ändern,
 // Namen richtigstellen – auch nach der Kundenbestätigung.
 import { expect, test, type Page } from "@playwright/test";
+import { tutorialWeg } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -118,6 +119,7 @@ test.describe.serial("Einsatz nachträglich bearbeiten", () => {
     // Kunde bestätigt über den Gruppenlink
     const crew = (await page.getByTestId("gruppen-link").getAttribute("title")) ?? "";
     await page.goto(new URL(crew).pathname);
+    await tutorialWeg(page);
     await page.getByTestId("crew-kunde").click();
     await page.getByTestId("kunde-name").fill("Jonas Keller");
     await drawSignature(page, "kunde-signature");

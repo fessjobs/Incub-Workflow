@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./e.css";
 import { SwRegister } from "./sw-register";
+import { TutorialMount } from "./tutorial-mount";
 
 // Mitarbeiter-Link des Einsatzmoduls: eigenes, helles Design (fess.jobs,
 // Akzent #E3682E), ohne App-Navigation, ohne Login.
@@ -27,6 +28,7 @@ export const viewport: Viewport = {
 export default function EinsatzLinkLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${instrumentSans.className} ez`}>
+      <TutorialMount />
       <main className="ez-wrap">{children}</main>
       <SwRegister />
     </div>

@@ -42,7 +42,7 @@ Zeitziele (Abnahme): Rohtext → PDF unter zwei Minuten (Parser ca. 5–15 s, Re
 | PDFs | `src/lib/einsatz/pdf/` (`layout.tsx`, `konkretisierung.tsx`, `stundennachweis.tsx` inkl. Anlage Sicherheitsunterweisung) |
 | Exporte | `src/lib/export/stunden-excel.ts`, `src/lib/export/zvoove.ts`, `config/zvoove-mapping.json`, `scripts/zvoove-detect.ts` |
 | API | `src/app/api/assignments/parse`, `src/app/api/e/[token]`, `src/app/api/e/[token]/pdf`, `src/app/api/e/crew/[token]`, `src/app/api/e/crew/[token]/pdf`, `src/app/api/documents/[id]`, `src/app/api/blobs/[id]`, `src/app/api/jobs/run` |
-| Mitarbeiter-Link | `src/app/e/` (Layout, `[token]`, `crew/[token]`, `pdf-share.tsx`, Signatur-Canvas, Offline-Puffer `offline.ts`), Service Worker `public/sw-einsatz.js` |
+| Mitarbeiter-Link | `src/app/e/` (Layout, `[token]`, `crew/[token]`, `tutorial.tsx` (Kurzanleitung), `pdf-share.tsx`, Signatur-Canvas, Offline-Puffer `offline.ts`), Service Worker `public/sw-einsatz.js` |
 | Dispo | `src/app/(app)/einsaetze/` (Liste, `neu`, `[id]`, `freigabe`, `kunden`, `kunden/import`, `personal`, `personal/import`, `lohnarten`), `src/app/(app)/auswertung/`, `src/app/(app)/dokumente/` |
 | Tests | `tests/unit/*` (vitest), `tests/integration/parser.test.ts` (gemockter Claude-Aufruf), `tests/e2e/*.spec.ts` (Playwright: `einsatz`, `crew`, `anhang`, `import`, `disponent`) |
 
@@ -145,7 +145,21 @@ Danach läuft derselbe Abgleich wie beim Anlegen (exakt → normalisiert → Tri
 
 Die Einzellinks je Person bleiben erhalten (automatischer Versand, Nachzügler), stehen in der Detailansicht aber ausgeklappt unter dem Gruppenlink.
 
-### 6b. Die Crew korrigiert sich selbst
+### 6b. Kurzanleitung beim Öffnen
+
+Die meisten bekommen den Link in der WhatsApp-Gruppe und haben die Oberfläche noch nie gesehen. Beim ersten Öffnen liegt deshalb eine Kurzanleitung davor (`src/app/e/tutorial.tsx`, eingehängt im Layout):
+
+1. Eigenen Namen antippen (nur im Gruppenlink – im Einzellink entfällt der Schritt)
+2. Zeiten prüfen – Beginn, Ende, Pause sind vorbelegt
+3. Fahrtkosten – nur wenn selbst gefahren: Fahrzeugart, Start, Ziel, Kilometer
+4. Spesen – nur wenn vorher mit der Dispo besprochen
+5. Unterweisung bestätigen und unterschreiben – danach gesperrt
+
+Darüber steht hervorgehoben der Hinweis, die **Sicherheitsunterweisung vor Arbeitsbeginn** zu lesen und nicht erst beim Unterschreiben.
+
+Gemerkt wird das im `localStorage` des Browsers (`fess.einsatz.tutorial.v1`, versioniert: ändert sich der Text, erscheint die Anleitung einmal wieder). Schlägt der Zugriff fehl – privater Modus, blockierte Speicherung –, erscheint sie eben erneut; die Seite funktioniert in beiden Fällen. Über das **?** oben rechts lässt sie sich jederzeit noch einmal aufrufen, Escape und ein Klick daneben schließen sie.
+
+### 6c. Die Crew korrigiert sich selbst
 
 Der Parser verliest sich bei Namen, und manchmal kommt jemand kurzfristig dazu. Beides lässt sich im Gruppenlink ohne Login richtigstellen:
 
@@ -154,7 +168,7 @@ Der Parser verliest sich bei Namen, und manchmal kommt jemand kurzfristig dazu. 
 
 Grenzen: Eine Person, die bereits unterschrieben hat, wird nicht mehr umbenannt (der Name steht auf dem Beleg). Nach der Kundenbestätigung sind beide Aktionen gesperrt – ab da korrigiert nur noch die Dispo. Jede Änderung steht mit altem und neuem Namen, IP und Quelle `crew-link` im Audit-Log.
 
-### 6c. Zeiten für alle übernehmen
+### 6d. Zeiten für alle übernehmen
 
 Bei einem Einsatz arbeiten fast alle dieselbe Schicht. Hat die erste Person ihre Ist-Zeiten eingetragen und unterschrieben, steht auf der Schicht ein Knopf: **„Zeiten von X für alle N Übrigen übernehmen“**. Danach sind Beginn, Ende und Pause bei allen noch offenen Erfassungen vorausgefüllt – im Gruppenlink und im Einzellink – mit einem Hinweis, von wem sie stammen und dass sich abweichen lässt.
 
@@ -162,11 +176,11 @@ Bei einem Einsatz arbeiten fast alle dieselbe Schicht. Hat die erste Person ihre
 
 Gespeichert wird die Vorgabe auf der Schicht (`vorgabeStart`, `vorgabeEnde`, `vorgabePause`, `vorgabeVon`, `vorgabeAm`, Migration `20260922090000_schicht_zeitvorgabe`) – also pro Schicht, nicht pro Einsatz: „Load-Out 21:30“ bekommt nicht die Zeiten von „Aufbau 07:00“. Die Dispo sieht die Vorgabe in der Schichtzeile und kann sie zurücknehmen; danach starten neue Erfassungen wieder mit den Planzeiten. Wer sie gesetzt hat, mit welchen Zeiten und für wie viele Offene, steht im Audit-Log.
 
-### 6d. Der fertige Beleg
+### 6e. Der fertige Beleg
 
 Sobald der Kunde bestätigt hat, zeigt der Link den unterschriebenen Stundennachweis: **Ansehen**, **Teilen** (Web Share API mit der PDF-Datei, sonst mit dem Link) und **Herunterladen** über `GET /api/e/crew/[token]/pdf` bzw. `GET /api/e/[token]/pdf`. Das PDF entsteht in einem Hintergrund-Job – solange es fehlt, steht dort „wird gerade erstellt“ und die Seite fragt alle drei Sekunden nach (zehnmal), statt einen Fehler zu zeigen.
 
-### 6e. Einzellink und Technik
+### 6f. Einzellink und Technik
 
 - `/e/[token]`: mobil zuerst, hell, Akzent `#E3682E`, große Touchflächen. Kopf (Einsatz, Kunde, Ort, Datum, eigene Schicht), Zeiten vorbelegt, Pause, Tätigkeit, PKW (privat/Firma, beliebig viele Fahrten), Spesen (+ optionaler Betrag), Notiz, aufklappbare Unterweisung mit Pflicht-Haken, Signatur-Canvas, Absenden.
 - Danach gesperrt (Leseansicht + PDF). Änderungen nur durch die Dispo mit Begründung als neue Version.
@@ -220,6 +234,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
+  - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.
   - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.
   - `anhang.spec.ts`: Einsatz allein aus einer angehängten Datei, Begründung für nicht lesbare Anhänge.
   - `import.spec.ts`: Mitarbeiter- und Kundenimport mit Vorschau, Übernahme und Dublettenschutz beim zweiten Lauf.
@@ -255,7 +270,8 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 23. **Namen sind immer änderbar**, auch nach der Bestätigung und auch nach der Unterschrift der Person. Die Alternative – Namen einfrieren – wäre in der Praxis falsch (Heirat, Schreibfehler, Namenszusätze). Die Rückverfolgbarkeit hängt am Audit-Log und an der Prüfsumme der ersetzten PDF-Fassung, nicht an der Unveränderlichkeit des Stammsatzes.
 24. **Umbenennen hängt um statt zu duplizieren**: Gibt es den neuen Namen schon im Stamm, wird die Einteilung dorthin verschoben. Nur ein Datensatz ohne Personalnummer, Kontaktdaten und zweite Einteilung wird umbenannt – sonst würde ein Tippfehler bei einer Person deren gesamte Historie umbenennen.
 25. **Die Zeitvorgabe füllt nur vor, sie erfasst nicht**: „Zeiten für alle übernehmen“ legt keine Einträge für andere an. Jede Person prüft und unterschreibt selbst – ein Stundennachweis mit fremdbestimmten Zeiten ohne eigene Unterschrift wäre als Nachweis wertlos. Sie gilt je Schicht, nicht je Einsatz, und erst ab der ersten unterschriebenen Erfassung.
-26. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
+26. **Die Kurzanleitung wird pro Browser gemerkt, nicht pro Person**: Wer den Link regelmäßig bekommt, sieht sie einmal. Auf einem geteilten Crew-Gerät bekommt sie damit nur die erste Person zu sehen – dafür ist sie über das ? erreichbar, und die Schritte stehen ohnehin im Formular.
+27. **Eingefügte Namen werden nicht automatisch übernommen**: Die Vorschau verlangt je Zeile eine Entscheidung (Treffer, Vorschlag, neu anlegen, überspringen). Ein falsch zugeordneter Name landet sonst in der Konkretisierung und im Lohnexport.
 
 ## 12. Offene Punkte (Entscheidung nötig)
 

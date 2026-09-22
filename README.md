@@ -53,6 +53,9 @@ konfigurierbarem Mapping und Validierung.
 - **Stammdaten-Import**: Excel- oder CSV-Listen für Mitarbeiter (`/einsaetze/personal/import`)
   und Kunden (`/einsaetze/kunden/import`) – Spalten werden an den Überschriften erkannt,
   Vorschau je Zeile vor der Übernahme, keine Dubletten
+- **Kurzanleitung beim Öffnen des Links**: Wer den Link zum ersten Mal öffnet, bekommt in
+  fünf Zeilen erklärt, was zu tun ist – samt Hinweis, die Sicherheitsunterweisung **vor**
+  Arbeitsbeginn zu lesen. Danach über das **?** oben rechts erreichbar
 - **Zeiten für alle übernehmen**: Hat die erste Person im Gruppenlink ihre Zeiten
   eingetragen, lassen sie sich für alle Übrigen derselben Schicht übernehmen – deren
   Formulare sind dann vorausgefüllt. Unterschreiben muss weiterhin jede selbst

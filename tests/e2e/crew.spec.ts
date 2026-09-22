@@ -1,6 +1,7 @@
 // Gruppenlink: ein Link für alle. Namen korrigieren, Person ergänzen,
 // unterschreiben, Kunde bestätigt, PDF ansehen und teilen.
 import { expect, test, type Page } from "@playwright/test";
+import { tutorialWeg } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -83,6 +84,7 @@ test.describe.serial("Gruppenlink", () => {
 
   test("Crew korrigiert einen Namen und ergänzt eine Person", async ({ page }) => {
     await page.goto(crewPath);
+    await tutorialWeg(page);
     await expect(page.getByText("Tobias Krämmer")).toBeVisible();
 
     // Name richtigstellen
@@ -114,6 +116,7 @@ test.describe.serial("Gruppenlink", () => {
     // Der Gruppenlink selbst braucht keinen Login.
     await login(page);
     await page.goto(crewPath);
+    await tutorialWeg(page);
     // Alle offenen Personen nacheinander – jede unterschreibt einzeln
     const offen = page.locator('[data-testid^="crew-sign-"]');
     await expect(offen.first()).toBeVisible();

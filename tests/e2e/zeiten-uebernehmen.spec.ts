@@ -1,6 +1,7 @@
 // Zeiten für alle übernehmen: Die erste Person erfasst, ihre Zeiten gelten
 // als Vorgabe für die Übrigen – vorausgefüllt, jede unterschreibt selbst.
 import { expect, test, type Page } from "@playwright/test";
+import { tutorialWeg } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -64,6 +65,7 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
 
   test("Die erste Person erfasst abweichende Zeiten", async ({ page }) => {
     await page.goto(crewPath);
+    await tutorialWeg(page);
     // Vor der ersten Erfassung gibt es nichts zu übernehmen
     await expect(page.locator('[data-testid^="zeiten-fuer-alle-"]')).toHaveCount(0);
 
@@ -80,6 +82,7 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
 
   test("Zeiten für alle übernehmen füllt die Übrigen vor", async ({ page }) => {
     await page.goto(crewPath);
+    await tutorialWeg(page);
     const knopf = page.locator('[data-testid^="zeiten-fuer-alle-"]').first();
     await expect(knopf).toContainText("für alle 2 Übrigen übernehmen");
     await expect(knopf).toBeVisible();
@@ -112,6 +115,7 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
     const offen = page.locator('a[href*="/e/"]', { hasText: "Öffnen" });
     const letzte = await offen.last().getAttribute("href");
     await page.goto(new URL(letzte!).pathname);
+    await tutorialWeg(page);
     await expect(page.getByTestId("vorgabe-hinweis")).toContainText("06:30–16:45");
     await expect(page.locator("#pause")).toHaveValue("45");
   });
@@ -127,6 +131,7 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
 
     // Danach startet die nächste Erfassung wieder mit den Planzeiten
     await page.goto(crewPath);
+    await tutorialWeg(page);
     await page.locator('[data-testid^="crew-sign-"]').first().click();
     await expect(page.getByTestId("vorgabe-hinweis")).toHaveCount(0);
     await expect(page.locator('input[type="time"]').first()).toHaveValue("07:00");

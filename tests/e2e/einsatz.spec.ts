@@ -2,6 +2,7 @@
 // → Stundennachweis-PDF → Freigabe → Auswertung → Excel-/zvoove-Export.
 // Läuft gegen den Production-Build mit der Seed-Datenbank (Admin-Login).
 import { expect, test, type Page } from "@playwright/test";
+import { tutorialWeg } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -92,6 +93,7 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const page = await context.newPage();
     await page.goto(tokenUrl);
+    await tutorialWeg(page);
     await expect(page.getByText(`E2E ${RUN}`)).toBeVisible();
     await page.locator("#pause").fill("30");
     await page.getByTestId("pkw-check").check();
@@ -117,6 +119,7 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     expect(url).toMatch(/^https:\/\/[^/]+\/e\/crew\/[0-9a-f-]{36}$/);
     // Domain ist im Test simuliert, deshalb lokal über den Pfad öffnen
     await page.goto(new URL(url).pathname);
+    await tutorialWeg(page);
     const signButtons = page.locator('[data-testid^="crew-sign-"]');
     await expect(signButtons).toHaveCount(1);
     await signButtons.first().click();
