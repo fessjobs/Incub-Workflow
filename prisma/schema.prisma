@@ -658,6 +658,15 @@ model Employee {
   @@map("employees")
 }
 
+// Weg eines Einsatzes zur Rechnung: die Dispo gibt frei, die Buchhaltung
+// schreibt die Rechnung. Unabhängig vom operativen Status (der sagt, wie weit
+// der Einsatz selbst ist) und von der Freigabe einzelner Zeiteinträge.
+enum AbrechnungStatus {
+  OFFEN
+  FREIGEGEBEN
+  BERECHNET
+}
+
 enum AssignmentStatus {
   ENTWURF
   KONKRETISIERT
@@ -681,6 +690,17 @@ model Assignment {
   einsatzbereich     String?
   aueVertragRef      String?
   status             AssignmentStatus @default(ENTWURF)
+  // ─── Abrechnung ───────────────────────────────────────────────────────────
+  abrechnung         AbrechnungStatus @default(OFFEN)
+  // Von der Dispo vor der Freigabe gepflegt, für die Buchhaltung gedacht
+  angebotsnummer     String?
+  konditionen        String?
+  abrechnungHinweis  String?
+  freigabeVon        String?
+  freigabeAm         DateTime?
+  rechnungsnummer    String?
+  rechnungVon        String?
+  rechnungAm         DateTime?
   notizen            String?
   rawInput           String?
   parsedJson         Json?
@@ -699,6 +719,7 @@ model Assignment {
 
   @@unique([organizationId, einsatznummer])
   @@index([organizationId, status, datumVon])
+  @@index([organizationId, abrechnung, datumVon])
   @@index([organizationId, customerId])
   @@map("assignments")
 }

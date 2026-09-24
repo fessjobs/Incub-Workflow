@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canDispo, canRate, canReview, requireModuleUser } from "@/lib/einsatz/access";
+import { canBillingNotes, canDispo, canInvoice, canRate, canReview, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
 import { bearbeitbarkeit } from "@/lib/einsatz/service/besetzung";
 import { erfahrungFuer, erfahrungOder } from "@/lib/einsatz/service/personal";
 import { pruefeEinsatzLoeschbar } from "@/lib/einsatz/service/loeschen";
+import { pruefeAbrechnungsfreigabe } from "@/lib/einsatz/service/abrechnung";
 import { db } from "@/lib/db";
 import { gruppenlinkFor, linkRows } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
@@ -23,6 +24,7 @@ import { RenamePerson } from "./rename-person";
 import { Zeitvorgabe } from "./zeitvorgabe";
 import { RatePerson } from "./rate-person";
 import { BilanzBadge, ErfahrungZeile } from "../rating-badges";
+import { AbrechnungCard } from "./abrechnung-card";
 import { DeleteButton } from "../delete-button";
 import { deleteAssignmentAction, deleteEntryAction } from "../actions";
 import { cancelShiftAssignmentAction } from "../actions";
@@ -60,6 +62,8 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
     (n, s) => n + s.assignments.filter((sa) => sa.status !== "STORNIERT" && sa.timeEntries.some((t) => t.unterschriftZeitpunkt && t.review !== "FREIGEGEBEN")).length,
     0
   );
+  // Abrechnung: offen → freigegeben (Dispo) → berechnet (Buchhaltung)
+  const abrechnung = pruefeAbrechnungsfreigabe(a);
 
   return (
     <div className="space-y-6">
@@ -279,6 +283,19 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
           </ul>
         )}
       </div>
+
+      <AbrechnungCard
+        assignmentId={a.id}
+        einsatznummer={a.einsatznummer}
+        stand={a.abrechnung}
+        angaben={{ angebotsnummer: a.angebotsnummer ?? "", konditionen: a.konditionen ?? "", abrechnungHinweis: a.abrechnungHinweis ?? "" }}
+        pruefung={{ moeglich: abrechnung.moeglich, offen: abrechnung.offen, stunden: abrechnung.stunden, personen: abrechnung.personen }}
+        freigabe={{ von: a.freigabeVon, am: a.freigabeAm ? formatDateTime(a.freigabeAm) : null }}
+        rechnung={{ nummer: a.rechnungsnummer, von: a.rechnungVon, am: a.rechnungAm ? formatDateTime(a.rechnungAm) : null }}
+        darfAngaben={canBillingNotes(user)}
+        darfFreigeben={darfFreigeben}
+        darfRechnung={canInvoice(user)}
+      />
 
       {dispo && loeschbar ? (
         <div className="card p-5" data-testid="einsatz-loeschen-karte">

@@ -275,3 +275,16 @@ export const ExportRequestSchema = z.object({
   ohneFehler: z.coerce.boolean().default(false),
   archivieren: z.coerce.boolean().default(true),
 });
+
+// ─── Abrechnung ─────────────────────────────────────────────────────────────
+
+// Was die Dispo vor der Freigabe für die Buchhaltung hinterlegt.
+export const AbrechnungAngabenSchema = z.object({
+  angebotsnummer: z.string().trim().max(60, "Angebotsnummer ist zu lang.").transform((v) => v || null).nullable().default(null),
+  konditionen: z.string().trim().max(2000, "Konditionen sind zu lang.").transform((v) => v || null).nullable().default(null),
+  abrechnungHinweis: z.string().trim().max(2000, "Beschreibung ist zu lang.").transform((v) => v || null).nullable().default(null),
+});
+
+export const RechnungSchema = z.object({
+  rechnungsnummer: z.string().trim().min(1, "Rechnungsnummer fehlt.").max(60, "Rechnungsnummer ist zu lang."),
+});

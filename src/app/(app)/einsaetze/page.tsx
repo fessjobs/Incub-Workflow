@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { canDispo, requireModuleUser } from "@/lib/einsatz/access";
 import { dateOnlyKey, formatKeyDE, keyToDateOnly, isValidDateKey } from "@/lib/einsatz/tz";
-import { StatusBadge, ASSIGNMENT_STATUS_LABELS } from "./status-badge";
+import { StatusBadge, ASSIGNMENT_STATUS_LABELS, AbrechnungBadge } from "./status-badge";
 import { JobsButton } from "./jobs-button";
 
 export const metadata: Metadata = { title: "Einsätze" };
@@ -20,6 +20,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
 
   const where: Prisma.AssignmentWhereInput = { organizationId: user.organizationId };
   if (s(sp.status)) where.status = s(sp.status) as never;
+  if (["OFFEN", "FREIGEGEBEN", "BERECHNET"].includes(s(sp.abrechnung))) where.abrechnung = s(sp.abrechnung) as never;
   if (s(sp.customer)) where.customerId = s(sp.customer);
   if (isValidDateKey(s(sp.from))) where.datumBis = { gte: keyToDateOnly(s(sp.from)) };
   if (isValidDateKey(s(sp.to))) where.datumVon = { ...(where.datumVon as object), lte: keyToDateOnly(s(sp.to)) };
@@ -70,7 +71,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
         </div>
       </div>
 
-      <form className="card grid gap-3 p-4 md:grid-cols-5" method="get">
+      <form className="card grid gap-3 p-4 md:grid-cols-6" method="get">
         <input name="q" defaultValue={q} placeholder="Suche: Projekt, Kunde, Ort, Person, Nr." className="input md:col-span-2" />
         <select name="status" defaultValue={s(sp.status)} className="input">
           <option value="">Alle Status</option>
@@ -79,6 +80,12 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
               {v}
             </option>
           ))}
+        </select>
+        <select name="abrechnung" defaultValue={s(sp.abrechnung)} className="input">
+          <option value="">Abrechnung: alle</option>
+          <option value="OFFEN">Abrechnung offen</option>
+          <option value="FREIGEGEBEN">Zur Abrechnung freigegeben</option>
+          <option value="BERECHNET">Rechnung geschrieben</option>
         </select>
         <select name="customer" defaultValue={s(sp.customer)} className="input">
           <option value="">Alle Kunden</option>
@@ -92,7 +99,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
           <input type="date" name="from" defaultValue={s(sp.from)} className="input" aria-label="Von" />
           <input type="date" name="to" defaultValue={s(sp.to)} className="input" aria-label="Bis" />
         </div>
-        <div className="flex gap-2 md:col-span-5">
+        <div className="flex gap-2 md:col-span-6">
           <button type="submit" className="btn-secondary">
             Filtern
           </button>
@@ -116,7 +123,10 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                     <Link href={`/einsaetze/${a.id}`} className="block p-4">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono text-xs text-navy-400">{a.einsatznummer}</span>
-                        <StatusBadge status={a.status} />
+                        <span className="flex items-center gap-1">
+                          <StatusBadge status={a.status} />
+                          <AbrechnungBadge stand={a.abrechnung} />
+                        </span>
                       </div>
                       <p className="mt-1 font-medium">{a.projekt}</p>
                       <p className="text-sm text-navy-400">
@@ -140,6 +150,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                   <th className="px-4 py-2">Kunde · Ort</th>
                   <th className="px-4 py-2">Status</th>
                   <th className="px-4 py-2">Erfasst</th>
+                  <th className="px-4 py-2">Abrechnung</th>
                   <th className="px-4 py-2">Dokumente</th>
                 </tr>
               </thead>
@@ -173,6 +184,10 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                         <span className={p.gesamt > 0 && p.erfasst === p.gesamt ? "text-emerald-600" : ""}>
                           {p.erfasst} / {p.gesamt}
                         </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <AbrechnungBadge stand={a.abrechnung} />
+                        {a.rechnungsnummer ? <span className="ml-1 block text-xs text-navy-400">Nr. {a.rechnungsnummer}</span> : null}
                       </td>
                       <td className="px-4 py-2 text-xs text-navy-400">
                         {docs.has("konkretisierung") ? "Konkretisierung " : ""}

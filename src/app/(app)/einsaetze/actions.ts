@@ -6,10 +6,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { canDispo, canReview, requireDispo, requireModuleUser, requireRater, requireReviewer } from "@/lib/einsatz/access";
+import { canBillingNotes, canDispo, canReview, requireDispo, requireInvoicer, requireModuleUser, requireRater, requireReviewer } from "@/lib/einsatz/access";
 import { processJobsOnce } from "@/lib/einsatz/jobs/worker";
-import { CorrectionSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
+import { AbrechnungAngabenSchema, CorrectionSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RechnungSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
 import { setzeBewertung } from "@/lib/einsatz/service/personal";
+import { gibFuerAbrechnungFrei, nimmFreigabeZurueck, nimmRechnungZurueck, setzeRechnung, speichereAngaben } from "@/lib/einsatz/service/abrechnung";
 import { loescheEinsatz, loeschePerson, loescheZeiterfassung, LoeschError } from "@/lib/einsatz/service/loeschen";
 import { aktualisiereKopf, aktualisiereSchicht, ergaenzePersonen, loescheZeitvorgabe, setzeNamen, vorschauNamen, BesetzungError, type VorschauZeile } from "@/lib/einsatz/service/besetzung";
 import { fromBerlin, keyToDateOnly } from "@/lib/einsatz/tz";
@@ -303,6 +304,76 @@ export async function releaseAssignmentAction(assignmentId: string): Promise<Act
     revalidatePath("/einsaetze/freigabe");
     revalidatePath("/auswertung");
     return { ok: true, message: `${n} Zeiteintrag/-einträge freigegeben.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ─── Abrechnung: Dispo gibt frei, Buchhaltung schreibt die Rechnung ─────────
+
+function revalidateAbrechnung(assignmentId: string): void {
+  revalidatePath(`/einsaetze/${assignmentId}`);
+  revalidatePath("/einsaetze/abrechnung");
+  revalidatePath("/einsaetze");
+}
+
+// Angebotsnummer, Konditionen, Beschreibung – der Kommentar für die Buchhaltung
+export async function saveAbrechnungsangabenAction(assignmentId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireModuleUser();
+  if (!canBillingNotes(user)) return { ok: false, error: "Keine Berechtigung." };
+  const parsed = AbrechnungAngabenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    await speichereAngaben(user, assignmentId, parsed.data);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: "Angaben für die Buchhaltung gespeichert." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function releaseForInvoiceAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireReviewer();
+  try {
+    const res = await gibFuerAbrechnungFrei(user, assignmentId);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: `Einsatz ${res.einsatznummer} ist freigegeben – ${res.stunden.toFixed(2).replace(".", ",")} h zur Abrechnung.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function withdrawInvoiceReleaseAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireReviewer();
+  try {
+    await nimmFreigabeZurueck(user, assignmentId);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: "Freigabe zurückgenommen – der Einsatz steht wieder auf offen." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// Haken „Rechnung geschrieben" samt Rechnungsnummer – nur Buchhaltung/Admin
+export async function setInvoiceAction(assignmentId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  const parsed = RechnungSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    const res = await setzeRechnung(user, assignmentId, parsed.data.rechnungsnummer);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: `Rechnung ${parsed.data.rechnungsnummer} für Einsatz ${res.einsatznummer} vermerkt.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function withdrawInvoiceAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    await nimmRechnungZurueck(user, assignmentId);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: "Rechnungsvermerk entfernt – der Einsatz ist wieder freigegeben." };
   } catch (err) {
     return fail(err);
   }

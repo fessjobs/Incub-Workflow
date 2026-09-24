@@ -269,6 +269,24 @@ Gelöscht wird nur, was die Oberfläche auch anbietet: Wo eine Löschung nicht m
 
 Der S3-Adapter kann (noch) nicht löschen: Liegen Unterschriften in einem Bucket statt in der Datenbank, verschwindet die Referenz, die Datei bleibt liegen.
 
+### 7c. Abrechnung: Freigabe der Dispo, Rechnung der Buchhaltung
+
+Drei Stationen, sichtbar als Leiste auf der Einsatzseite und als drei Körbe unter `/einsaetze/abrechnung`:
+
+```
+OFFEN  --[Dispo gibt frei]-->  FREIGEGEBEN  --[Buchhaltung]-->  BERECHNET
+```
+
+Bewusst getrennt von der Freigabe **einzelner Zeiteinträge** (stimmen die Stunden?) und vom operativen Status (wie weit ist die Arbeit?). Die Logik liegt in `service/abrechnung.ts`, die Felder am `Assignment` (`abrechnung`, `angebotsnummer`, `konditionen`, `abrechnungHinweis`, `freigabeVon/Am`, `rechnungsnummer`, `rechnungVon/Am`).
+
+**1. Angaben** – Angebotsnummer, Konditionen und eine freie Beschreibung. Das ist der Kommentar, den die Buchhaltung zum Schreiben der Rechnung braucht. Pflegbar von Disposition und Buchhaltung, solange keine Rechnung geschrieben ist; danach stehen die Angaben nur noch da.
+
+**2. Freigabe** – erteilt die Disposition (Admin, Disponent, Buchhaltung; dieselbe Runde wie die Zeitfreigabe). Sie ist erst möglich, wenn **mindestens eine Zeit freigegeben und keine mehr offen** ist. Was noch fehlt, steht im Klartext unter dem Knopf, der bis dahin inaktiv bleibt. Ein fehlender Stundennachweis als PDF ist ein **Hinweis, kein Riegel** – die Stunden sind der Maßstab. Mit der Freigabe geht der Einsatzstatus auf „Abgeschlossen“, falls er noch weiter vorn stand.
+
+**3. Rechnung** – nur **Admin und Buchhaltung**; die Disposition gibt frei, sie stellt keine Rechnung (Vier-Augen-Prinzip). Eingetragen wird die Rechnungsnummer, entweder am Einsatz oder direkt in der Liste unter `/einsaetze/abrechnung` (Korb „Freigegeben“ von oben nach unten abarbeiten). Eine Rechnungsnummer gibt es je Organisation **nur einmal** – ein zweiter Einsatz mit derselben Nummer wird mit Angabe des ersten abgewiesen. Der Einsatzstatus geht auf „Abgerechnet“.
+
+Beide Schritte sind **zurücknehmbar** (Freigabe von der Dispo, Rechnungsvermerk von der Buchhaltung); jeder Schritt und jede Rücknahme steht mit Nummer, Kunde, Stunden und handelnder Person im Audit-Log. In der Einsatzliste zeigt eine eigene Spalte den Abrechnungsstand samt Rechnungsnummer, filterbar über „Abrechnung: alle“.
+
 ## 8. Exporte
 
 - Excel (`exceljs`): Blatt „Zeiteinträge“ (Rohform), „Je Person“, „Je Kunde“, „Lohnarten“ (je Person und Monat, inkl. Abzüge). Spaltenbreiten, Zahlenformate, Filterzeile, SUBTOTAL-Summenzeile.
@@ -291,12 +309,13 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 
 ## 10. Tests
 
-- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text, die Bearbeitbarkeits-Regeln, Erfahrungsstufen und Bewertungsbilanz; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF; PDF-Stammdatenimport (Dokument-Block, Nachbearbeitung krummer Zeilen, Ablehnung, fehlender Schlüssel, Weiterleitung aus `parseTabelle`).
+- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text, die Bearbeitbarkeits-Regeln, Erfahrungsstufen und Bewertungsbilanz, Voraussetzungen der Abrechnungsfreigabe und wer sie erteilen darf; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF; PDF-Stammdatenimport (Dokument-Block, Nachbearbeitung krummer Zeilen, Ablehnung, fehlender Schlüssel, Weiterleitung aus `parseTabelle`).
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
   - `loeschen.spec.ts`: Stunden löschen (Einteilung bleibt, steht wieder auf „geplant", Erfahrung sinkt) → freigegebene Zeiten sind gesperrt, mit Begründung statt Knopf → nach Rücknahme der Freigabe löscht der Admin den Einsatz mit getippter Nummer (falsches Wort hält den Knopf zu, der Link liefert danach 404) → Person ohne Einteilungen löschen → Person mit unterschriebenen Zeiten bleibt stehen.
   - `bewertung.spec.ts`: neue Person startet bei null Schichten → nach der Unterschrift zählt die Schicht samt Tätigkeit → bewerten mit Notiz → Stundenzettel am Einsatz freigeben → Personalliste und Profil zeigen Erfahrung und Bilanz → **nichts davon im Mitarbeiter-Link oder in der öffentlichen Schnittstelle** → Bewertung zurücknehmen.
+  - `abrechnung.spec.ts`: vor der Zeitfreigabe ist die Abrechnung gesperrt (Knopf inaktiv, Begründung im Klartext, Rechnung nicht vorziehbar) → Angebotsnummer, Konditionen und Beschreibung hinterlegen → Stunden freigeben → Einsatz freigeben → er wandert in den Korb „Freigegeben“ und aus „Offen“ heraus → die Buchhaltung trägt die Rechnungsnummer direkt in der Liste ein → am Einsatz stehen Rechnung und Status „Abgerechnet“, die Angaben sind gesperrt → Rücknahme und erneutes Eintragen derselben Nummer.
   - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.
   - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.
   - `anhang.spec.ts`: Einsatz allein aus einer angehängten Datei, Begründung für nicht lesbare Anhänge.

@@ -6,7 +6,7 @@ export default async function EinsaetzeLayout({ children }: { children: React.Re
   const user = await requireModuleUser();
   const links = [
     { href: "/einsaetze", label: "Einsätze" },
-    ...(canReview(user) ? [{ href: "/einsaetze/freigabe", label: "Freigabe" }] : []),
+    ...(canReview(user) ? [{ href: "/einsaetze/freigabe", label: "Freigabe" }, { href: "/einsaetze/abrechnung", label: "Abrechnung" }] : []),
     ...(canDispo(user) ? [{ href: "/einsaetze/kunden", label: "Kunden" }, { href: "/einsaetze/personal", label: "Personal" }] : []),
     ...(canManageRules(user) ? [{ href: "/einsaetze/lohnarten", label: "Lohnarten" }] : []),
   ];

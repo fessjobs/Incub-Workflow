@@ -38,6 +38,24 @@ export async function requireRater() {
   return user;
 }
 
+// Rechnung schreiben: Buchhaltung und Admin. Die Dispo gibt frei, sie stellt
+// keine Rechnung – Vier-Augen-Prinzip zwischen Freigabe und Rechnung.
+export function canInvoice(user: Pick<User, "role">): boolean {
+  return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
+}
+
+// Angebotsnummer, Konditionen und Hinweis für die Buchhaltung pflegen: die
+// Dispo (sie kennt die Absprache) und die Buchhaltung (sie korrigiert).
+export function canBillingNotes(user: Pick<User, "role">): boolean {
+  return canDispo(user) || canInvoice(user);
+}
+
+export async function requireInvoicer() {
+  const user = await requireUser();
+  if (!canInvoice(user)) redirect("/einsaetze");
+  return user;
+}
+
 export function canManageRules(user: Pick<User, "role">): boolean {
   return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
 }
