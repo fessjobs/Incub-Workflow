@@ -7,7 +7,7 @@ import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/a
 import { bearbeitbarkeit } from "@/lib/einsatz/service/besetzung";
 import { erfahrungFuer, erfahrungOder } from "@/lib/einsatz/service/personal";
 import { pruefeEinsatzLoeschbar } from "@/lib/einsatz/service/loeschen";
-import { pruefeAbrechnungsfreigabe } from "@/lib/einsatz/service/abrechnung";
+import { ERGAENZUNG_LABELS, pruefeAbrechnungsfreigabe, summeErgaenzungen } from "@/lib/einsatz/service/abrechnung";
 import { db } from "@/lib/db";
 import { gruppenlinkFor, linkRows } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
@@ -62,8 +62,20 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
     (n, s) => n + s.assignments.filter((sa) => sa.status !== "STORNIERT" && sa.timeEntries.some((t) => t.unterschriftZeitpunkt && t.review !== "FREIGEGEBEN")).length,
     0
   );
-  // Abrechnung: offen → freigegeben (Dispo) → berechnet (Buchhaltung)
+  // Abrechnung: Stunden (Buchhaltung) → Angaben (Admin) → Rechnung (Buchhaltung)
   const abrechnung = pruefeAbrechnungsfreigabe(a);
+  const darfAbrechnen = canInvoice(user);
+  const ergaenzungen = await db.assignmentAdjustment.findMany({
+    where: { organizationId: user.organizationId, assignmentId: a.id },
+    orderBy: { createdAt: "asc" },
+    include: { employee: { select: { vorname: true, nachname: true } } },
+  });
+  // Für die Auswahl „betrifft nur diese Person" nur die Besetzung dieses Einsatzes
+  const besetzung = [
+    ...new Map(
+      a.shifts.flatMap((s) => s.assignments.filter((sa) => sa.status !== "STORNIERT")).map((sa) => [sa.employeeId, { id: sa.employeeId, name: `${sa.employee.vorname} ${sa.employee.nachname}` }])
+    ).values(),
+  ].sort((x, y) => x.name.localeCompare(y.name, "de"));
 
   return (
     <div className="space-y-6">
@@ -289,12 +301,30 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         einsatznummer={a.einsatznummer}
         stand={a.abrechnung}
         angaben={{ angebotsnummer: a.angebotsnummer ?? "", konditionen: a.konditionen ?? "", abrechnungHinweis: a.abrechnungHinweis ?? "" }}
-        pruefung={{ moeglich: abrechnung.moeglich, offen: abrechnung.offen, stunden: abrechnung.stunden, personen: abrechnung.personen }}
+        pruefung={{
+          moeglich: abrechnung.moeglich,
+          offen: abrechnung.offen,
+          stunden: abrechnung.stunden,
+          personen: abrechnung.personen,
+          bestaetigbar: abrechnung.bestaetigbar,
+          offeneZeiten: abrechnung.offeneZeiten,
+        }}
+        ergaenzungen={ergaenzungen.map((e) => ({
+          id: e.id,
+          art: e.art,
+          artLabel: ERGAENZUNG_LABELS[e.art],
+          betrag: Number(e.betrag),
+          person: e.employee ? `${e.employee.vorname} ${e.employee.nachname}` : null,
+          bemerkung: e.bemerkung,
+        }))}
+        ergaenzungenSumme={summeErgaenzungen(ergaenzungen)}
+        mitarbeiter={besetzung}
         freigabe={{ von: a.freigabeVon, am: a.freigabeAm ? formatDateTime(a.freigabeAm) : null }}
+        angabenMeta={{ von: a.angabenVon, am: a.angabenAm ? formatDateTime(a.angabenAm) : null }}
         rechnung={{ nummer: a.rechnungsnummer, von: a.rechnungVon, am: a.rechnungAm ? formatDateTime(a.rechnungAm) : null }}
+        darfStunden={darfAbrechnen}
         darfAngaben={canBillingNotes(user)}
-        darfFreigeben={darfFreigeben}
-        darfRechnung={canInvoice(user)}
+        darfRechnung={darfAbrechnen}
       />
 
       {dispo && loeschbar ? (

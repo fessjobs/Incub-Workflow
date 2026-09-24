@@ -42,9 +42,10 @@ export function StatusBadge({ status }: { status: string }) {
 // Abrechnung als eigenes Kürzel – bewusst getrennt vom Einsatzstatus, damit
 // in der Liste auf einen Blick sichtbar ist, was die Buchhaltung noch braucht.
 export const ABRECHNUNG_BADGE: Record<string, { label: string; klasse: string }> = {
-  OFFEN: { label: "offen", klasse: "badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
-  FREIGEGEBEN: { label: "freigegeben", klasse: "badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
-  BERECHNET: { label: "berechnet", klasse: "badge bg-navy-900 text-white dark:bg-white dark:text-navy-900" },
+  OFFEN: { label: "Stunden offen", klasse: "badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
+  FREIGEGEBEN: { label: "Stunden freigegeben", klasse: "badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
+  BEREIT: { label: "Rechnung offen", klasse: "badge bg-navy-200 text-navy-700 dark:bg-navy-700 dark:text-navy-100" },
+  BERECHNET: { label: "Rechnung geschrieben", klasse: "badge bg-navy-900 text-white dark:bg-white dark:text-navy-900" },
 };
 
 export function AbrechnungBadge({ stand }: { stand: string }) {

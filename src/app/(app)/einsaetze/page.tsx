@@ -20,7 +20,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
 
   const where: Prisma.AssignmentWhereInput = { organizationId: user.organizationId };
   if (s(sp.status)) where.status = s(sp.status) as never;
-  if (["OFFEN", "FREIGEGEBEN", "BERECHNET"].includes(s(sp.abrechnung))) where.abrechnung = s(sp.abrechnung) as never;
+  if (["OFFEN", "FREIGEGEBEN", "BEREIT", "BERECHNET"].includes(s(sp.abrechnung))) where.abrechnung = s(sp.abrechnung) as never;
   if (s(sp.customer)) where.customerId = s(sp.customer);
   if (isValidDateKey(s(sp.from))) where.datumBis = { gte: keyToDateOnly(s(sp.from)) };
   if (isValidDateKey(s(sp.to))) where.datumVon = { ...(where.datumVon as object), lte: keyToDateOnly(s(sp.to)) };
@@ -83,8 +83,9 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
         </select>
         <select name="abrechnung" defaultValue={s(sp.abrechnung)} className="input">
           <option value="">Abrechnung: alle</option>
-          <option value="OFFEN">Abrechnung offen</option>
-          <option value="FREIGEGEBEN">Zur Abrechnung freigegeben</option>
+          <option value="OFFEN">Stunden offen</option>
+          <option value="FREIGEGEBEN">Stunden freigegeben</option>
+          <option value="BEREIT">Rechnung offen</option>
           <option value="BERECHNET">Rechnung geschrieben</option>
         </select>
         <select name="customer" defaultValue={s(sp.customer)} className="input">

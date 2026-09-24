@@ -59,9 +59,10 @@ model Organization {
   wageRules               WageRule[]
   manualDeductions        ManualDeduction[]
   monthLocks              MonthLock[]
+  ergaenzungen            AssignmentAdjustment[]
+  shiftRatings            ShiftRating[]
 
   @@map("organizations")
-  shiftRatings ShiftRating[]
 }
 
 // ─── Nutzer & Rollen ────────────────────────────────────────────────────────
@@ -647,11 +648,12 @@ model Employee {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  organization     Organization      @relation(fields: [organizationId], references: [id])
+  organization     Organization           @relation(fields: [organizationId], references: [id])
   shiftAssignments ShiftAssignment[]
   documentLinks    DocumentLink[]
   deductions       ManualDeduction[]
   bewertungen      ShiftRating[]
+  ergaenzungen     AssignmentAdjustment[]
 
   @@unique([organizationId, personalnummer])
   @@index([organizationId, nachname, vorname])
@@ -662,9 +664,21 @@ model Employee {
 // schreibt die Rechnung. Unabhängig vom operativen Status (der sagt, wie weit
 // der Einsatz selbst ist) und von der Freigabe einzelner Zeiteinträge.
 enum AbrechnungStatus {
+  // Stunden prüfen (Buchhaltung) → Angaben ergänzen (Admin) → Rechnung (Buchhaltung)
   OFFEN
   FREIGEGEBEN
+  BEREIT
   BERECHNET
+}
+
+// Was die Buchhaltung zusätzlich zu den Stunden auf die Abrechnung nimmt
+enum ErgaenzungArt {
+  BONUS
+  FAHRTKOSTEN
+  SPESEN
+  ZUSCHLAG
+  ABZUG
+  SONSTIGES
 }
 
 enum AssignmentStatus {
@@ -698,6 +712,8 @@ model Assignment {
   abrechnungHinweis  String?
   freigabeVon        String?
   freigabeAm         DateTime?
+  angabenVon         String?
+  angabenAm          DateTime?
   rechnungsnummer    String?
   rechnungVon        String?
   rechnungAm         DateTime?
@@ -716,6 +732,7 @@ model Assignment {
   shifts        Shift[]
   confirmations AssignmentConfirmation[]
   documentLinks DocumentLink[]
+  ergaenzungen  AssignmentAdjustment[]
 
   @@unique([organizationId, einsatznummer])
   @@index([organizationId, status, datumVon])
@@ -734,19 +751,42 @@ model AssignmentNumberCounter {
   @@map("assignment_number_counters")
 }
 
+// Ergänzung zur Abrechnung eines Einsatzes: Bonus, Fahrtkosten, Spesen,
+// Zuschlag, Abzug. Der Betrag wird immer positiv gespeichert, das Vorzeichen
+// ergibt sich aus der Art (ABZUG zählt negativ).
+model AssignmentAdjustment {
+  id             String        @id @default(cuid())
+  organizationId String
+  assignmentId   String
+  // optional: betrifft nur diese Person
+  employeeId     String?
+  art            ErgaenzungArt
+  betrag         Decimal       @db.Decimal(10, 2)
+  bemerkung      String?
+  createdById    String?
+  createdAt      DateTime      @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  assignment   Assignment   @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  employee     Employee?    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, assignmentId])
+  @@map("assignment_adjustments")
+}
+
 model Shift {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   organizationId  String
   assignmentId    String
   bezeichnung     String
   taetigkeit      String
-  datum           DateTime @db.Date
+  datum           DateTime  @db.Date
   planStart       DateTime
   planEnde        DateTime
   treffpunkt      String?
   anzahlSoll      Int?
   // Optionale Garantiestunden je Schicht (überschreibt die Regel-Vorgabe)
-  garantieStunden Decimal? @db.Decimal(5, 2)
+  garantieStunden Decimal?  @db.Decimal(5, 2)
   // Von der Crew übernommene Ist-Zeiten: Wer als Erstes erfasst, kann seine
   // Zeiten für alle auf dieser Schicht als Vorgabe setzen. Die Vorgabe füllt
   // die Formulare der Übrigen vor – unterschreiben muss jede Person selbst.
@@ -755,10 +795,10 @@ model Shift {
   vorgabePause    Int?
   vorgabeVon      String?
   vorgabeAm       DateTime?
-  sortOrder       Int      @default(0)
+  sortOrder       Int       @default(0)
   createdById     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   organization Organization      @relation(fields: [organizationId], references: [id])
   assignment   Assignment        @relation(fields: [assignmentId], references: [id], onDelete: Cascade)

@@ -8,9 +8,9 @@ import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { canBillingNotes, canDispo, canReview, requireDispo, requireInvoicer, requireModuleUser, requireRater, requireReviewer } from "@/lib/einsatz/access";
 import { processJobsOnce } from "@/lib/einsatz/jobs/worker";
-import { AbrechnungAngabenSchema, CorrectionSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RechnungSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
+import { AbrechnungAngabenSchema, CorrectionSchema, ErgaenzungSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RechnungSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
 import { setzeBewertung } from "@/lib/einsatz/service/personal";
-import { gibFuerAbrechnungFrei, nimmFreigabeZurueck, nimmRechnungZurueck, setzeRechnung, speichereAngaben } from "@/lib/einsatz/service/abrechnung";
+import { ergaenzungHinzufuegen, ergaenzungLoeschen, gibAngabenWeiter, gibFuerAbrechnungFrei, nimmAngabenZurueck, nimmFreigabeZurueck, nimmRechnungZurueck, setzeRechnung, speichereAngaben } from "@/lib/einsatz/service/abrechnung";
 import { loescheEinsatz, loeschePerson, loescheZeiterfassung, LoeschError } from "@/lib/einsatz/service/loeschen";
 import { aktualisiereKopf, aktualisiereSchicht, ergaenzePersonen, loescheZeitvorgabe, setzeNamen, vorschauNamen, BesetzungError, type VorschauZeile } from "@/lib/einsatz/service/besetzung";
 import { fromBerlin, keyToDateOnly } from "@/lib/einsatz/tz";
@@ -317,7 +317,56 @@ function revalidateAbrechnung(assignmentId: string): void {
   revalidatePath("/einsaetze");
 }
 
-// Angebotsnummer, Konditionen, Beschreibung – der Kommentar für die Buchhaltung
+// Station 1 – Ergänzungen: Bonus, Fahrtkosten, Spesen, Zuschlag, Abzug
+export async function addErgaenzungAction(assignmentId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  const parsed = ErgaenzungSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    await ergaenzungHinzufuegen(user, assignmentId, parsed.data);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: "Ergänzung aufgenommen." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function deleteErgaenzungAction(ergaenzungId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    const res = await ergaenzungLoeschen(user, ergaenzungId);
+    revalidateAbrechnung(res.assignmentId);
+    return { ok: true, message: "Ergänzung entfernt." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// Station 1 – Stunden bestätigen und für die Abrechnung freigeben
+export async function releaseForInvoiceAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    const res = await gibFuerAbrechnungFrei(user, assignmentId);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: `${res.stunden.toFixed(2).replace(".", ",")} h freigegeben – jetzt fehlen die Angaben zur Abrechnung.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function withdrawInvoiceReleaseAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    await nimmFreigabeZurueck(user, assignmentId);
+    revalidateAbrechnung(assignmentId);
+    return { ok: true, message: "Freigabe zurückgenommen – der Einsatz steht wieder bei den Stunden." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// Station 2 – Angebotsnummer, Konditionen, Beschreibung. Zwischenspeichern
+// ändert den Stand nicht, „weitergeben" meldet sie an die Buchhaltung.
 export async function saveAbrechnungsangabenAction(assignmentId: string, input: unknown): Promise<ActionResult> {
   const user = await requireModuleUser();
   if (!canBillingNotes(user)) return { ok: false, error: "Keine Berechtigung." };
@@ -326,29 +375,33 @@ export async function saveAbrechnungsangabenAction(assignmentId: string, input: 
   try {
     await speichereAngaben(user, assignmentId, parsed.data);
     revalidateAbrechnung(assignmentId);
-    return { ok: true, message: "Angaben für die Buchhaltung gespeichert." };
+    return { ok: true, message: "Angaben gespeichert." };
   } catch (err) {
     return fail(err);
   }
 }
 
-export async function releaseForInvoiceAction(assignmentId: string): Promise<ActionResult> {
-  const user = await requireReviewer();
+export async function handOverToInvoiceAction(assignmentId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireModuleUser();
+  if (!canBillingNotes(user)) return { ok: false, error: "Keine Berechtigung." };
+  const parsed = AbrechnungAngabenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
   try {
-    const res = await gibFuerAbrechnungFrei(user, assignmentId);
+    const res = await gibAngabenWeiter(user, assignmentId, parsed.data);
     revalidateAbrechnung(assignmentId);
-    return { ok: true, message: `Einsatz ${res.einsatznummer} ist freigegeben – ${res.stunden.toFixed(2).replace(".", ",")} h zur Abrechnung.` };
+    return { ok: true, message: `Einsatz ${res.einsatznummer} liegt jetzt bei der Buchhaltung.` };
   } catch (err) {
     return fail(err);
   }
 }
 
-export async function withdrawInvoiceReleaseAction(assignmentId: string): Promise<ActionResult> {
-  const user = await requireReviewer();
+export async function withdrawHandOverAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireModuleUser();
+  if (!canBillingNotes(user)) return { ok: false, error: "Keine Berechtigung." };
   try {
-    await nimmFreigabeZurueck(user, assignmentId);
+    await nimmAngabenZurueck(user, assignmentId);
     revalidateAbrechnung(assignmentId);
-    return { ok: true, message: "Freigabe zurückgenommen – der Einsatz steht wieder auf offen." };
+    return { ok: true, message: "Angaben zurückgeholt – die Rechnung wartet." };
   } catch (err) {
     return fail(err);
   }

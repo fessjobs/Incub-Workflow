@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ABRECHNUNG_KURZ, pruefeAbrechnungsfreigabe } from "@/lib/einsatz/service/abrechnung";
+import { ABRECHNUNG_KURZ, ABRECHNUNG_WER, pruefeAbrechnungsfreigabe, summeErgaenzungen, vorzeichen } from "@/lib/einsatz/service/abrechnung";
 import { canBillingNotes, canInvoice } from "@/lib/einsatz/access";
 
-type Eintrag = { review: string; stunden: number };
+type Eintrag = { review: string; stunden: number; unterschrieben?: boolean };
 
 function einsatz(opts: { personen?: Array<{ employeeId: string; storniert?: boolean; eintraege?: Eintrag[] }>; stundennachweis?: boolean }) {
   return {
@@ -11,7 +11,7 @@ function einsatz(opts: { personen?: Array<{ employeeId: string; storniert?: bool
         assignments: (opts.personen ?? []).map((p) => ({
           status: p.storniert ? "STORNIERT" : "ERFASST",
           employeeId: p.employeeId,
-          timeEntries: (p.eintraege ?? []).map((e) => ({ review: e.review, stundenGesamt: e.stunden, unterschriftZeitpunkt: new Date() })),
+          timeEntries: (p.eintraege ?? []).map((e) => ({ review: e.review, stundenGesamt: e.stunden, unterschriftZeitpunkt: e.unterschrieben === false ? null : new Date() })),
         })),
       },
     ],
@@ -19,7 +19,7 @@ function einsatz(opts: { personen?: Array<{ employeeId: string; storniert?: bool
   };
 }
 
-describe("Voraussetzungen für die Abrechnungsfreigabe", () => {
+describe("Voraussetzungen für die Freigabe der Stunden", () => {
   it("ohne erfasste Zeiten geht nichts", () => {
     const p = pruefeAbrechnungsfreigabe(einsatz({ personen: [{ employeeId: "e1" }] }));
     expect(p.moeglich).toBe(false);
@@ -27,24 +27,26 @@ describe("Voraussetzungen für die Abrechnungsfreigabe", () => {
     expect(p.stunden).toBe(0);
   });
 
-  it("erfasste, aber nicht freigegebene Zeiten blockieren", () => {
+  it("unterschriebene, nicht bestätigte Zeiten weisen auf den Knopf hin", () => {
     const p = pruefeAbrechnungsfreigabe(einsatz({ personen: [{ employeeId: "e1", eintraege: [{ review: "GEPRUEFT", stunden: 8 }] }] }));
     expect(p.moeglich).toBe(false);
-    expect(p.offen[0]).toMatch(/Keine Zeit ist freigegeben/);
+    expect(p.offen[0]).toMatch(/Stunden bestätigen/);
     expect(p.offeneZeiten).toBe(1);
+    expect(p.bestaetigbar).toBe(1);
   });
 
-  it("eine offene Zeit neben freigegebenen blockiert ebenfalls", () => {
+  it("offene Zeiten ohne Unterschrift werden getrennt benannt", () => {
     const p = pruefeAbrechnungsfreigabe(
       einsatz({
         personen: [
           { employeeId: "e1", eintraege: [{ review: "FREIGEGEBEN", stunden: 8 }] },
-          { employeeId: "e2", eintraege: [{ review: "ERFASST", stunden: 7.5 }] },
+          { employeeId: "e2", eintraege: [{ review: "ERFASST", stunden: 7.5, unterschrieben: false }] },
         ],
       })
     );
     expect(p.moeglich).toBe(false);
-    expect(p.offen[0]).toMatch(/1 Zeiteintrag/);
+    expect(p.bestaetigbar).toBe(0);
+    expect(p.offen[0]).toMatch(/1 ohne Unterschrift/);
     expect(p.stunden).toBe(8);
   });
 
@@ -62,6 +64,7 @@ describe("Voraussetzungen für die Abrechnungsfreigabe", () => {
     expect(p.offen).toEqual([]);
     expect(p.stunden).toBe(15.75);
     expect(p.personen).toBe(2);
+    expect(p.bestaetigbar).toBe(0);
     expect(p.stundennachweis).toBe(true);
   });
 
@@ -95,8 +98,36 @@ describe("Voraussetzungen für die Abrechnungsfreigabe", () => {
   });
 });
 
+describe("Ergänzungen: Bonus, Fahrtkosten, Abzüge", () => {
+  it("nur der Abzug zählt negativ", () => {
+    expect(vorzeichen("BONUS")).toBe(1);
+    expect(vorzeichen("FAHRTKOSTEN")).toBe(1);
+    expect(vorzeichen("SPESEN")).toBe(1);
+    expect(vorzeichen("ZUSCHLAG")).toBe(1);
+    expect(vorzeichen("SONSTIGES")).toBe(1);
+    expect(vorzeichen("ABZUG")).toBe(-1);
+  });
+
+  it("die Summe verrechnet Zuschläge und Abzüge", () => {
+    const summe = summeErgaenzungen([
+      { art: "BONUS", betrag: 150 },
+      { art: "FAHRTKOSTEN", betrag: 42.5 },
+      { art: "ABZUG", betrag: 20.25 },
+    ]);
+    expect(summe).toBe(172.25);
+  });
+
+  it("ohne Ergänzungen ist die Summe null", () => {
+    expect(summeErgaenzungen([])).toBe(0);
+  });
+
+  it("Dezimalstellen bleiben sauber", () => {
+    expect(summeErgaenzungen([{ art: "BONUS", betrag: 0.1 }, { art: "BONUS", betrag: 0.2 }])).toBe(0.3);
+  });
+});
+
 describe("Wer darf was in der Abrechnung", () => {
-  it("nur Buchhaltung und Admin schreiben die Rechnung", () => {
+  it("Stunden freigeben und Rechnung schreiben: Buchhaltung und Admin", () => {
     expect(canInvoice({ role: "BUCHHALTUNG" })).toBe(true);
     expect(canInvoice({ role: "ADMIN" })).toBe(true);
     expect(canInvoice({ role: "DISPONENT" })).toBe(false);
@@ -104,12 +135,17 @@ describe("Wer darf was in der Abrechnung", () => {
     expect(canInvoice({ role: "EINREICHER" })).toBe(false);
   });
 
-  it("Angebotsnummer und Konditionen pflegen Dispo und Buchhaltung", () => {
-    for (const role of ["ADMIN", "BUCHHALTUNG", "DISPONENT", "MEMBER"] as const) expect(canBillingNotes({ role })).toBe(true);
+  it("Angaben zur Abrechnung: Admin und Buchhaltung", () => {
+    expect(canBillingNotes({ role: "ADMIN" })).toBe(true);
+    expect(canBillingNotes({ role: "BUCHHALTUNG" })).toBe(true);
+    expect(canBillingNotes({ role: "DISPONENT" })).toBe(false);
+    expect(canBillingNotes({ role: "MEMBER" })).toBe(false);
     expect(canBillingNotes({ role: "EINREICHER" })).toBe(false);
   });
 
-  it("die Kürzel für die Liste sind vollständig", () => {
-    expect(Object.keys(ABRECHNUNG_KURZ).sort()).toEqual(["BERECHNET", "FREIGEGEBEN", "OFFEN"]);
+  it("jeder Stand hat ein Kürzel und sagt, wer dran ist", () => {
+    const staende = ["OFFEN", "FREIGEGEBEN", "BEREIT", "BERECHNET"] as const;
+    expect(Object.keys(ABRECHNUNG_KURZ).sort()).toEqual([...staende].sort());
+    for (const st of staende) expect(ABRECHNUNG_WER[st]).toBeTruthy();
   });
 });

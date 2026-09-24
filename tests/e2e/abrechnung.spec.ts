@@ -1,5 +1,7 @@
-// Der Weg zur Rechnung in drei Stationen:
-//   offen → die Dispo gibt frei → die Buchhaltung trägt die Rechnung ein.
+// Der Weg zur Rechnung in drei Handgriffen:
+//   1. Buchhaltung bestätigt die Stunden, nimmt Ergänzungen auf, gibt frei
+//   2. Admin ergänzt Angebotsnummer, Konditionen, Beschreibung
+//   3. Buchhaltung schreibt die Rechnung
 import { expect, test, type Page } from "@playwright/test";
 import { tutorialWeg, unterschriftAngekommen } from "./helpers";
 
@@ -7,7 +9,7 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
 const RUN = Date.now().toString(36);
 const N = Math.floor(Date.now() / 1000);
-const DATE = `2036-${String(1 + (N % 12)).padStart(2, "0")}-${String(1 + (Math.floor(N / 12) % 28)).padStart(2, "0")}`;
+const DATE = `2037-${String(1 + (N % 12)).padStart(2, "0")}-${String(1 + (Math.floor(N / 12) % 28)).padStart(2, "0")}`;
 const DATE_DE = DATE.split("-").reverse().join(".");
 const NACHNAME = `Rechenbar-${RUN}`;
 const ANGEBOT = `AN-${RUN}`;
@@ -42,7 +44,7 @@ async function drawSignature(page: Page) {
   await page.mouse.up();
 }
 
-test.describe.serial("Abrechnung: Freigabe der Dispo, Rechnung der Buchhaltung", () => {
+test.describe.serial("Abrechnung: Stunden, Angaben, Rechnung", () => {
   let url = "";
   let einsatznummer = "";
 
@@ -73,89 +75,112 @@ test.describe.serial("Abrechnung: Freigabe der Dispo, Rechnung der Buchhaltung",
     await unterschriftAngekommen(page, 1, 1);
   });
 
-  test("Vor der Freigabe der Zeiten ist die Abrechnung gesperrt", async ({ page }) => {
+  test("Schritt 1 zuerst: ohne bestätigte Stunden gehen Angaben und Rechnung nicht", async ({ page }) => {
     await login(page);
     await page.goto(url);
     const karte = page.getByTestId("abrechnung-karte");
-    await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Offen");
-    await expect(karte.getByTestId("abrechnung-offene-punkte")).toContainText("Keine Zeit ist freigegeben");
+    await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Stunden offen");
+    await expect(karte.getByTestId("abrechnung-offene-punkte")).toContainText("Stunden bestätigen");
     await expect(karte.getByTestId("abrechnung-freigeben")).toBeDisabled();
-    // Die Rechnung lässt sich nicht vorziehen
+    // Schritt 2 und 3 sind noch zu
+    await expect(karte.getByTestId("angebotsnummer")).toHaveCount(0);
     await expect(karte.getByTestId("rechnung-setzen")).toBeDisabled();
   });
 
-  test("Angebotsnummer, Konditionen und Beschreibung vorher hinterlegen", async ({ page }) => {
+  test("Schritt 1: Stunden bestätigen, Ergänzungen aufnehmen, freigeben", async ({ page }) => {
     await login(page);
     await page.goto(url);
     const karte = page.getByTestId("abrechnung-karte");
+
+    // Bonus und Abzug – die Summe verrechnet beides
+    await karte.getByTestId("ergaenzung-art").selectOption("BONUS");
+    await karte.getByTestId("ergaenzung-betrag").fill("150");
+    await karte.getByTestId("ergaenzung-bemerkung").fill("Nachtaufbau");
+    await karte.getByTestId("ergaenzung-hinzu").click();
+    await expect(karte.getByTestId("ergaenzungen-summe")).toContainText("150,00 €");
+
+    await karte.getByTestId("ergaenzung-art").selectOption("ABZUG");
+    await karte.getByTestId("ergaenzung-betrag").fill("20,25");
+    await karte.getByTestId("ergaenzung-hinzu").click();
+    await expect(karte.getByTestId("ergaenzungen-summe")).toContainText("129,75 €");
+
+    // Stunden bestätigen, dann freigeben
+    await karte.getByTestId("stunden-bestaetigen").click();
+    await expect(karte.getByTestId("abrechnung-freigeben")).toBeEnabled();
+    await karte.getByTestId("abrechnung-freigeben").click();
+    await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Stunden freigegeben");
+    await expect(karte.getByTestId("abrechnung-freigabe-info")).toContainText("7,50 h freigegeben");
+  });
+
+  test("Schritt 2: der Admin ergänzt die Angaben und gibt sie weiter", async ({ page }) => {
+    await login(page);
+    await page.goto(url);
+    const karte = page.getByTestId("abrechnung-karte");
+    // Ohne Angebotsnummer bleibt der Knopf zu
+    await expect(karte.getByTestId("angaben-weiter")).toBeDisabled();
     await karte.getByTestId("angebotsnummer").fill(ANGEBOT);
     await karte.getByTestId("konditionen").fill("32,50 €/h, ab 10 h +25 %");
     await karte.getByTestId("abrechnung-hinweis").fill(`Aufbau Halle 2, Angebot ${RUN}`);
-    await karte.getByTestId("angaben-speichern").click();
-    await expect(karte.getByTestId("abrechnung-ok")).toContainText("gespeichert");
+    // Die Rechnung lässt sich noch nicht schreiben
+    await expect(karte.getByTestId("rechnung-setzen")).toBeDisabled();
 
-    await page.reload();
-    await expect(page.getByTestId("abrechnung-karte").getByTestId("angebotsnummer")).toHaveValue(ANGEBOT);
+    await karte.getByTestId("angaben-weiter").click();
+    await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Rechnung offen");
+    await expect(karte.getByTestId("angaben-info")).toContainText("An die Buchhaltung gemeldet");
   });
 
-  test("Die Dispo gibt erst die Stunden und dann die Abrechnung frei", async ({ page }) => {
+  test("In der Übersicht liegt der Einsatz im Korb „Rechnung offen“", async ({ page }) => {
     await login(page);
-    await page.goto(url);
-    // Schritt 1: die Zeiteinträge selbst
-    await page.getByTestId("freigeben-button").click();
-    await expect(page.getByText(/freigegeben/).first()).toBeVisible();
-
-    // Schritt 2: der Einsatz für die Buchhaltung
-    await page.goto(url);
-    const karte = page.getByTestId("abrechnung-karte");
-    await expect(karte.getByTestId("abrechnung-freigeben")).toBeEnabled();
-    await karte.getByTestId("abrechnung-freigeben").click();
-    await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Freigegeben");
-    await expect(karte.getByTestId("abrechnung-freigabe-info")).toContainText("Freigegeben");
-  });
-
-  test("In der Übersicht liegt der Einsatz im Korb „Freigegeben“", async ({ page }) => {
-    await login(page);
-    await page.goto(`/einsaetze/abrechnung?stand=FREIGEGEBEN&q=${einsatznummer}`);
+    await page.goto(`/einsaetze/abrechnung?stand=BEREIT&q=${einsatznummer}`);
     const zeile = page.getByTestId(`abrechnung-zeile-${einsatznummer}`);
     await expect(zeile).toContainText(ANGEBOT);
     await expect(zeile).toContainText("7,50 h");
+    await expect(zeile).toContainText("129,75 €");
 
-    // Nicht im Korb „Offen"
-    await page.goto(`/einsaetze/abrechnung?stand=OFFEN&q=${einsatznummer}`);
-    await expect(page.getByTestId(`abrechnung-zeile-${einsatznummer}`)).toHaveCount(0);
+    // Nicht mehr in den beiden Körben davor
+    for (const stand of ["OFFEN", "FREIGEGEBEN"]) {
+      await page.goto(`/einsaetze/abrechnung?stand=${stand}&q=${einsatznummer}`);
+      await expect(page.getByTestId(`abrechnung-zeile-${einsatznummer}`)).toHaveCount(0);
+    }
   });
 
-  test("Die Buchhaltung trägt die Rechnungsnummer direkt in der Liste ein", async ({ page }) => {
+  test("Schritt 3: die Buchhaltung trägt die Rechnungsnummer in der Liste ein", async ({ page }) => {
     await login(page);
-    await page.goto(`/einsaetze/abrechnung?stand=FREIGEGEBEN&q=${einsatznummer}`);
+    await page.goto(`/einsaetze/abrechnung?stand=BEREIT&q=${einsatznummer}`);
     await page.getByTestId(`rechnungsnummer-${einsatznummer}`).fill(RECHNUNG);
     await page.getByTestId(`rechnung-setzen-${einsatznummer}`).click();
 
     await page.goto(`/einsaetze/abrechnung?stand=BERECHNET&q=${einsatznummer}`);
     await expect(page.getByTestId(`abrechnung-zeile-${einsatznummer}`)).toContainText(RECHNUNG);
 
-    // Am Einsatz selbst steht die Rechnung ebenfalls, Angaben sind gesperrt
+    // Am Einsatz selbst: Rechnung vermerkt, alles davor gesperrt
     await page.goto(url);
     const karte = page.getByTestId("abrechnung-karte");
     await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Rechnung geschrieben");
     await expect(karte.getByTestId("abrechnung-rechnung-info")).toContainText(RECHNUNG);
     await expect(karte.getByTestId("angebotsnummer")).toHaveCount(0);
     await expect(karte.getByTestId("angaben-angebotsnummer")).toHaveText(ANGEBOT);
-    // Der Einsatzstatus zieht mit
+    await expect(karte.getByTestId("ergaenzung-hinzu")).toHaveCount(0);
     await expect(page.getByText("Abgerechnet").first()).toBeVisible();
   });
 
-  test("Eine Rechnungsnummer gibt es nur einmal", async ({ page }) => {
+  test("Die Einsatzliste sagt den Stand im Klartext", async ({ page }) => {
     await login(page);
-    // Zweiter Einsatz, direkt freigeben ist ohne Stunden nicht möglich –
-    // darum wird die Doppelung am selben Einsatz nach Rücknahme geprüft.
+    await page.goto(`/einsaetze?q=${einsatznummer}`);
+    await expect(page.getByTestId("abrechnung-badge-berechnet").first()).toHaveText("Rechnung geschrieben");
+    await expect(page.getByText(`Nr. ${RECHNUNG}`).first()).toBeVisible();
+    // Filter nach Abrechnungsstand
+    await page.goto(`/einsaetze?q=${einsatznummer}&abrechnung=OFFEN`);
+    await expect(page.getByText("Keine Einsätze gefunden.")).toBeVisible();
+  });
+
+  test("Rücknahme: Vermerk entfernen, dieselbe Nummer geht wieder", async ({ page }) => {
+    await login(page);
     await page.goto(url);
     const karte = page.getByTestId("abrechnung-karte");
     await karte.getByTestId("abrechnung-rechnung-zurueck").click();
-    await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Freigegeben");
+    await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Rechnung offen");
 
-    // Dieselbe Nummer darf derselbe Einsatz wieder bekommen
     await karte.getByTestId("rechnungsnummer").fill(RECHNUNG);
     await karte.getByTestId("rechnung-setzen").click();
     await expect(karte.getByTestId("abrechnung-stand")).toHaveText("Rechnung geschrieben");

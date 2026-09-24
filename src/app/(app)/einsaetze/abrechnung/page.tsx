@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { AbrechnungStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { canInvoice, requireReviewer } from "@/lib/einsatz/access";
+import { ABRECHNUNG_WER, summeErgaenzungen } from "@/lib/einsatz/service/abrechnung";
 import { dateOnlyKey, formatKeyDE, keyToDateOnly, isValidDateKey } from "@/lib/einsatz/tz";
 import { formatDateTime } from "@/lib/format";
 import { RechnungZeile } from "./rechnung-zeile";
@@ -14,17 +15,21 @@ type SP = Record<string, string | string[] | undefined>;
 const s = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
 const TABS: Array<{ stand: AbrechnungStatus; label: string; hinweis: string }> = [
-  { stand: "OFFEN", label: "Offen", hinweis: "Warten auf die Freigabe der Dispo." },
-  { stand: "FREIGEGEBEN", label: "Freigegeben", hinweis: "Bereit für die Rechnung der Buchhaltung." },
-  { stand: "BERECHNET", label: "Berechnet", hinweis: "Rechnung geschrieben – erledigt." },
+  { stand: "OFFEN", label: "Stunden offen", hinweis: "Buchhaltung: Stunden bestätigen und freigeben." },
+  { stand: "FREIGEGEBEN", label: "Stunden freigegeben", hinweis: "Admin: Angaben zur Abrechnung ergänzen." },
+  { stand: "BEREIT", label: "Rechnung offen", hinweis: "Buchhaltung: Rechnung schreiben." },
+  { stand: "BERECHNET", label: "Rechnung geschrieben", hinweis: "Erledigt." },
 ];
 
-// Übersicht für den Weg zur Rechnung: offen → freigegeben → berechnet.
-// Die Dispo gibt frei, die Buchhaltung trägt die Rechnungsnummer ein.
+const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
+const stundenTxt = (n: number) => `${n.toFixed(2).replace(".", ",")} h`;
+
+// Übersicht für den Weg zur Rechnung: Stunden (Buchhaltung) → Angaben (Admin)
+// → Rechnung (Buchhaltung). Jeder Korb sagt, wer als Nächstes dran ist.
 export default async function AbrechnungPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireReviewer();
   const sp = await searchParams;
-  const stand = (TABS.some((t) => t.stand === s(sp.stand)) ? s(sp.stand) : "FREIGEGEBEN") as AbrechnungStatus;
+  const stand = (TABS.some((t) => t.stand === s(sp.stand)) ? s(sp.stand) : "OFFEN") as AbrechnungStatus;
   const aktiv = TABS.find((t) => t.stand === stand)!;
 
   const where: Prisma.AssignmentWhereInput = { organizationId: user.organizationId, abrechnung: stand };
@@ -49,6 +54,7 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
       take: 200,
       include: {
         customer: { select: { name: true } },
+        ergaenzungen: { select: { art: true, betrag: true } },
         shifts: { select: { assignments: { select: { status: true, timeEntries: { where: { aktuell: true }, select: { review: true, stundenGesamt: true } } } } } },
       },
     }),
@@ -65,9 +71,11 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
       a,
       stunden: Math.round(frei.reduce((n, t) => n + Number(t.stundenGesamt), 0) * 100) / 100,
       offeneZeiten: entries.length - frei.length,
+      ergaenzungen: summeErgaenzungen(a.ergaenzungen),
     };
   });
   const summe = Math.round(zeilen.reduce((n, z) => n + z.stunden, 0) * 100) / 100;
+  const summeErg = Math.round(zeilen.reduce((n, z) => n + z.ergaenzungen, 0) * 100) / 100;
 
   const linkFor = (st: AbrechnungStatus) => {
     const p = new URLSearchParams();
@@ -81,12 +89,14 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
       <div>
         <p className="eyebrow">Rechnungsstellung</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Abrechnung</h1>
-        <p className="mt-1 text-sm text-navy-400">Offen → die Dispo gibt den Stundennachweis frei → die Buchhaltung trägt die Rechnungsnummer ein.</p>
+        <p className="mt-1 text-sm text-navy-400">
+          Die Buchhaltung bestätigt die Stunden und nimmt Ergänzungen auf → der Admin ergänzt Angebotsnummer, Konditionen und Beschreibung → die Buchhaltung schreibt die Rechnung.
+        </p>
       </div>
 
-      {/* Drei Körbe, jeder mit seiner Anzahl */}
-      <div className="grid gap-2 sm:grid-cols-3">
-        {TABS.map((t) => (
+      {/* Vier Körbe, jeder mit seiner Anzahl und der Angabe, wer dran ist */}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {TABS.map((t, i) => (
           <Link
             key={t.stand}
             href={linkFor(t.stand)}
@@ -94,7 +104,10 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
             className={`card px-4 py-3 transition hover:border-navy-300 ${t.stand === stand ? "border-navy-400 bg-navy-50 dark:border-navy-500 dark:bg-navy-800" : ""}`}
           >
             <p className="flex items-baseline justify-between gap-2">
-              <span className="font-medium">{t.label}</span>
+              <span className="font-medium">
+                <span className="mr-1 text-navy-400">{i + 1}.</span>
+                {t.label}
+              </span>
               <span className="text-lg font-semibold tabular-nums" data-testid={`anzahl-${t.stand.toLowerCase()}`}>
                 {anzahl(t.stand)}
               </span>
@@ -133,9 +146,16 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-navy-100 px-4 py-3 text-sm dark:border-navy-800">
           <p className="font-medium">
             {aktiv.label} · {zeilen.length} Einsatz/Einsätze
+            <span className="ml-2 font-normal text-navy-400">{ABRECHNUNG_WER[stand]}</span>
           </p>
           <p className="text-navy-400">
-            Summe freigegebene Stunden: <strong className="tabular-nums">{summe.toFixed(2).replace(".", ",")} h</strong>
+            Summe: <strong className="tabular-nums">{stundenTxt(summe)}</strong>
+            {summeErg !== 0 ? (
+              <>
+                {" "}
+                · Ergänzungen <strong className="tabular-nums">{euro(summeErg)}</strong>
+              </>
+            ) : null}
           </p>
         </div>
         {zeilen.length === 0 ? (
@@ -144,7 +164,7 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
           </p>
         ) : (
           <ul className="divide-y divide-navy-100 dark:divide-navy-800">
-            {zeilen.map(({ a, stunden, offeneZeiten }) => (
+            {zeilen.map(({ a, stunden, offeneZeiten, ergaenzungen }) => (
               <li key={a.id} className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[1.6fr_1fr_auto] md:items-center" data-testid={`abrechnung-zeile-${a.einsatznummer}`}>
                 <div>
                   <p>
@@ -160,8 +180,9 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
                 </div>
                 <div className="text-xs text-navy-500">
                   <p>
-                    <strong className="tabular-nums">{stunden.toFixed(2).replace(".", ",")} h</strong> freigegeben
+                    <strong className="tabular-nums">{stundenTxt(stunden)}</strong> freigegeben
                     {offeneZeiten > 0 ? <span className="ml-1 text-amber-600">· {offeneZeiten} Zeit(en) offen</span> : null}
+                    {ergaenzungen !== 0 ? <span className="ml-1">· Ergänzungen {euro(ergaenzungen)}</span> : null}
                   </p>
                   <p>
                     Angebot {a.angebotsnummer ?? "–"}
@@ -169,7 +190,12 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
                   </p>
                   {a.freigabeAm ? (
                     <p>
-                      freigegeben von {a.freigabeVon ?? "–"} am {formatDateTime(a.freigabeAm)}
+                      Stunden frei von {a.freigabeVon ?? "–"} am {formatDateTime(a.freigabeAm)}
+                    </p>
+                  ) : null}
+                  {a.angabenAm ? (
+                    <p>
+                      Angaben von {a.angabenVon ?? "–"} am {formatDateTime(a.angabenAm)}
                     </p>
                   ) : null}
                   {a.rechnungAm ? (
@@ -179,7 +205,7 @@ export default async function AbrechnungPage({ searchParams }: { searchParams: P
                   ) : null}
                 </div>
                 <div className="md:justify-self-end">
-                  {stand === "FREIGEGEBEN" && darfRechnung ? (
+                  {stand === "BEREIT" && darfRechnung ? (
                     <RechnungZeile assignmentId={a.id} einsatznummer={a.einsatznummer} />
                   ) : (
                     <Link href={`/einsaetze/${a.id}`} className="btn-secondary text-xs">

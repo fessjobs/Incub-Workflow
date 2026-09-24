@@ -55,11 +55,14 @@ konfigurierbarem Mapping und Validierung.
   (`/einsaetze/personal/import`) und Kunden (`/einsaetze/kunden/import`) – Spalten werden
   an den Überschriften erkannt, Vorschau je Zeile vor der Übernahme, keine Dubletten.
   PDFs (auch eingescannte) liest die Claude API aus; Excel und CSV gehen ohne Schlüssel
-- **Abrechnung** (`/einsaetze/abrechnung`): drei Körbe – offen → die Dispo gibt den
-  Stundennachweis frei → die Buchhaltung trägt die Rechnungsnummer ein. Vorher hinterlegt
-  die Dispo Angebotsnummer, Konditionen und eine Beschreibung für die Buchhaltung.
-  Freigeben geht erst, wenn alle Zeiten freigegeben sind; jede Rechnungsnummer gibt es
-  nur einmal, beide Schritte sind zurücknehmbar und stehen im Protokoll
+- **Abrechnung** (`/einsaetze/abrechnung`): vier Körbe in drei Handgriffen – die
+  **Buchhaltung** bestätigt die Stunden und nimmt Ergänzungen auf (Bonus, Fahrtkosten,
+  Spesen, Zuschläge, Abzüge; je Einsatz oder je Person), dann ergänzt der **Admin**
+  Angebotsnummer, Konditionen und Beschreibung, dann schreibt die **Buchhaltung** die
+  Rechnung. Der Admin darf jeden Schritt selbst gehen. Jede Stufe ist zurücknehmbar,
+  jede Rechnungsnummer gibt es nur einmal, alles steht im Protokoll. Die Einsatzliste
+  zeigt den Stand im Klartext: Stunden offen / Stunden freigegeben / Rechnung offen /
+  Rechnung geschrieben
 - **Löschen im Backend**: Stunden, ganze Einsätze und Personen lassen sich löschen –
   mit Ansage, was mitgeht, und vollständigem Abzug im Protokoll. Freigegebene Zeiten und
   gesperrte Monate sind für alle tabu; bei Unterschriften muss ein Admin die Einsatznummer
@@ -80,7 +83,8 @@ konfigurierbarem Mapping und Validierung.
   einfügen (eine Person je Zeile, „Nachname, Vorname“ wird gedreht, Rollenkürzel erkannt).
   **Namen bleiben immer änderbar** – auch nachdem der Kunde unterschrieben hat
 - Rollen: Admin/Mitglied = Dispo, **Disponent = eigener Zugang nur fürs Einsatzmodul**,
-  Buchhaltung = Freigabe/Lohnarten/Export (lesend) **und die Rechnung**, Kiosk-Konten kein Zugriff
+  Buchhaltung = Freigabe/Lohnarten/Export (lesend) **und die Abrechnung** (Stunden bestätigen,
+  Ergänzungen, Rechnung), Kiosk-Konten kein Zugriff
 - Einzellinks je Person (`/e/<token>`) bleiben für den automatischen Versand und Nachzügler
 - Umgebungsvariablen: `APP_BASE_URL` (Links; ohne sie wird die öffentliche Adresse automatisch
   ermittelt), `ANTHROPIC_API_KEY` (Parser **und Screenshot-Auswertung**), optional `SMTP_URL`/`MAIL_FROM`,

@@ -288,3 +288,12 @@ export const AbrechnungAngabenSchema = z.object({
 export const RechnungSchema = z.object({
   rechnungsnummer: z.string().trim().min(1, "Rechnungsnummer fehlt.").max(60, "Rechnungsnummer ist zu lang."),
 });
+
+// Was die Buchhaltung zusätzlich zu den Stunden auf die Abrechnung nimmt.
+// Der Betrag wird immer positiv erfasst, das Vorzeichen steckt in der Art.
+export const ErgaenzungSchema = z.object({
+  art: z.enum(["BONUS", "FAHRTKOSTEN", "SPESEN", "ZUSCHLAG", "ABZUG", "SONSTIGES"]),
+  betrag: z.coerce.number().positive("Betrag muss größer als 0 sein.").max(1000000, "Betrag ist zu groß."),
+  employeeId: z.string().trim().transform((v) => v || null).nullable().default(null),
+  bemerkung: z.string().trim().max(300, "Bemerkung ist zu lang.").transform((v) => v || null).nullable().default(null),
+});
