@@ -21,13 +21,17 @@ export { teileEingabe };
 
 export type RosterMeta = { ip: string | null; userAgent: string | null };
 
-async function assertOffen(assignmentId: string): Promise<{ id: string; organizationId: string }> {
+// Bestätigt der Kunde je Schicht, sperrt seine Unterschrift auch nur diese
+// Schicht – die übrigen bleiben korrigierbar. „shiftId" ist die betroffene
+// Schicht, sofern schon bekannt.
+async function assertOffen(assignmentId: string, shiftId?: string | null): Promise<{ id: string; organizationId: string }> {
   const a = await db.assignment.findUnique({
     where: { id: assignmentId },
-    select: { id: true, organizationId: true, status: true, _count: { select: { confirmations: true } } },
+    select: { id: true, organizationId: true, status: true, confirmations: { select: { shiftId: true } } },
   });
   if (!a) throw new BesetzungError("Einsatz nicht gefunden.", 404);
-  if (a._count.confirmations > 0) throw new BesetzungError("Der Kunde hat bereits bestätigt. Änderungen bitte über die Dispo.", 409);
+  const gesperrt = a.confirmations.some((c) => c.shiftId === null || (shiftId ? c.shiftId === shiftId : false));
+  if (gesperrt) throw new BesetzungError("Der Kunde hat bereits bestätigt. Änderungen bitte über die Dispo.", 409);
   if (a.status === "ABGESCHLOSSEN" || a.status === "ABGERECHNET") throw new BesetzungError("Der Einsatz ist abgeschlossen. Änderungen bitte über die Dispo.", 409);
   return { id: a.id, organizationId: a.organizationId };
 }
@@ -45,6 +49,8 @@ export async function korrigiereName(
     include: { timeEntries: { where: { aktuell: true }, select: { unterschriftZeitpunkt: true } } },
   });
   if (!sa) throw new BesetzungError("Person gehört nicht zu diesem Einsatz.", 403);
+  // Jetzt ist die Schicht bekannt – ist genau sie bestätigt, ist zu.
+  await assertOffen(assignmentId, sa.shiftId);
   if (sa.status === "STORNIERT") throw new BesetzungError("Diese Einteilung ist storniert.", 409);
   if (sa.timeEntries.some((t) => t.unterschriftZeitpunkt)) {
     throw new BesetzungError("Diese Person hat bereits unterschrieben – der Name steht so auf dem Beleg. Bitte die Dispo ansprechen.", 409);
@@ -61,7 +67,7 @@ export async function ergaenzePerson(
   eingabe: { vorname: string; nachname: string },
   meta: RosterMeta
 ): Promise<PersonErgaenzt> {
-  const a = await assertOffen(assignmentId);
+  const a = await assertOffen(assignmentId, shiftId);
   const { vorname, nachname } = teileEingabe(eingabe.vorname, eingabe.nachname);
 
   const shift = await db.shift.findFirst({ where: { id: shiftId, assignmentId: a.id }, select: { id: true, planStart: true, planEnde: true } });

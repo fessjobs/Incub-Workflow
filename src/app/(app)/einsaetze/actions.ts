@@ -60,11 +60,13 @@ export async function generateKonkretisierungAction(assignmentId: string): Promi
   }
 }
 
-export async function generateStundennachweisAction(assignmentId: string): Promise<ActionResult> {
+// Ohne shiftId der Nachweis über den ganzen Einsatz, mit shiftId der einer
+// Schicht – genauso wie ihn die Bestätigung des Kunden erzeugt.
+export async function generateStundennachweisAction(assignmentId: string, shiftId: string | null = null): Promise<ActionResult> {
   const user = await requireModuleUser();
   if (!canDispo(user) && !canReview(user)) return { ok: false, error: "Keine Berechtigung." };
   try {
-    const res = await generateStundennachweisPdf(user.organizationId, assignmentId, user.id);
+    const res = await generateStundennachweisPdf(user.organizationId, assignmentId, user.id, { shiftId });
     revalidatePath(`/einsaetze/${assignmentId}`);
     return { ok: true, message: `${res.filename} erzeugt${res.offen > 0 ? ` (${res.offen} ohne Unterschrift)` : ""}.`, documentId: res.documentId };
   } catch (err) {

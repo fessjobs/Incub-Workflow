@@ -22,6 +22,7 @@ import { EditKopf, EditSchicht } from "./edit-forms";
 import { PasteNames } from "./paste-names";
 import { RenamePerson } from "./rename-person";
 import { Zeitvorgabe } from "./zeitvorgabe";
+import { SchichtNachweis } from "./schicht-nachweis";
 import { RatePerson } from "./rate-person";
 import { BilanzBadge, ErfahrungZeile } from "../rating-badges";
 import { AbrechnungCard } from "./abrechnung-card";
@@ -103,7 +104,11 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
             <span className={`badge ${progress.gesamt > 0 && progress.erfasst === progress.gesamt ? "bg-emerald-100 text-emerald-700" : "bg-navy-100 text-navy-600"}`}>
               {progress.erfasst} von {progress.gesamt} unterschrieben
             </span>
-            {a.confirmations[0] ? <span className="badge bg-emerald-100 text-emerald-700">Kunde: {a.confirmations[0].kundeName}</span> : null}
+            {a.confirmations.map((c) => (
+              <span key={c.id} className="badge bg-emerald-100 text-emerald-700">
+                Kunde{c.shiftId ? ` (${a.shifts.find((s) => s.id === c.shiftId)?.bezeichnung ?? "Schicht"})` : ""}: {c.kundeName}
+              </span>
+            ))}
           </div>
         </div>
         <ActionButtons assignmentId={a.id} status={a.status} dispo={dispo} freigeben={darfFreigeben} offeneZeiten={offeneZeiten} />
@@ -156,6 +161,19 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
                 {s.anzahlSoll !== null ? ` · Soll ${s.anzahlSoll}` : ""}
                 {s.garantieStunden !== null ? ` · Garantie ${Number(s.garantieStunden)} h` : ""}
               </p>
+              {(() => {
+                const bestaetigt = a.confirmations.find((c) => c.shiftId === s.id);
+                return bestaetigt ? (
+                  <p className="mt-1 text-xs text-emerald-600" data-testid={`schicht-kunde-${s.id}`}>
+                    Kunde: {bestaetigt.kundeName} · {formatDateTime(bestaetigt.zeitpunkt)}
+                  </p>
+                ) : null;
+              })()}
+              {dispo && a.shifts.length > 1 ? (
+                <p className="mt-1">
+                  <SchichtNachweis assignmentId={a.id} shiftId={s.id} bezeichnung={s.bezeichnung} />
+                </p>
+              ) : null}
               {dispo && s.vorgabeStart && s.vorgabeEnde && s.vorgabePause !== null ? (
                 <Zeitvorgabe shiftId={s.id} start={berlinTime(s.vorgabeStart)} ende={berlinTime(s.vorgabeEnde)} pauseMinuten={s.vorgabePause} von={s.vorgabeVon ?? "–"} />
               ) : null}

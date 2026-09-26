@@ -34,8 +34,8 @@ async function login(page: Page) {
   await page.waitForURL(/\/dashboard/);
 }
 
-async function drawSignature(page: Page) {
-  const pad = page.getByTestId("signature-pad").locator("canvas");
+async function drawSignature(page: Page, testId = "signature-pad") {
+  const pad = page.getByTestId(testId).locator("canvas");
   await pad.scrollIntoViewIfNeeded();
   const box = await pad.boundingBox();
   if (!box) throw new Error("Unterschriftenfeld nicht sichtbar");
@@ -98,8 +98,9 @@ test.describe.serial("Link je Schicht", () => {
     await expect(page.getByTestId("nur-schicht")).toContainText("Aufbau");
     await expect(page.getByText(`Timo ${AUFBAU}`)).toBeVisible();
     await expect(page.getByText(`Lena ${ABBAU}`)).toHaveCount(0);
-    // Die Kundenbestätigung läuft über den Link für den ganzen Einsatz
-    await expect(page.getByTestId("kunde-nur-einsatzlink")).toBeVisible();
+    // Der Kunde kann diese Schicht hier abzeichnen; die Sammelbestätigung
+    // über alle Schichten läuft weiter über den Einsatzlink.
+    await expect(page.locator('[data-testid^="schicht-kunde-unterschreibt-"]')).toHaveCount(1);
     await expect(page.getByTestId("crew-kunde")).toHaveCount(0);
   });
 
@@ -144,5 +145,115 @@ test.describe.serial("Link je Schicht", () => {
     expect(zweiteView.schichten).toHaveLength(1);
     expect(ersteView.nurSchicht).toBe("Aufbau");
     expect(ersteView.kundeMoeglich).toBe(false);
+    expect(ersteView.schichten[0].kundeMoeglich).toBe(true);
+    expect(ersteView.schichten[0].kundeMoeglich).toBe(true);
+  });
+});
+
+// Der Kunde zeichnet jede Schicht einzeln ab – dann entsteht je Schicht ein
+// eigener Stundennachweis.
+test.describe.serial("Kundenunterschrift je Schicht", () => {
+  const RUN2 = `${RUN}b`;
+  const RAW2 = `Artist: Je Schicht ${RUN2}
+Location: Porsche Arena Stuttgart
+Kunde: Mannheimer Power GmbH
+Arbeitsbeginn ${de(TAG1)}:
+Aufbau | 07:00 - 15:00 Uhr | 1x Hands
+Nora Tag1-${RUN2}
+Arbeitsbeginn ${de(TAG2)}:
+Abbau | 22:00 - 02:00 Uhr | 1x Hands
+Piet Tag2-${RUN2}
+`;
+  let url = "";
+  let crewPfad = "";
+  let schichtIds: string[] = [];
+
+  test("Einsatz anlegen, alle erfassen", async ({ page }) => {
+    await login(page);
+    await page.goto("/einsaetze/neu");
+    await page.getByTestId("raw-input").fill(RAW2);
+    await page.getByTestId("parse-button").click();
+    await expect(page.getByTestId("person-0-0")).toBeVisible();
+    for (const feld of [page.getByTestId("person-0-0"), page.getByTestId("person-1-0")]) {
+      if ((await feld.inputValue()) === "") await feld.selectOption("__neu");
+    }
+    await page.getByTestId("save-button").click();
+    const konflikte = page.getByLabel("Konflikte geprüft, trotzdem speichern");
+    if (await konflikte.isVisible().catch(() => false)) {
+      await konflikte.check();
+      await page.getByTestId("save-button").click();
+    }
+    await page.waitForURL(/\/einsaetze\/(?!neu$)[a-z0-9]+$/);
+    url = page.url();
+    crewPfad = new URL((await page.getByTestId("gruppen-link").getAttribute("title")) ?? "").pathname;
+
+    // Beide Personen unterschreiben über den Einsatzlink
+    await page.goto(crewPfad);
+    await tutorialWeg(page);
+    for (let i = 0; i < 2; i++) {
+      await page.locator('[data-testid^="crew-sign-"]').first().click();
+      await page.getByTestId("unterweisung-check").check();
+      await drawSignature(page);
+      await page.getByTestId("crew-submit").click();
+      await unterschriftAngekommen(page, i + 1, 2);
+    }
+    const view = await (await page.request.get(`/api/e/crew/${crewPfad.split("/").pop()}`)).json();
+    schichtIds = view.schichten.map((s: { id: string }) => s.id);
+    expect(schichtIds).toHaveLength(2);
+  });
+
+  test("Der Kunde bestätigt die erste Schicht – nur sie ist zu", async ({ page }) => {
+    await page.goto(crewPfad);
+    await tutorialWeg(page);
+    await page.getByTestId(`schicht-kunde-unterschreibt-${schichtIds[0]}`).click();
+    // Im Formular steht nur diese Schicht
+    await expect(page.getByText(`Tag1-${RUN2}`, { exact: false })).toBeVisible();
+    await expect(page.getByText(`Tag2-${RUN2}`, { exact: false })).toHaveCount(0);
+    await page.getByTestId("kunde-name").fill("Hallenchef Aufbau");
+    await drawSignature(page, "kunde-signature");
+    await page.getByTestId("kunde-submit").click();
+
+    await expect(page.getByTestId(`schicht-kunde-${schichtIds[0]}`)).toContainText("Hallenchef Aufbau");
+    // Die zweite Schicht wartet weiter
+    await expect(page.getByTestId(`schicht-kunde-unterschreibt-${schichtIds[1]}`)).toBeVisible();
+    // Die Sammelbestätigung ist damit vom Tisch
+    await expect(page.getByTestId("kunde-je-schicht")).toBeVisible();
+  });
+
+  test("Je Schicht entsteht ein eigener Stundennachweis", async ({ page }) => {
+    await login(page);
+    // Jobs anstoßen (im Test läuft kein Hintergrund-Worker)
+    await page.request.post("/api/jobs/run");
+    const token = crewPfad.split("/").pop();
+    const ersteSchicht = await page.request.get(`/api/e/crew/${token}/pdf?shift=${schichtIds[0]}`);
+    expect(ersteSchicht.status()).toBe(200);
+    expect(ersteSchicht.headers()["content-type"]).toContain("application/pdf");
+    // Für die noch nicht bestätigte Schicht gibt es keinen
+    expect((await page.request.get(`/api/e/crew/${token}/pdf?shift=${schichtIds[1]}`)).status()).toBe(404);
+
+    await page.goto(url);
+    await expect(page.getByText(/Stundennachweis_.*Aufbau/).first()).toBeVisible();
+  });
+
+  test("Zweite Schicht bestätigt: zwei Nachweise, zwei Namen", async ({ page }) => {
+    await page.goto(crewPfad);
+    await tutorialWeg(page);
+    await page.getByTestId(`schicht-kunde-unterschreibt-${schichtIds[1]}`).click();
+    await page.getByTestId("kunde-name").fill("Hallenchef Abbau");
+    await drawSignature(page, "kunde-signature");
+    await page.getByTestId("kunde-submit").click();
+    await expect(page.getByTestId(`schicht-kunde-${schichtIds[1]}`)).toContainText("Hallenchef Abbau");
+
+    await login(page);
+    await page.request.post("/api/jobs/run");
+    const token = crewPfad.split("/").pop();
+    for (const id of schichtIds) {
+      expect((await page.request.get(`/api/e/crew/${token}/pdf?shift=${id}`)).status()).toBe(200);
+    }
+
+    await page.goto(url);
+    await expect(page.getByText("Hallenchef Aufbau", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Hallenchef Abbau", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(/Stundennachweis_/)).toHaveCount(2);
   });
 });

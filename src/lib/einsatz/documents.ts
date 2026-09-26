@@ -23,12 +23,16 @@ export type StoreDocumentInput = {
   bytes: Buffer;
   meta?: Prisma.InputJsonValue;
   createdById?: string | null;
-  links?: Array<{ assignmentId?: string | null; employeeId?: string | null; customerId?: string | null; datum?: string | null }>;
+  links?: Array<{ assignmentId?: string | null; shiftId?: string | null; employeeId?: string | null; customerId?: string | null; datum?: string | null }>;
   // Ersetzt vorhandene Dokumente derselben Kategorie zu diesem Einsatz, statt
   // eine weitere Fassung anzulegen. Pro Einsatz bleibt so genau ein aktueller
   // Stundennachweis und eine aktuelle Konkretisierung übrig; die Historie
   // steht über Hash und Zeitpunkt im Audit-Log.
   replaceForAssignmentId?: string | null;
+  // Betrifft das Dokument nur eine Schicht, wird auch nur der Vorgänger
+  // dieser Schicht ersetzt – der Nachweis über den ganzen Einsatz und die
+  // Nachweise der übrigen Schichten bleiben stehen.
+  replaceForShiftId?: string | null;
 };
 
 export async function storeDocument(input: StoreDocumentInput): Promise<{ id: string; sha256: string; filename: string; ersetzt: number }> {
@@ -41,7 +45,7 @@ export async function storeDocument(input: StoreDocumentInput): Promise<{ id: st
         where: {
           organizationId: input.organizationId,
           category: input.category,
-          links: { some: { assignmentId: input.replaceForAssignmentId } },
+          links: { some: { assignmentId: input.replaceForAssignmentId, shiftId: input.replaceForShiftId ?? null } },
         },
         select: { id: true, sha256: true, filename: true, createdAt: true },
       })
@@ -60,6 +64,7 @@ export async function storeDocument(input: StoreDocumentInput): Promise<{ id: st
       links: {
         create: (input.links ?? []).map((l) => ({
           assignmentId: l.assignmentId ?? null,
+          shiftId: l.shiftId ?? null,
           employeeId: l.employeeId ?? null,
           customerId: l.customerId ?? null,
           datum: l.datum ? keyToDateOnly(l.datum) : null,

@@ -179,16 +179,28 @@ export async function loadCrewByToken(token: string): Promise<CrewKontext | null
   };
 }
 
-export async function customerSign(assignmentId: string, input: z.infer<typeof CustomerSignSchema>, meta: RequestMeta): Promise<void> {
+// Bestätigung des Kunden – für den ganzen Einsatz oder, mit shiftId, für
+// genau diese Schicht. Im zweiten Fall entsteht ein Stundennachweis je
+// Schicht, denn unterschrieben ist auch nur diese eine.
+export async function customerSign(assignmentId: string, input: z.infer<typeof CustomerSignSchema>, meta: RequestMeta, shiftId: string | null = null): Promise<void> {
   const a = await db.assignment.findUnique({ where: { id: assignmentId }, select: { id: true, organizationId: true } });
   if (!a) throw new TimeEntryError("Einsatz nicht gefunden.", 404);
+  if (shiftId) {
+    const shift = await db.shift.findFirst({ where: { id: shiftId, assignmentId: a.id }, select: { id: true } });
+    if (!shift) throw new TimeEntryError("Schicht gehört nicht zu diesem Einsatz.", 403);
+  }
+  // Zweimal dieselbe Schicht bestätigen wäre nur verwirrend – die erste
+  // Unterschrift zählt, eine Korrektur macht die Dispo.
+  const schon = await db.assignmentConfirmation.findFirst({ where: { assignmentId: a.id, shiftId }, select: { id: true } });
+  if (schon) throw new TimeEntryError(shiftId ? "Diese Schicht ist vom Kunden schon bestätigt." : "Der Einsatz ist vom Kunden schon bestätigt.", 409);
+
   const png = decodeSignatureDataUrl(input.unterschrift);
   const blob = await putBlob(a.organizationId, "kundenbestaetigungen", png, "image/png");
   const conf = await db.assignmentConfirmation.create({
-    data: { organizationId: a.organizationId, assignmentId: a.id, kundeName: input.kundeName, unterschriftUrl: blob.url, ip: meta.ip, userAgent: meta.userAgent?.slice(0, 300) ?? null },
+    data: { organizationId: a.organizationId, assignmentId: a.id, shiftId, kundeName: input.kundeName, unterschriftUrl: blob.url, ip: meta.ip, userAgent: meta.userAgent?.slice(0, 300) ?? null },
   });
-  await logAudit({ organizationId: a.organizationId, action: "assignment.customer_sign", entityType: "assignment", entityId: a.id, data: { confirmationId: conf.id, kundeName: input.kundeName, unterschrift: blob.url, ip: meta.ip } });
-  await enqueueJob("stundennachweis.pdf", { assignmentId: a.id, force: true }, { organizationId: a.organizationId, dedupeKey: `pdf:${a.id}:${Date.now()}` });
+  await logAudit({ organizationId: a.organizationId, action: "assignment.customer_sign", entityType: "assignment", entityId: a.id, data: { confirmationId: conf.id, shiftId, kundeName: input.kundeName, unterschrift: blob.url, ip: meta.ip } });
+  await enqueueJob("stundennachweis.pdf", { assignmentId: a.id, force: true, shiftId }, { organizationId: a.organizationId, dedupeKey: `pdf:${a.id}:${shiftId ?? "alle"}:${Date.now()}` });
 }
 
 // Dispo-Korrektur nach Signatur: neue Version, alte bleibt unverändert

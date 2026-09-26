@@ -37,7 +37,19 @@ type CrewView = {
   // nur, wenn der Einsatz aus dieser einen Schicht besteht.
   kundeMoeglich: boolean;
   einsatz: { einsatznummer: string; projekt: string; artist: string | null; kunde: string; einsatzort: string; datum: string };
-  schichten: Array<{ id: string; bezeichnung: string; taetigkeit: string; datumDE: string; vorgabe: Zeitvorgabe; personen: Person[] }>;
+  schichten: Array<{
+    id: string;
+    bezeichnung: string;
+    taetigkeit: string;
+    datumDE: string;
+    vorgabe: Zeitvorgabe;
+    personen: Person[];
+    // Bestätigung des Kunden für genau diese Schicht
+    kunde: { name: string; zeitpunkt: string } | null;
+    kundeMoeglich: boolean;
+    alleErfasst: boolean;
+    korrigierbar: boolean;
+  }>;
   kunde: { name: string; zeitpunkt: string } | null;
   korrigierbar: boolean;
   unterweisung: { version: string; abschnitte: SafetySection[]; bestaetigung: string[] };
@@ -88,7 +100,8 @@ export function CrewFlow({ token }: { token: string }) {
   const [view, setView] = useState<CrewView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [active, setActive] = useState<{ person: Person; schicht: CrewView["schichten"][number] } | null>(null);
-  const [kundeMode, setKundeMode] = useState(false);
+  // Kundenunterschrift: für den ganzen Einsatz (null) oder für eine Schicht
+  const [kundeMode, setKundeMode] = useState<{ schicht: CrewView["schichten"][number] | null } | null>(null);
   const [queued, setQueued] = useState<Set<string>>(new Set());
   const [info, setInfo] = useState<string | null>(null);
   // offene Korrektur: entweder ein Name (shiftAssignmentId) oder eine neue
@@ -193,11 +206,12 @@ export function CrewFlow({ token }: { token: string }) {
     return (
       <CustomerForm
         view={view}
-        onCancel={() => setKundeMode(false)}
+        schicht={kundeMode.schicht}
+        onCancel={() => setKundeMode(null)}
         onSubmit={async (body) => {
-          const res = await post(`crew:${token}:kunde`, body);
+          const res = await post(`crew:${token}:kunde:${kundeMode.schicht?.id ?? "alle"}`, body);
           if (res.ok) {
-            setKundeMode(false);
+            setKundeMode(null);
             if (res.queued) setInfo("Offline gespeichert – wird gesendet, sobald Netz da ist.");
           }
           return res;
@@ -240,6 +254,11 @@ export function CrewFlow({ token }: { token: string }) {
             {s.bezeichnung} · {s.datumDE}
             {s.taetigkeit ? ` · ${s.taetigkeit}` : ""}
           </p>
+          {s.kunde ? (
+            <p style={{ marginTop: "0.4rem" }} data-testid={`schicht-kunde-${s.id}`}>
+              <span className="ez-pill ez-pill-green">✓ Kunde: {s.kunde.name}</span>
+            </p>
+          ) : null}
           {s.personen.map((p) => {
             const isQueued = queued.has(`crew:${token}:${p.shiftAssignmentId}`);
             return (
@@ -249,7 +268,7 @@ export function CrewFlow({ token }: { token: string }) {
                     <p style={{ fontWeight: 600 }}>{p.name}</p>
                     <p className="ez-muted" style={{ fontSize: "0.85rem" }}>
                       {p.erfasst && p.eintrag ? `${p.eintrag.start}–${p.eintrag.ende}, Pause ${p.eintrag.pauseMinuten} min, ${p.eintrag.stundenGesamt.toFixed(2).replace(".", ",")} h` : `Plan ${p.start}–${p.ende}`}
-                      {view.korrigierbar && p.nameAenderbar && !isQueued ? (
+                      {s.korrigierbar && p.nameAenderbar && !isQueued ? (
                         <>
                           {" · "}
                           <button
@@ -294,7 +313,7 @@ export function CrewFlow({ token }: { token: string }) {
               </div>
             );
           })}
-          {view.korrigierbar ? (
+          {s.korrigierbar ? (
             personOffen === s.id ? (
               <PersonErgaenzen
                 onCancel={() => setPersonOffen(null)}
@@ -326,21 +345,38 @@ export function CrewFlow({ token }: { token: string }) {
           <ZeitenFuerAlle
             schicht={s}
             token={token}
-            gesperrt={view.state === "abgelaufen" || view.kunde !== null}
+            gesperrt={view.state === "abgelaufen" || view.kunde !== null || s.kunde !== null}
             onUebernehmen={async (shiftAssignmentId) => {
               const res = await post(`crew:${token}:zeiten:${s.id}`, { aktion: "zeiten-fuer-alle", shiftAssignmentId });
               if (res.ok && !res.queued) setInfo(`Zeiten für „${s.bezeichnung}“ übernommen – bei den Übrigen sind sie vorausgefüllt.`);
               return res;
             }}
           />
+
+          {/* Der Kunde zeichnet diese Schicht ab – danach entsteht ihr eigener
+              Stundennachweis, den die Crew hier gleich ansehen kann. */}
+          {s.kunde ? (
+            <PdfKarte url={`/api/e/crew/${token}/pdf?shift=${s.id}`} />
+          ) : s.kundeMoeglich ? (
+            <button
+              type="button"
+              className="ez-btn ez-btn-ghost ez-btn-small"
+              style={{ marginTop: "0.6rem" }}
+              disabled={view.state === "abgelaufen"}
+              onClick={() => setKundeMode({ schicht: s })}
+              data-testid={`schicht-kunde-unterschreibt-${s.id}`}
+            >
+              Kunde unterschreibt „{s.bezeichnung}“
+            </button>
+          ) : null}
         </div>
       ))}
 
       <div className="ez-card" style={{ marginTop: "0.8rem" }}>
-        <p className="ez-eyebrow">Kundenbestätigung</p>
+        <p className="ez-eyebrow">Kundenbestätigung{view.schichten.length > 1 ? " für den ganzen Einsatz" : ""}</p>
         {!view.kundeMoeglich && !view.kunde ? (
-          <p className="ez-muted" style={{ marginTop: "0.4rem", fontSize: "0.9rem" }} data-testid="kunde-nur-einsatzlink">
-            Der Kunde bestätigt den ganzen Stundennachweis – das läuft über den Link für den gesamten Einsatz. Hier bitte nur die eigenen Zeiten unterschreiben.
+          <p className="ez-muted" style={{ marginTop: "0.4rem", fontSize: "0.9rem" }} data-testid="kunde-je-schicht">
+            Dieser Einsatz wird je Schicht bestätigt – der Knopf steht oben bei der jeweiligen Schicht. Je Schicht entsteht dann ein eigener Stundennachweis.
           </p>
         ) : view.kunde ? (
           <>
@@ -353,8 +389,9 @@ export function CrewFlow({ token }: { token: string }) {
           <>
             <p className="ez-muted" style={{ marginTop: "0.4rem", fontSize: "0.9rem" }}>
               Der Ansprechpartner des Kunden bestätigt die Arbeitszeiten – am besten, nachdem alle unterschrieben haben.
+              {view.schichten.length > 1 ? " Für einen Nachweis je Schicht stattdessen oben die einzelne Schicht abzeichnen." : ""}
             </p>
-            <button type="button" className="ez-btn ez-btn-ghost" style={{ marginTop: "0.6rem" }} disabled={view.state === "abgelaufen"} onClick={() => setKundeMode(true)} data-testid="crew-kunde">
+            <button type="button" className="ez-btn ez-btn-ghost" style={{ marginTop: "0.6rem" }} disabled={view.state === "abgelaufen"} onClick={() => setKundeMode({ schicht: null })} data-testid="crew-kunde">
               Kunde unterschreibt
             </button>
           </>
@@ -645,13 +682,27 @@ function PersonForm({
   );
 }
 
-function CustomerForm({ view, onCancel, onSubmit }: { view: CrewView; onCancel: () => void; onSubmit: (body: unknown) => Promise<{ ok: boolean; error?: string }> }) {
+function CustomerForm({
+  view,
+  schicht,
+  onCancel,
+  onSubmit,
+}: {
+  view: CrewView;
+  // Gesetzt, wenn nur diese Schicht bestätigt wird
+  schicht: CrewView["schichten"][number] | null;
+  onCancel: () => void;
+  onSubmit: (body: unknown) => Promise<{ ok: boolean; error?: string }>;
+}) {
   const [name, setName] = useState("");
   const [sigEmpty, setSigEmpty] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const sigRef = useRef<SignaturePadHandle>(null);
-  const summary = view.schichten.flatMap((s) => s.personen.filter((p) => p.erfasst && p.eintrag).map((p) => `${p.name}: ${p.eintrag!.start}–${p.eintrag!.ende} (${p.eintrag!.stundenGesamt.toFixed(2).replace(".", ",")} h)`));
+  // Unterschrieben wird genau das, was hier steht: bei einer Schicht nur deren
+  // Zeilen, sonst alle.
+  const gezeigt = schicht ? [schicht] : view.schichten;
+  const summary = gezeigt.flatMap((s) => s.personen.filter((p) => p.erfasst && p.eintrag).map((p) => `${p.name}: ${p.eintrag!.start}–${p.eintrag!.ende} (${p.eintrag!.stundenGesamt.toFixed(2).replace(".", ",")} h)`));
 
   const submit = async () => {
     setError(null);
@@ -659,7 +710,7 @@ function CustomerForm({ view, onCancel, onSubmit }: { view: CrewView; onCancel: 
     if (!unterschrift) return setError("Bitte unterschreiben.");
     if (name.trim().length < 2) return setError("Bitte Namen eingeben.");
     setBusy(true);
-    const res = await onSubmit({ kundeName: name.trim(), unterschrift });
+    const res = await onSubmit({ kundeName: name.trim(), unterschrift, shiftId: schicht?.id ?? null });
     setBusy(false);
     if (!res.ok) setError(res.error ?? "Fehler");
   };
@@ -671,12 +722,15 @@ function CustomerForm({ view, onCancel, onSubmit }: { view: CrewView; onCancel: 
         <p className="ez-eyebrow">Bestätigung des Kunden</p>
         <h1 className="ez-h1" style={{ marginTop: "0.2rem" }}>{view.einsatz.kunde}</h1>
         <p className="ez-muted" style={{ marginTop: "0.3rem", fontSize: "0.92rem" }}>
-          {view.einsatz.projekt} · {view.einsatz.datum}
+          {view.einsatz.projekt} · {schicht ? `${schicht.bezeichnung}, ${schicht.datumDE}` : view.einsatz.datum}
         </p>
         <ul style={{ marginTop: "0.6rem", paddingLeft: "1.1rem", fontSize: "0.9rem" }}>
           {summary.length === 0 ? <li className="ez-muted">Noch keine Zeiten erfasst.</li> : summary.map((s, i) => <li key={i}>{s}</li>)}
         </ul>
-        <p style={{ marginTop: "0.6rem", fontSize: "0.9rem" }}>Mit der Unterschrift bestätigt der Entleiher die Richtigkeit der erfassten Arbeitszeiten.</p>
+        <p style={{ marginTop: "0.6rem", fontSize: "0.9rem" }}>
+          Mit der Unterschrift bestätigt der Entleiher die Richtigkeit der erfassten Arbeitszeiten
+          {schicht ? ` der Schicht ${schicht.bezeichnung}` : ""}.
+        </p>
       </div>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "grid", gap: "0.8rem", marginTop: "0.8rem" }}>
         <div className="ez-card" style={{ display: "grid", gap: "0.7rem" }}>

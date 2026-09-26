@@ -11,7 +11,7 @@ export type JobType = "link.versand" | "link.erinnerung" | "stundennachweis.pdf"
 export type JobPayloads = {
   "link.versand": { shiftAssignmentId: string };
   "link.erinnerung": { shiftAssignmentId: string };
-  "stundennachweis.pdf": { assignmentId: string; force?: boolean };
+  "stundennachweis.pdf": { assignmentId: string; force?: boolean; shiftId?: string | null };
   "einsatz.abschluss-check": { assignmentId: string };
 };
 

@@ -19,8 +19,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     registerTokenMiss(ip);
     return NextResponse.json({ error: "Link ungültig." }, { status: 404 });
   }
+  // ?shift=<id> holt den Nachweis dieser Schicht; der Token muss sie umfassen.
+  const gewuenscht = new URL(req.url).searchParams.get("shift");
+  if (gewuenscht && !ctx.a.shifts.some((s) => s.id === gewuenscht)) {
+    return NextResponse.json({ error: "Diese Schicht gehört nicht zum Link." }, { status: 403 });
+  }
   const link = await db.documentLink.findFirst({
-    where: { assignmentId: ctx.a.id, document: { category: "stundennachweis" } },
+    where: { assignmentId: ctx.a.id, shiftId: gewuenscht ?? null, document: { category: "stundennachweis" } },
     orderBy: { document: { createdAt: "desc" } },
     include: { document: true },
   });

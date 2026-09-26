@@ -25,14 +25,20 @@ type CrewKontext = NonNullable<Awaited<ReturnType<typeof loadCrewByToken>>>;
 function crewView(ctx: CrewKontext) {
   const { a, nurSchichtId } = ctx;
   const expired = ctx.abgelaufen;
-  // Der Kunde bestätigt immer den ganzen Stundennachweis. Über einen
-  // Schichtlink geht das nur, wenn der Einsatz aus dieser einen Schicht
-  // besteht – sonst läuft die Bestätigung über den Link für den Einsatz.
-  const einzigeSchicht = nurSchichtId === null || ctx.schichtenGesamt === 1;
+  // Bestätigung für den ganzen Einsatz (ohne shiftId) und je Schicht
+  const gesamt = a.confirmations.find((c) => c.shiftId === null) ?? null;
+  const jeSchicht = a.confirmations.some((c) => c.shiftId !== null);
+  // Einen Sammel-Nachweis gibt es nur, solange keine Schicht einzeln
+  // bestätigt ist – sonst wären zwei Stände des gleichen Papiers unterwegs.
+  const gesamtMoeglich = !expired && !jeSchicht && ctx.schichtenGesamt === a.shifts.length;
+  // Namen korrigieren und Personen ergänzen: die Unterschrift des Kunden für
+  // den ganzen Einsatz schließt alles, eine je Schicht nur diese Schicht.
+  const korrigierbarGrundsaetzlich = !expired && gesamt === null && a.status !== "ABGESCHLOSSEN" && a.status !== "ABGERECHNET";
   return {
     state: expired ? "abgelaufen" : "offen",
     nurSchicht: nurSchichtId === null ? null : a.shifts[0]?.bezeichnung ?? null,
-    kundeMoeglich: einzigeSchicht,
+    // Sammelbestätigung über alle Schichten (nur im Einsatzlink)
+    kundeMoeglich: gesamtMoeglich,
     einsatz: {
       einsatznummer: a.einsatznummer,
       projekt: a.projekt,
@@ -41,11 +47,23 @@ function crewView(ctx: CrewKontext) {
       einsatzort: a.einsatzort,
       datum: formatKeyDE(dateOnlyKey(a.datumVon)) + (dateOnlyKey(a.datumVon) !== dateOnlyKey(a.datumBis) ? ` – ${formatKeyDE(dateOnlyKey(a.datumBis))}` : ""),
     },
-    schichten: a.shifts.map((s) => ({
+    schichten: a.shifts.map((s) => {
+      const bestaetigt = a.confirmations.find((c) => c.shiftId === s.id) ?? null;
+      return {
       id: s.id,
       bezeichnung: s.bezeichnung,
       taetigkeit: s.taetigkeit,
       datumDE: formatKeyDE(berlinDateKey(s.planStart)),
+      // Bestätigung des Kunden für genau diese Schicht
+      kunde: bestaetigt ? { name: bestaetigt.kundeName, zeitpunkt: bestaetigt.zeitpunkt.toISOString() } : null,
+      // Solange der Einsatz nicht als Ganzes bestätigt ist, kann der Kunde
+      // jede Schicht einzeln abzeichnen.
+      // Bei nur einer Schicht deckt die Bestätigung für den Einsatz denselben
+      // Fall ab – dann kein zweiter Knopf für dasselbe.
+      kundeMoeglich: !expired && gesamt === null && bestaetigt === null && ctx.schichtenGesamt > 1,
+      alleErfasst: s.assignments.filter((sa) => sa.status !== "STORNIERT").every((sa) => sa.timeEntries.some((t) => t.unterschriftZeitpunkt)),
+      // Eine vom Kunden abgezeichnete Schicht ist zu; die übrigen nicht.
+      korrigierbar: korrigierbarGrundsaetzlich && bestaetigt === null,
       // Von einer Person für die ganze Schicht übernommene Ist-Zeiten
       vorgabe: zeitvorgabeVon(s),
       personen: s.assignments
@@ -65,11 +83,12 @@ function crewView(ctx: CrewKontext) {
             eintrag: entry ? entryView({ ...entry, trips: [] }) : null,
           };
         }),
-    })),
-    kunde: a.confirmations[0] ? { name: a.confirmations[0].kundeName, zeitpunkt: a.confirmations[0].zeitpunkt.toISOString() } : null,
+      };
+    }),
+    kunde: gesamt ? { name: gesamt.kundeName, zeitpunkt: gesamt.zeitpunkt.toISOString() } : null,
     // Nach der Kundenbestätigung steht die Besetzung auf dem unterschriebenen
     // Beleg – ab dann korrigiert nur noch die Dispo.
-    korrigierbar: !expired && a.confirmations.length === 0 && a.status !== "ABGESCHLOSSEN" && a.status !== "ABGERECHNET",
+    korrigierbar: korrigierbarGrundsaetzlich,
     unterweisung: { version: SAFETY_VERSION, abschnitte: SAFETY_SECTIONS, bestaetigung: CONFIRMATION_TEXT },
   };
 }
@@ -139,12 +158,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       if (!gehoert) return fremd;
       await uebernimmZeitenFuerAlle(a.organizationId, gehoert.id, { userId: null, ip, quelle: "crew-link" });
     } else if (kunde.success) {
-      // Der Kunde bestätigt den ganzen Nachweis – über einen Schichtlink nur,
-      // wenn der Einsatz aus dieser einen Schicht besteht.
-      if (nurSchichtId && ctx.schichtenGesamt !== 1) {
-        return NextResponse.json({ error: "Die Bestätigung durch den Kunden läuft über den Link für den ganzen Einsatz." }, { status: 409 });
+      const fuerSchicht = kunde.data.shiftId;
+      if (fuerSchicht && !a.shifts.some((s) => s.id === fuerSchicht)) {
+        return NextResponse.json({ error: "Diese Schicht gehört nicht zum Link." }, { status: 403 });
       }
-      await customerSign(a.id, kunde.data, meta);
+      // Ohne Schicht bestätigt der Kunde den ganzen Einsatz – das geht nur
+      // über den Einsatzlink und nur, solange keine Schicht einzeln
+      // bestätigt ist.
+      if (!fuerSchicht) {
+        if (nurSchichtId && ctx.schichtenGesamt !== 1) {
+          return NextResponse.json({ error: "Über diesen Link bestätigt der Kunde die Schicht; für den ganzen Einsatz den Einsatzlink nutzen." }, { status: 409 });
+        }
+        if (a.confirmations.some((c) => c.shiftId !== null)) {
+          return NextResponse.json({ error: "Dieser Einsatz wird je Schicht bestätigt." }, { status: 409 });
+        }
+      }
+      await customerSign(a.id, kunde.data, meta, fuerSchicht);
     } else if (typeof (body as { aktion?: unknown })?.aktion === "string") {
       // Die Aktion war gemeint, die Angaben stimmen nicht – die Meldung des
       // passenden Schemas ist hilfreicher als ein pauschales "ungültig".

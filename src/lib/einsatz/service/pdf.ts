@@ -75,9 +75,21 @@ export async function generateKonkretisierungPdf(orgId: string, assignmentId: st
   return { documentId: doc.id, filename };
 }
 
-export async function generateStundennachweisPdf(orgId: string, assignmentId: string, userId: string | null): Promise<{ documentId: string; filename: string; offen: number }> {
-  const a = await loadAssignment(orgId, assignmentId);
-  if (!a) throw new Error("Einsatz nicht gefunden.");
+// Ein Nachweis über den ganzen Einsatz – oder, mit shiftId, einer je Schicht.
+// Je Schicht entsteht er, sobald der Kunde diese Schicht einzeln bestätigt:
+// dann steht auf dem Papier genau das, was er unterschrieben hat.
+export async function generateStundennachweisPdf(
+  orgId: string,
+  assignmentId: string,
+  userId: string | null,
+  options: { shiftId?: string | null } = {}
+): Promise<{ documentId: string; filename: string; offen: number }> {
+  const voll = await loadAssignment(orgId, assignmentId);
+  if (!voll) throw new Error("Einsatz nicht gefunden.");
+  const shiftId = options.shiftId ?? null;
+  const schicht = shiftId ? voll.shifts.find((s) => s.id === shiftId) : null;
+  if (shiftId && !schicht) throw new Error("Schicht nicht gefunden.");
+  const a = schicht ? { ...voll, shifts: [schicht] } : voll;
   const zeilen: StundennachweisRow[] = [];
   const fahrten: Array<{ person: string; fahrzeugart: string; strecken: Array<{ von: string; nach: string; km: string }>; summe: string }> = [];
   const hinweise: string[] = [];
@@ -148,7 +160,9 @@ export async function generateStundennachweisPdf(orgId: string, assignmentId: st
     }
   }
   if (offen > 0) hinweise.push(`${offen} Person(en) ohne Unterschrift – Zeilen mit Planzeiten in Klammern.`);
-  const kunde = a.confirmations[0] ?? null;
+  // Die Bestätigung, die zu diesem Papier gehört: beim Schichtnachweis die
+  // der Schicht, sonst die für den ganzen Einsatz.
+  const kunde = a.confirmations.find((c) => (schicht ? c.shiftId === schicht.id : c.shiftId === null)) ?? null;
   const kundeSig = kunde ? (await getBlob(kunde.unterschriftUrl))?.bytes ?? null : null;
 
   const bytes = await renderStundennachweis({
@@ -169,21 +183,32 @@ export async function generateStundennachweisPdf(orgId: string, assignmentId: st
     unterweisungVersion: versions.size > 0 ? [...versions].join(", ") : SAFETY_VERSION,
     hinweise,
   });
-  const filename = docBase(a, "Stundennachweis");
+  const filename = schicht ? safeFilename(`Stundennachweis_${a.projekt}_${schicht.bezeichnung}_${formatKeyDE(berlinDateKey(schicht.planStart))}`) + ".pdf" : docBase(a, "Stundennachweis");
+  const datum = schicht ? berlinDateKey(schicht.planStart) : dateOnlyKey(a.datumVon);
   const doc = await storeDocument({
     organizationId: orgId,
     category: "stundennachweis",
     filename,
     mimeType: "application/pdf",
     bytes,
-    meta: { assignmentId: a.id, einsatznummer: a.einsatznummer, offen, summeStunden: round2(summe) },
+    meta: { assignmentId: a.id, einsatznummer: a.einsatznummer, shiftId, schicht: schicht?.bezeichnung ?? null, offen, summeStunden: round2(summe) },
     createdById: userId,
     replaceForAssignmentId: a.id,
+    replaceForShiftId: shiftId,
+    // Auch die Personenverweise tragen die Schicht, damit der Nachweis über
+    // den ganzen Einsatz die Schichtnachweise nicht mitersetzt.
     links: [
-      { assignmentId: a.id, customerId: a.customerId, datum: dateOnlyKey(a.datumVon) },
-      ...[...employeeIds].map((employeeId) => ({ assignmentId: a.id, employeeId, customerId: a.customerId, datum: dateOnlyKey(a.datumVon) })),
+      { assignmentId: a.id, shiftId, customerId: a.customerId, datum },
+      ...[...employeeIds].map((employeeId) => ({ assignmentId: a.id, shiftId, employeeId, customerId: a.customerId, datum })),
     ],
   });
-  await logAudit({ organizationId: orgId, userId: userId ?? undefined, action: "assignment.stundennachweis", entityType: "assignment", entityId: a.id, data: { documentId: doc.id, sha256: doc.sha256, offen } });
+  await logAudit({
+    organizationId: orgId,
+    userId: userId ?? undefined,
+    action: "assignment.stundennachweis",
+    entityType: "assignment",
+    entityId: a.id,
+    data: { documentId: doc.id, sha256: doc.sha256, offen, shiftId, schicht: schicht?.bezeichnung ?? null },
+  });
   return { documentId: doc.id, filename, offen };
 }

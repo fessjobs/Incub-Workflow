@@ -122,6 +122,9 @@ export const CrewZeitenSchema = z.object({
 export const CustomerSignSchema = z.object({
   kundeName: z.string().trim().min(2, "Name des Kunden fehlt.").max(200),
   unterschrift: z.string().min(100, "Unterschrift fehlt."),
+  // Gesetzt, wenn der Kunde nur diese Schicht bestätigt – dann entsteht auch
+  // nur für sie ein Stundennachweis.
+  shiftId: z.string().trim().transform((v) => v || null).nullable().default(null),
 });
 
 // ─── Dispo: Einsatz nachträglich bearbeiten ─────────────────────────────────

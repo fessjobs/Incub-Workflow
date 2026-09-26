@@ -49,11 +49,11 @@ export function registerEinsatzJobHandlers(): void {
   });
 
   // Stundennachweis-PDF erzeugen (nach Abschluss, Kundenunterschrift, Korrektur)
-  registerJobHandler("stundennachweis.pdf", async ({ assignmentId }) => {
+  registerJobHandler("stundennachweis.pdf", async ({ assignmentId, shiftId }) => {
     const a = await db.assignment.findUnique({ where: { id: assignmentId }, select: { organizationId: true } });
     if (!a) return { skipped: "Einsatz nicht gefunden" };
-    const res = await generateStundennachweisPdf(a.organizationId, assignmentId, null);
-    return { documentId: res.documentId, offen: res.offen };
+    const res = await generateStundennachweisPdf(a.organizationId, assignmentId, null, { shiftId: shiftId ?? null });
+    return { documentId: res.documentId, offen: res.offen, shiftId: shiftId ?? null };
   });
 
   // Prüft nach jeder Signatur, ob alle unterschrieben haben → PDF + Abschluss
@@ -64,10 +64,19 @@ export function registerEinsatzJobHandlers(): void {
     if (!full) return { skipped: "Einsatz nicht gefunden" };
     const offen = full.shifts.flatMap((s) => s.assignments).filter((sa) => sa.status !== "STORNIERT" && !sa.timeEntries.some((t) => t.unterschriftZeitpunkt));
     if (offen.length > 0) return { offen: offen.length };
-    const res = await generateStundennachweisPdf(a.organizationId, assignmentId, null);
+    // Bestätigt der Kunde je Schicht, gibt es je bestätigte Schicht einen
+    // Nachweis – sonst einen über den ganzen Einsatz.
+    const jeSchicht = full.confirmations.filter((c) => c.shiftId).map((c) => c.shiftId!);
+    const dokumente: string[] = [];
+    for (const shiftId of [...new Set(jeSchicht)]) {
+      dokumente.push((await generateStundennachweisPdf(a.organizationId, assignmentId, null, { shiftId })).documentId);
+    }
+    if (dokumente.length === 0) {
+      dokumente.push((await generateStundennachweisPdf(a.organizationId, assignmentId, null)).documentId);
+    }
     if (a.status === "LAUFEND" || a.status === "KONKRETISIERT" || a.status === "ENTWURF") {
       await db.assignment.update({ where: { id: assignmentId }, data: { status: "ABGESCHLOSSEN" } });
     }
-    return { documentId: res.documentId, abgeschlossen: true };
+    return { dokumente, abgeschlossen: true };
   });
 }
