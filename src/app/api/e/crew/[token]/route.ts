@@ -1,8 +1,12 @@
-// Gruppenlink: ein Link für den ganzen Einsatz. Jede Person wählt sich in
-// der Liste, prüft ihre Zeiten und unterschreibt – auf dem eigenen Handy oder
-// alle nacheinander auf einem Crew-Gerät; am Ende unterschreibt der Kunde.
+// Gruppenlink: ein Link für den ganzen Einsatz – oder, mit dem Token einer
+// Schicht, nur für diese eine Schicht. Jede Person wählt sich in der Liste,
+// prüft ihre Zeiten und unterschreibt – auf dem eigenen Handy oder alle
+// nacheinander auf einem Crew-Gerät; am Ende unterschreibt der Kunde.
 // Über denselben Token korrigiert die Crew falsch geschriebene Namen und
 // ergänzt Personen, solange noch nichts unterschrieben bzw. bestätigt ist.
+//
+// Beim Schichtlink ist „nurSchichtId" die Grenze: sichtbar ist nur diese
+// Schicht, und jede Schreibaktion muss zu ihr gehören.
 import { NextResponse } from "next/server";
 import { checkRateLimit, clientIp, registerTokenMiss, tooManyTokenMisses } from "@/lib/einsatz/rate-limit";
 import { CrewNameSchema, CrewPersonSchema, CrewSubmitSchema, CrewZeitenSchema, CustomerSignSchema } from "@/lib/einsatz/schemas";
@@ -16,12 +20,19 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-type CrewLoaded = NonNullable<Awaited<ReturnType<typeof loadCrewByToken>>>;
+type CrewKontext = NonNullable<Awaited<ReturnType<typeof loadCrewByToken>>>;
 
-function crewView(a: CrewLoaded) {
-  const expired = Boolean(a.crewTokenExpiresAt && a.crewTokenExpiresAt < new Date());
+function crewView(ctx: CrewKontext) {
+  const { a, nurSchichtId } = ctx;
+  const expired = ctx.abgelaufen;
+  // Der Kunde bestätigt immer den ganzen Stundennachweis. Über einen
+  // Schichtlink geht das nur, wenn der Einsatz aus dieser einen Schicht
+  // besteht – sonst läuft die Bestätigung über den Link für den Einsatz.
+  const einzigeSchicht = nurSchichtId === null || ctx.schichtenGesamt === 1;
   return {
     state: expired ? "abgelaufen" : "offen",
+    nurSchicht: nurSchichtId === null ? null : a.shifts[0]?.bezeichnung ?? null,
+    kundeMoeglich: einzigeSchicht,
     einsatz: {
       einsatznummer: a.einsatznummer,
       projekt: a.projekt,
@@ -75,26 +86,35 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { ip, res } = guard(req, "crew-get", 60);
   if (res) return res;
   const { token } = await params;
-  const a = await loadCrewByToken(token);
-  if (!a) {
+  const ctx = await loadCrewByToken(token);
+  if (!ctx) {
     registerTokenMiss(ip);
     return NextResponse.json({ error: "Link ungültig." }, { status: 404 });
   }
-  return NextResponse.json(crewView(a), { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(crewView(ctx), { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { ip, res } = guard(req, "crew-post", 30);
   if (res) return res;
   const { token } = await params;
-  const a = await loadCrewByToken(token);
-  if (!a) {
+  const ctx = await loadCrewByToken(token);
+  if (!ctx) {
     registerTokenMiss(ip);
     return NextResponse.json({ error: "Link ungültig." }, { status: 404 });
   }
-  if (a.crewTokenExpiresAt && a.crewTokenExpiresAt < new Date()) {
+  const { a, nurSchichtId } = ctx;
+  if (ctx.abgelaufen) {
     return NextResponse.json({ error: "Der Crew-Link ist abgelaufen." }, { status: 409 });
   }
+  // Beim Schichtlink reicht der Einsatz als Grenze nicht – es muss diese
+  // Schicht sein. Dieselbe Bedingung für alle Schreibaktionen.
+  const gehoertDazu = (where: { id: string } | { shiftId: string }) =>
+    db.shiftAssignment.findFirst({
+      where: { ...where, ...(nurSchichtId ? { shiftId: nurSchichtId } : { shift: { assignmentId: a.id } }) },
+      select: { id: true },
+    });
+  const fremd = NextResponse.json({ error: nurSchichtId ? "Person gehört nicht zu dieser Schicht." : "Person gehört nicht zu diesem Einsatz." }, { status: 403 });
   let body: unknown;
   try {
     body = await req.json();
@@ -109,15 +129,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const zeiten = CrewZeitenSchema.safeParse(body);
     const kunde = CustomerSignSchema.safeParse(body);
     if (name.success) {
+      if (!(await gehoertDazu({ id: name.data.shiftAssignmentId }))) return fremd;
       await korrigiereName(a.id, name.data.shiftAssignmentId, name.data, { ip, userAgent });
     } else if (person.success) {
+      if (nurSchichtId && person.data.shiftId !== nurSchichtId) return NextResponse.json({ error: "Diese Schicht gehört nicht zum Link." }, { status: 403 });
       await ergaenzePerson(a.id, person.data.shiftId, person.data, { ip, userAgent });
     } else if (zeiten.success) {
-      // Zuordnung muss zu diesem Einsatz gehören
-      const gehoert = await db.shiftAssignment.findFirst({ where: { id: zeiten.data.shiftAssignmentId, shift: { assignmentId: a.id } }, select: { id: true } });
-      if (!gehoert) return NextResponse.json({ error: "Person gehört nicht zu diesem Einsatz." }, { status: 403 });
+      const gehoert = await gehoertDazu({ id: zeiten.data.shiftAssignmentId });
+      if (!gehoert) return fremd;
       await uebernimmZeitenFuerAlle(a.organizationId, gehoert.id, { userId: null, ip, quelle: "crew-link" });
     } else if (kunde.success) {
+      // Der Kunde bestätigt den ganzen Nachweis – über einen Schichtlink nur,
+      // wenn der Einsatz aus dieser einen Schicht besteht.
+      if (nurSchichtId && ctx.schichtenGesamt !== 1) {
+        return NextResponse.json({ error: "Die Bestätigung durch den Kunden läuft über den Link für den ganzen Einsatz." }, { status: 409 });
+      }
       await customerSign(a.id, kunde.data, meta);
     } else if (typeof (body as { aktion?: unknown })?.aktion === "string") {
       // Die Aktion war gemeint, die Angaben stimmen nicht – die Meldung des
@@ -128,9 +154,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     } else {
       const eintrag = CrewSubmitSchema.safeParse(body);
       if (!eintrag.success) return NextResponse.json({ error: eintrag.error.errors[0].message }, { status: 400 });
-      // Zuordnung muss zu diesem Einsatz gehören
-      const belongs = await db.shiftAssignment.findFirst({ where: { id: eintrag.data.shiftAssignmentId, shift: { assignmentId: a.id } }, select: { id: true } });
-      if (!belongs) return NextResponse.json({ error: "Person gehört nicht zu diesem Einsatz." }, { status: 403 });
+      const belongs = await gehoertDazu({ id: eintrag.data.shiftAssignmentId });
+      if (!belongs) return fremd;
       await submitTimeEntry(belongs.id, eintrag.data.eintrag, meta, "CREW");
     }
     const fresh = await loadCrewByToken(token);

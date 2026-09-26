@@ -94,13 +94,16 @@ export type GruppenNachrichtInput = {
   datumBis: Date;
   schichten: Array<{ bezeichnung: string; planStart: Date; planEnde: Date; treffpunkt: string | null }>;
   crewToken: string;
+  // Gesetzt, wenn der Link nur für diese eine Schicht gilt – dann steht das
+  // auch in der Nachricht, damit in der Gruppe keine Verwirrung entsteht.
+  nurSchicht?: boolean;
 };
 
 export function gruppenText(i: GruppenNachrichtInput, base?: string | null): string {
   const von = formatKeyDE(berlinDateKey(i.datumVon));
   const bis = formatKeyDE(berlinDateKey(i.datumBis));
   const zeilen = [
-    `*${i.kunde} – ${i.projekt}*`,
+    `*${i.kunde} – ${i.projekt}${i.nurSchicht && i.schichten[0] ? ` · ${i.schichten[0].bezeichnung}` : ""}*`,
     `📅 ${von}${von === bis ? "" : ` – ${bis}`}`,
     `📍 ${i.einsatzort}`,
   ];
@@ -110,7 +113,9 @@ export function gruppenText(i: GruppenNachrichtInput, base?: string | null): str
   }
   zeilen.push(
     ``,
-    `Nach der Schicht bitte hier Zeiten bestätigen und unterschreiben – einfach den eigenen Namen antippen (kein Login nötig):`,
+    i.nurSchicht
+      ? `Nach der Schicht bitte hier Zeiten bestätigen und unterschreiben – der Link gilt nur für diese Schicht, einfach den eigenen Namen antippen (kein Login nötig):`
+      : `Nach der Schicht bitte hier Zeiten bestätigen und unterschreiben – einfach den eigenen Namen antippen (kein Login nötig):`,
     crewLinkUrl(i.crewToken, base),
     ``,
     `Name falsch oder jemand fehlt? Lässt sich im Link direkt korrigieren.`,

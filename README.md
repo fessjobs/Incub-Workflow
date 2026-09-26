@@ -44,6 +44,9 @@ Gruppe: jede Person tippt den eigenen Namen an und unterschreibt, falsche Namen 
 Nachzügler korrigiert die Crew selbst, am Ende unterschreibt der Kunde →
 automatisches **Stundennachweis-PDF** (Kategorie `stundennachweis`, je Einsatz genau eines),
 das die Crew im selben Link **ansehen, teilen und herunterladen** kann →
+**zusätzlich ein eigener Gruppenlink je Schicht**, wenn ein Einsatz über mehrere Tage
+läuft und jede Schicht ihre eigene Gruppe hat (der Link zeigt dann nur die Personen
+dieser Schicht) →
 Freigabe-Workflow, **Lohnarten-Regelwerk** (Nacht, Sonntag, Feiertag je Bundesland,
 Garantiestunden, Fahrtkosten, Zulagen, Spesen, Abzüge), **Auswertung** mit SQL-Summen,
 **Excel-Export** (4 Blätter) und **zvoove-CSV** für die Stundenschnellerfassung mit

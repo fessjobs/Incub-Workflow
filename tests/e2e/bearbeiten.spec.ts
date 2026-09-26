@@ -98,7 +98,9 @@ test.describe.serial("Einsatz nachträglich bearbeiten", () => {
     await page.locator('[data-testid^="s-start-"]').first().fill("06:30");
     await page.locator('[data-testid^="s-ende-"]').first().fill("16:00");
     await page.locator('[data-testid^="schicht-speichern-"]').first().click();
-    await expect(page.getByText(/06:30–16:00/)).toBeVisible();
+    // Die neue Zeit steht am Schichtkopf – und noch einmal am Link dieser
+    // Schicht, deshalb hier gezielt die erste Stelle.
+    await expect(page.getByText(/06:30–16:00/).first()).toBeVisible();
   });
 
   test("Name richtigstellen – vor und nach der Kundenbestätigung", async ({ page }) => {

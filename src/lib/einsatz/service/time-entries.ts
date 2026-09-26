@@ -2,6 +2,7 @@
 // Link und Crew-Link), Kundenbestätigung, Korrektur durch die Dispo
 // (neue Version, alte bleibt), Prüfung/Freigabe, Monatssperre.
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { decodeSignatureDataUrl, putBlob } from "../blob";
@@ -139,19 +140,43 @@ export async function submitTimeEntry(
   return { timeEntryId: entry.id };
 }
 
-export async function loadCrewByToken(token: string) {
+const CREW_INCLUDE = {
+  customer: true,
+  confirmations: { orderBy: { zeitpunkt: "desc" } },
+  shifts: {
+    orderBy: { planStart: "asc" },
+    include: { assignments: { include: { employee: true, timeEntries: { where: { aktuell: true } } }, orderBy: { createdAt: "asc" } } },
+  },
+} satisfies Prisma.AssignmentInclude;
+
+// Ein Crew-Token gehört entweder zum ganzen Einsatz oder zu genau einer
+// Schicht. Beim Schichtlink bleibt nur diese eine Schicht in der Sicht, und
+// „nurSchichtId" ist die Grenze, an der jede Schreibaktion geprüft wird.
+export type CrewKontext = {
+  a: Prisma.AssignmentGetPayload<{ include: typeof CREW_INCLUDE }>;
+  nurSchichtId: string | null;
+  // Schichten des Einsatzes insgesamt – beim Schichtlink ist „a.shifts" auf
+  // die eine Schicht gekürzt, für die Kundenbestätigung zählt aber, ob der
+  // Einsatz noch aus mehr besteht.
+  schichtenGesamt: number;
+  abgelaufen: boolean;
+};
+
+export async function loadCrewByToken(token: string): Promise<CrewKontext | null> {
   if (!/^[0-9a-f-]{36}$/i.test(token)) return null;
-  return db.assignment.findUnique({
-    where: { crewToken: token },
-    include: {
-      customer: true,
-      confirmations: { orderBy: { zeitpunkt: "desc" } },
-      shifts: {
-        orderBy: { planStart: "asc" },
-        include: { assignments: { include: { employee: true, timeEntries: { where: { aktuell: true } } }, orderBy: { createdAt: "asc" } } },
-      },
-    },
-  });
+  const a = await db.assignment.findUnique({ where: { crewToken: token }, include: CREW_INCLUDE });
+  if (a) return { a, nurSchichtId: null, schichtenGesamt: a.shifts.length, abgelaufen: Boolean(a.crewTokenExpiresAt && a.crewTokenExpiresAt < new Date()) };
+
+  const shift = await db.shift.findUnique({ where: { crewToken: token }, select: { id: true, assignmentId: true, crewTokenExpiresAt: true } });
+  if (!shift) return null;
+  const voll = await db.assignment.findUnique({ where: { id: shift.assignmentId }, include: CREW_INCLUDE });
+  if (!voll) return null;
+  return {
+    a: { ...voll, shifts: voll.shifts.filter((s) => s.id === shift.id) },
+    nurSchichtId: shift.id,
+    schichtenGesamt: voll.shifts.length,
+    abgelaufen: Boolean(shift.crewTokenExpiresAt && shift.crewTokenExpiresAt < new Date()),
+  };
 }
 
 export async function customerSign(assignmentId: string, input: z.infer<typeof CustomerSignSchema>, meta: RequestMeta): Promise<void> {

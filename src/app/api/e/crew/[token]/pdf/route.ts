@@ -14,13 +14,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     return NextResponse.json({ error: "Zu viele Anfragen." }, { status: 429 });
   }
   const { token } = await params;
-  const a = await loadCrewByToken(token);
-  if (!a) {
+  const ctx = await loadCrewByToken(token);
+  if (!ctx) {
     registerTokenMiss(ip);
     return NextResponse.json({ error: "Link ungültig." }, { status: 404 });
   }
   const link = await db.documentLink.findFirst({
-    where: { assignmentId: a.id, document: { category: "stundennachweis" } },
+    where: { assignmentId: ctx.a.id, document: { category: "stundennachweis" } },
     orderBy: { document: { createdAt: "desc" } },
     include: { document: true },
   });

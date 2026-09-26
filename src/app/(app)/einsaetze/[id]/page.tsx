@@ -9,7 +9,7 @@ import { erfahrungFuer, erfahrungOder } from "@/lib/einsatz/service/personal";
 import { pruefeEinsatzLoeschbar } from "@/lib/einsatz/service/loeschen";
 import { ERGAENZUNG_LABELS, pruefeAbrechnungsfreigabe, summeErgaenzungen } from "@/lib/einsatz/service/abrechnung";
 import { db } from "@/lib/db";
-import { gruppenlinkFor, linkRows } from "@/lib/einsatz/service/links";
+import { gruppenlinkFor, linkRows, schichtlinkeFor } from "@/lib/einsatz/service/links";
 import { baseUrlFromRequest } from "@/lib/einsatz/mail";
 import { hasConfiguredBase, misconfiguredBase } from "@/lib/einsatz/base-url";
 import { berlinDateKey, berlinTime, dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
@@ -47,6 +47,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   const base = await baseUrlFromRequest();
   const links = linkRows(a, base);
   const gruppe = gruppenlinkFor(a, base);
+  const schichtlinks = schichtlinkeFor(a, base);
   const von = dateOnlyKey(a.datumVon);
   const bis = dateOnlyKey(a.datumBis);
   // Wie weit der Einsatz noch offen ist – Kunde und Freigabe sind die Grenzen
@@ -268,7 +269,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         </div>
       ))}
 
-      {dispo ? <LinksPanel assignmentId={a.id} rows={links} gruppe={gruppe} baseConfigured={hasConfiguredBase()} fehlkonfiguriert={misconfiguredBase()} /> : null}
+      {dispo ? <LinksPanel assignmentId={a.id} rows={links} gruppe={gruppe} schichten={schichtlinks} baseConfigured={hasConfiguredBase()} fehlkonfiguriert={misconfiguredBase()} /> : null}
 
       <div className="card p-5">
         <p className="eyebrow">Dokumente</p>

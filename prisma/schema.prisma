@@ -795,6 +795,10 @@ model Shift {
   vorgabePause    Int?
   vorgabeVon      String?
   vorgabeAm       DateTime?
+  // Eigener Gruppenlink nur für diese Schicht – für Einsätze über mehrere
+  // Tage, bei denen jede Schicht ihre eigene WhatsApp-Gruppe hat.
+  crewToken          String?   @unique
+  crewTokenExpiresAt DateTime?
   sortOrder       Int       @default(0)
   createdById     String?
   createdAt       DateTime  @default(now())

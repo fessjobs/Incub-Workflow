@@ -137,6 +137,9 @@ export async function createAssignment(actor: ModuleActor, input: CreateAssignme
           anzahlSoll: s.anzahlSoll,
           garantieStunden: s.garantieStunden,
           sortOrder: s.sortOrder,
+          // Eigener Gruppenlink je Schicht – zusätzlich zu dem für den ganzen Einsatz
+          crewToken: randomUUID(),
+          crewTokenExpiresAt: new Date(s.planEnde.getTime() + TOKEN_DAYS * 86400000),
           createdById: actor.id,
         },
       });
@@ -276,6 +279,11 @@ export async function renewTokens(actor: ModuleActor, assignmentId: string): Pro
   }
   if (!a.crewToken || (a.crewTokenExpiresAt && a.crewTokenExpiresAt < new Date())) {
     await db.assignment.update({ where: { id: a.id }, data: { crewToken: randomUUID(), crewTokenExpiresAt: new Date(Date.now() + TOKEN_DAYS * 86400000) } });
+  }
+  // Auch die Gruppenlinks der einzelnen Schichten
+  for (const s of a.shifts) {
+    if (s.crewToken && (!s.crewTokenExpiresAt || s.crewTokenExpiresAt >= new Date())) continue;
+    await db.shift.update({ where: { id: s.id }, data: { crewToken: randomUUID(), crewTokenExpiresAt: new Date(Math.max(Date.now(), s.planEnde.getTime()) + TOKEN_DAYS * 86400000) } });
   }
   await logAudit({ organizationId: actor.organizationId, userId: actor.id, action: "assignment.tokens.renew", entityType: "assignment", entityId: assignmentId, data: { erneuert: n } });
   return n;

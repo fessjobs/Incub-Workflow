@@ -1,12 +1,15 @@
-// Mitarbeiter-Links: ein Gruppenlink je Einsatz als Hauptweg (fertige
-// WhatsApp-Nachricht für die Gruppe), dazu die Einzellinks je Person für den
-// automatischen Versand (24 h vor Schichtbeginn, Erinnerung nach Schichtende)
-// und für Nachzügler.
+// Mitarbeiter-Links, drei Zuschnitte:
+//   1. ein Gruppenlink je Einsatz (Hauptweg, fertige WhatsApp-Nachricht)
+//   2. ein Gruppenlink je Schicht – für mehrtägige Einsätze, bei denen jede
+//      Schicht ihre eigene Gruppe hat
+//   3. die Einzellinks je Person für den automatischen Versand (24 h vor
+//      Schichtbeginn, Erinnerung nach Schichtende) und für Nachzügler
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { enqueueJob } from "../jobs/queue";
 import { crewLinkUrl, employeeLinkUrl, gruppenText, whatsappShareUrl, whatsappText, type LinkMessageInput } from "../mail";
 import { loadAssignment, type AssignmentDetail } from "./assignments";
+import { berlinDateKey, berlinTime, formatKeyDE } from "../tz";
 
 export const LINK_LEAD_HOURS = 24;
 export const REMINDER_DELAY_HOURS = 2;
@@ -118,4 +121,60 @@ export async function scheduleLinkJobs(actor: { id: string; organizationId: stri
 
 export async function markLinkSent(shiftAssignmentId: string, field: "linkSentAt" | "reminderSentAt"): Promise<void> {
   await db.shiftAssignment.update({ where: { id: shiftAssignmentId }, data: { [field]: new Date() } });
+}
+
+// Ein Gruppenlink je Schicht: dieselbe Mechanik wie beim Einsatzlink, nur auf
+// eine Schicht zugeschnitten. Wer ihn öffnet, sieht ausschließlich die
+// Personen dieser Schicht – praktisch, wenn ein Einsatz über mehrere Tage
+// läuft und jede Schicht ihre eigene WhatsApp-Gruppe hat.
+export type Schichtlink = {
+  shiftId: string;
+  bezeichnung: string;
+  taetigkeit: string;
+  datumDE: string;
+  zeit: string;
+  personen: number;
+  unterschrieben: number;
+  url: string;
+  whatsapp: string;
+  teilen: string;
+  // Der Kunde bestätigt immer den ganzen Nachweis – über einen Schichtlink
+  // geht das nur, wenn der Einsatz aus dieser einen Schicht besteht.
+  kundeMoeglich: boolean;
+};
+
+export function schichtlinkeFor(a: AssignmentDetail, base?: string | null): Schichtlink[] {
+  const links: Schichtlink[] = [];
+  for (const s of a.shifts) {
+    const aktiv = s.assignments.filter((sa) => sa.status !== "STORNIERT");
+    if (aktiv.length === 0 || !s.crewToken) continue;
+    const text = gruppenText(
+      {
+        projekt: a.projekt,
+        kunde: a.customer.name,
+        einsatzort: a.einsatzort,
+        // Beim Schichtlink zählt der Tag der Schicht, nicht die Spanne des Einsatzes
+        datumVon: s.planStart,
+        datumBis: s.planStart,
+        schichten: [{ bezeichnung: s.bezeichnung, planStart: s.planStart, planEnde: s.planEnde, treffpunkt: s.treffpunkt }],
+        crewToken: s.crewToken,
+        nurSchicht: true,
+      },
+      base
+    );
+    links.push({
+      shiftId: s.id,
+      bezeichnung: s.bezeichnung,
+      taetigkeit: s.taetigkeit,
+      datumDE: formatKeyDE(berlinDateKey(s.planStart)),
+      zeit: `${berlinTime(s.planStart)}–${berlinTime(s.planEnde)}`,
+      personen: aktiv.length,
+      unterschrieben: aktiv.filter((sa) => sa.timeEntries.some((t) => t.unterschriftZeitpunkt)).length,
+      url: crewLinkUrl(s.crewToken, base),
+      whatsapp: text,
+      teilen: whatsappShareUrl(text),
+      kundeMoeglich: a.shifts.length === 1,
+    });
+  }
+  return links;
 }

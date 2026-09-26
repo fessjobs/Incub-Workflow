@@ -31,6 +31,11 @@ type Zeitvorgabe = { start: string; ende: string; startDatum: string; endeDatum:
 
 type CrewView = {
   state: "offen" | "abgelaufen";
+  // Gesetzt, wenn der Link nur für eine Schicht gilt (Name der Schicht)
+  nurSchicht: string | null;
+  // Der Kunde bestätigt den ganzen Nachweis – über einen Schichtlink geht das
+  // nur, wenn der Einsatz aus dieser einen Schicht besteht.
+  kundeMoeglich: boolean;
   einsatz: { einsatznummer: string; projekt: string; artist: string | null; kunde: string; einsatzort: string; datum: string };
   schichten: Array<{ id: string; bezeichnung: string; taetigkeit: string; datumDE: string; vorgabe: Zeitvorgabe; personen: Person[] }>;
   kunde: { name: string; zeitpunkt: string } | null;
@@ -210,8 +215,14 @@ export function CrewFlow({ token }: { token: string }) {
         <p className="ez-muted" style={{ marginTop: "0.3rem" }}>
           {view.einsatz.einsatzort} · {view.einsatz.datum} · {view.einsatz.einsatznummer}
         </p>
+        {view.nurSchicht ? (
+          <p className="ez-muted" style={{ marginTop: "0.4rem", fontSize: "0.88rem" }} data-testid="nur-schicht">
+            Dieser Link gilt nur für die Schicht <strong>{view.nurSchicht}</strong>.
+          </p>
+        ) : null}
         <p style={{ marginTop: "0.6rem", fontSize: "0.92rem" }}>
-          Eigenen Namen antippen, Zeiten prüfen, Unterweisung bestätigen, unterschreiben. Das geht auf dem eigenen Handy oder nacheinander auf einem Gerät. Zum Schluss unterschreibt der Kunde.
+          Eigenen Namen antippen, Zeiten prüfen, Unterweisung bestätigen, unterschreiben. Das geht auf dem eigenen Handy oder nacheinander auf einem Gerät.
+          {view.kundeMoeglich ? " Zum Schluss unterschreibt der Kunde." : ""}
         </p>
         <div style={{ marginTop: "0.6rem" }}>
           <span className={`ez-pill ${offen.length === 0 ? "ez-pill-green" : "ez-pill-orange"}`}>
@@ -327,7 +338,11 @@ export function CrewFlow({ token }: { token: string }) {
 
       <div className="ez-card" style={{ marginTop: "0.8rem" }}>
         <p className="ez-eyebrow">Kundenbestätigung</p>
-        {view.kunde ? (
+        {!view.kundeMoeglich && !view.kunde ? (
+          <p className="ez-muted" style={{ marginTop: "0.4rem", fontSize: "0.9rem" }} data-testid="kunde-nur-einsatzlink">
+            Der Kunde bestätigt den ganzen Stundennachweis – das läuft über den Link für den gesamten Einsatz. Hier bitte nur die eigenen Zeiten unterschreiben.
+          </p>
+        ) : view.kunde ? (
           <>
             <p style={{ marginTop: "0.5rem" }}>
               <span className="ez-pill ez-pill-green">✓ {view.kunde.name}</span>

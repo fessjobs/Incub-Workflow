@@ -1,10 +1,10 @@
 "use client";
 
-// Ein Link für alle: fertige WhatsApp-Nachricht für die Gruppe, darunter
-// ausklappbar die Einzellinks je Person (für Nachzügler und den
-// automatischen Versand).
+// Drei Zuschnitte, von grob nach fein: ein Link für den ganzen Einsatz
+// (Hauptweg), ein Link je Schicht (eigene Gruppe pro Tag) und darunter
+// ausklappbar die Einzellinks je Person (Nachzügler, automatischer Versand).
 import { useState } from "react";
-import type { Gruppenlink, LinkRow } from "@/lib/einsatz/service/links";
+import type { Gruppenlink, LinkRow, Schichtlink } from "@/lib/einsatz/service/links";
 import { formatDateTime } from "@/lib/format";
 
 function CopyButton({ text, label, testId }: { text: string; label: string; testId?: string }) {
@@ -30,10 +30,25 @@ function CopyButton({ text, label, testId }: { text: string; label: string; test
   );
 }
 
-export function LinksPanel({ assignmentId, rows, gruppe, baseConfigured, fehlkonfiguriert }: { assignmentId: string; rows: LinkRow[]; gruppe: Gruppenlink | null; baseConfigured: boolean; fehlkonfiguriert?: string | null }) {
+export function LinksPanel({
+  assignmentId,
+  rows,
+  gruppe,
+  schichten,
+  baseConfigured,
+  fehlkonfiguriert,
+}: {
+  assignmentId: string;
+  rows: LinkRow[];
+  gruppe: Gruppenlink | null;
+  schichten: Schichtlink[];
+  baseConfigured: boolean;
+  fehlkonfiguriert?: string | null;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   const [einzelnOffen, setEinzelnOffen] = useState(false);
   const [textOffen, setTextOffen] = useState(false);
+  const [schichtText, setSchichtText] = useState<string | null>(null);
   void assignmentId;
   const unterschrieben = rows.filter((r) => r.tokenUsedAt).length;
   return (
@@ -83,6 +98,53 @@ export function LinksPanel({ assignmentId, rows, gruppe, baseConfigured, fehlkon
       ) : (
         <p className="mt-3 text-sm text-navy-400">Für diesen Einsatz gibt es noch keinen Gruppenlink. Über „Tokens erneuern“ wird einer erzeugt.</p>
       )}
+
+      {schichten.length > 0 ? (
+        <div className="mt-5 border-t border-navy-100 pt-4 dark:border-navy-800" data-testid="schichtlinks">
+          <p className="eyebrow">Link je Schicht</p>
+          <p className="mt-1 text-sm text-navy-500">
+            {schichten.length === 1
+              ? "Derselbe Weg, nur auf diese eine Schicht zugeschnitten."
+              : "Für jede Schicht eine eigene Nachricht – wer sie öffnet, sieht nur die Personen dieser Schicht."}
+          </p>
+          <div className="mt-2 divide-y divide-navy-100 dark:divide-navy-800">
+            {schichten.map((s) => (
+              <div key={s.shiftId} className="py-2" data-testid={`schichtlink-${s.shiftId}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium">
+                      {s.bezeichnung}
+                      {s.taetigkeit ? <span className="text-xs text-navy-400"> · {s.taetigkeit}</span> : null}
+                    </p>
+                    <p className="text-xs text-navy-400">
+                      {s.datumDE} · {s.zeit} · {s.unterschrieben} von {s.personen} unterschrieben
+                      {s.kundeMoeglich ? "" : " · Kundenbestätigung über den Einsatzlink"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <CopyButton text={s.whatsapp} label="WhatsApp-Nachricht" testId={`schicht-text-kopieren-${s.shiftId}`} />
+                    <a href={s.teilen} target="_blank" rel="noreferrer" className="btn-secondary text-xs" data-testid={`schicht-teilen-${s.shiftId}`}>
+                      In WhatsApp öffnen
+                    </a>
+                    <CopyButton text={s.url} label="Nur den Link" testId={`schicht-link-${s.shiftId}`} />
+                    <a href={s.url} target="_blank" rel="noreferrer" className="btn-secondary text-xs">
+                      Öffnen
+                    </a>
+                    <button type="button" className="text-xs text-navy-400 hover:underline" onClick={() => setSchichtText(schichtText === s.shiftId ? null : s.shiftId)}>
+                      {schichtText === s.shiftId ? "Text ausblenden" : "Text anzeigen"}
+                    </button>
+                  </div>
+                </div>
+                {schichtText === s.shiftId ? (
+                  <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-navy-50 p-3 font-mono text-xs dark:bg-navy-800" data-testid={`schicht-nachricht-${s.shiftId}`}>
+                    {s.whatsapp}
+                  </pre>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <button type="button" className="mt-4 text-xs text-navy-400 hover:underline" onClick={() => setEinzelnOffen((v) => !v)} data-testid="einzellinks-toggle">
         {einzelnOffen ? "Einzellinks ausblenden" : `Einzellinks je Person anzeigen (${rows.length})`}
