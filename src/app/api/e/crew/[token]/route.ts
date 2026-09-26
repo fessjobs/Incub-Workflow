@@ -56,11 +56,13 @@ function crewView(ctx: CrewKontext) {
       datumDE: formatKeyDE(berlinDateKey(s.planStart)),
       // Bestätigung des Kunden für genau diese Schicht
       kunde: bestaetigt ? { name: bestaetigt.kundeName, zeitpunkt: bestaetigt.zeitpunkt.toISOString() } : null,
-      // Solange der Einsatz nicht als Ganzes bestätigt ist, kann der Kunde
-      // jede Schicht einzeln abzeichnen.
+      // Der Kunde kann jede Schicht abzeichnen, solange sie nicht schon
+      // abgezeichnet ist – auch bei einem längst abgeschlossenen Einsatz und
+      // auch dann noch, wenn er den Einsatz als Ganzes schon bestätigt hat
+      // (dann kommt der Nachweis dieser Schicht eben dazu).
       // Bei nur einer Schicht deckt die Bestätigung für den Einsatz denselben
       // Fall ab – dann kein zweiter Knopf für dasselbe.
-      kundeMoeglich: !expired && gesamt === null && bestaetigt === null && ctx.schichtenGesamt > 1,
+      kundeMoeglich: !expired && bestaetigt === null && ctx.schichtenGesamt > 1,
       alleErfasst: s.assignments.filter((sa) => sa.status !== "STORNIERT").every((sa) => sa.timeEntries.some((t) => t.unterschriftZeitpunkt)),
       // Eine vom Kunden abgezeichnete Schicht ist zu; die übrigen nicht.
       korrigierbar: korrigierbarGrundsaetzlich && bestaetigt === null,

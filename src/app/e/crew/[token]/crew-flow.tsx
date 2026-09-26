@@ -376,7 +376,7 @@ export function CrewFlow({ token }: { token: string }) {
         <p className="ez-eyebrow">Kundenbestätigung{view.schichten.length > 1 ? " für den ganzen Einsatz" : ""}</p>
         {!view.kundeMoeglich && !view.kunde ? (
           <p className="ez-muted" style={{ marginTop: "0.4rem", fontSize: "0.9rem" }} data-testid="kunde-je-schicht">
-            Dieser Einsatz wird je Schicht bestätigt – der Knopf steht oben bei der jeweiligen Schicht. Je Schicht entsteht dann ein eigener Stundennachweis.
+            Dieser Einsatz wird je Schicht bestätigt – das Unterschriftsfeld steht oben unter der jeweiligen Schicht. Je Schicht entsteht dann ein eigener Stundennachweis.
           </p>
         ) : view.kunde ? (
           <>

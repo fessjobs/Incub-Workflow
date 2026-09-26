@@ -41,7 +41,9 @@ Parser) → Namens-Matching gegen den Mitarbeiterstamm, Arbeitszeit-Konfliktprü
 **Konkretisierung nach § 1 Abs. 1 Satz 6 AÜG** als PDF → **ein Gruppenlink für alle**
 (`/e/crew/<token>`, mobil, ohne Login, offlinefähig) als fertige WhatsApp-Nachricht für die
 Gruppe: jede Person tippt den eigenen Namen an und unterschreibt, falsche Namen und
-Nachzügler korrigiert die Crew selbst, am Ende unterschreibt der Kunde →
+Nachzügler korrigiert die Crew selbst, am Ende unterschreibt der Kunde – **für den ganzen Einsatz oder je Schicht einzeln,
+dann entsteht je Schicht ein eigener Stundennachweis**, auch nachträglich bei einem
+schon abgeschlossenen Einsatz →
 automatisches **Stundennachweis-PDF** (Kategorie `stundennachweis`, je Einsatz genau eines),
 das die Crew im selben Link **ansehen, teilen und herunterladen** kann →
 **zusätzlich ein eigener Gruppenlink je Schicht**, wenn ein Einsatz über mehrere Tage

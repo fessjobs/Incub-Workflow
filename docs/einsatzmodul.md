@@ -199,9 +199,29 @@ Bei einem Einsatz arbeiten fast alle dieselbe Schicht. Hat die erste Person ihre
 
 Gespeichert wird die Vorgabe auf der Schicht (`vorgabeStart`, `vorgabeEnde`, `vorgabePause`, `vorgabeVon`, `vorgabeAm`, Migration `20260922090000_schicht_zeitvorgabe`) – also pro Schicht, nicht pro Einsatz: „Load-Out 21:30“ bekommt nicht die Zeiten von „Aufbau 07:00“. Die Dispo sieht die Vorgabe in der Schichtzeile und kann sie zurücknehmen; danach starten neue Erfassungen wieder mit den Planzeiten. Wer sie gesetzt hat, mit welchen Zeiten und für wie viele Offene, steht im Audit-Log.
 
-### 6e. Der fertige Beleg
+### 6e. Der Kunde bestätigt – ganzer Einsatz oder je Schicht
 
-Sobald der Kunde bestätigt hat, zeigt der Link den unterschriebenen Stundennachweis: **Ansehen**, **Teilen** (Web Share API mit der PDF-Datei, sonst mit dem Link) und **Herunterladen** über `GET /api/e/crew/[token]/pdf` bzw. `GET /api/e/[token]/pdf`. Das PDF entsteht in einem Hintergrund-Job – solange es fehlt, steht dort „wird gerade erstellt“ und die Seite fragt alle drei Sekunden nach (zehnmal), statt einen Fehler zu zeigen.
+Der Kunde zeichnet ab, was er gesehen hat. Deshalb gibt es zwei Zuschnitte, und beide erzeugen genau dazu passend ein PDF:
+
+| Bestätigung | Wo | Ergebnis |
+|---|---|---|
+| **je Schicht** (`AssignmentConfirmation.shiftId` gesetzt) | Knopf unter der jeweiligen Schicht – im Schichtlink wie im Einsatzlink | ein Stundennachweis **für diese Schicht** |
+| **ganzer Einsatz** (`shiftId` leer) | Karte „Kundenbestätigung" unten | ein Stundennachweis über **alle Schichten** (bisheriges Verhalten) |
+
+Im Unterschriftsformular steht nur, was auch bestätigt wird: bei einer Schicht deren Zeilen, deren Name und deren Tag. Danach steht in der Schichtkarte „✓ Kunde: …" und gleich darunter der fertige Nachweis dieser Schicht zum Ansehen, Teilen und Herunterladen.
+
+Regeln, damit kein Papier doppelt unterwegs ist:
+
+- **Je Schicht nur eine Bestätigung.** Ein zweiter Versuch wird mit 409 abgewiesen; korrigieren kann nur die Dispo.
+- **Sobald eine Schicht einzeln bestätigt ist, entfällt die Sammelbestätigung** – die Karte unten sagt dann, dass je Schicht bestätigt wird.
+- **Umgekehrt nicht:** Hat der Kunde den ganzen Einsatz bestätigt, kann er einzelne Schichten trotzdem noch abzeichnen; deren Nachweis kommt dazu, der Gesamtnachweis bleibt stehen.
+- **Bei nur einer Schicht** gibt es nur den Knopf unten – zwei Wege für dieselbe Sache wären nur verwirrend.
+- **Ein abgeschlossener oder abgerechneter Einsatz lässt sich weiter abzeichnen.** Namen und Besetzung sind dann gesperrt, die Unterschrift des Kunden nicht: sie kommt oft erst Tage später. Ist der Link abgelaufen, erzeugt „Links erneuern" in der Dispo neue (auch je Schicht).
+- **Sperre je Schicht:** Eine abgezeichnete Schicht nimmt keine Namensänderungen und keine neuen Personen mehr an, die übrigen schon.
+
+Die PDFs stehen nebeneinander: `DocumentLink.shiftId` ist der Ersetzungsschlüssel, ein neuer Schichtnachweis ersetzt nur den seiner Schicht. Abgerufen wird er über `GET /api/e/crew/[token]/pdf?shift=<id>` (nur für Schichten, die der Token umfasst) bzw. ohne Parameter der Nachweis über den ganzen Einsatz. Solange das PDF im Hintergrund-Job entsteht, steht dort „wird gerade erstellt“ und die Seite fragt alle drei Sekunden nach (zehnmal), statt einen Fehler zu zeigen. Teilen läuft über die Web Share API mit der PDF-Datei, sonst mit dem Link.
+
+Im Backend steht die Bestätigung je Schicht am Schichtkopf und als Kennzeichen oben am Einsatz; bei mehreren Schichten gibt es dort je Schicht den Knopf **„Stundennachweis dieser Schicht"**, um ihn nach einer Korrektur neu zu erzeugen.
 
 ### 6f. Einzellink und Technik
 
@@ -343,7 +363,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
   - `loeschen.spec.ts`: Stunden löschen (Einteilung bleibt, steht wieder auf „geplant", Erfahrung sinkt) → freigegebene Zeiten sind gesperrt, mit Begründung statt Knopf → nach Rücknahme der Freigabe löscht der Admin den Einsatz mit getippter Nummer (falsches Wort hält den Knopf zu, der Link liefert danach 404) → Person ohne Einteilungen löschen → Person mit unterschriebenen Zeiten bleibt stehen.
   - `bewertung.spec.ts`: neue Person startet bei null Schichten → nach der Unterschrift zählt die Schicht samt Tätigkeit → bewerten mit Notiz → Stundenzettel am Einsatz freigeben → Personalliste und Profil zeigen Erfahrung und Bilanz → **nichts davon im Mitarbeiter-Link oder in der öffentlichen Schnittstelle** → Bewertung zurücknehmen.
-  - `schichtlink.spec.ts`: Einsatz über zwei Tage mit zwei Schichten → je Schicht ein eigener Abschnitt mit eigenem Token (keiner davon der Token des Einsatzes) → die Nachricht nennt nur die eigene Schicht → der Link zeigt nur deren Personen, mit Hinweis auf die Schicht, und verweist für die Kundenbestätigung auf den Einsatzlink → unterschreiben über den Schichtlink, die zweite Schicht bleibt unberührt → das Backend zeigt den Stand je Schicht und weiterhin „1 von 2" am Einsatzlink → eine Person der anderen Schicht über den fremden Token einzureichen ergibt 403.
+  - `schichtlink.spec.ts`: Einsatz über zwei Tage mit zwei Schichten → je Schicht ein eigener Abschnitt mit eigenem Token (keiner davon der Token des Einsatzes) → die Nachricht nennt nur die eigene Schicht → der Link zeigt nur deren Personen, mit Hinweis auf die Schicht, und verweist für die Kundenbestätigung auf den Einsatzlink → unterschreiben über den Schichtlink, die zweite Schicht bleibt unberührt → das Backend zeigt den Stand je Schicht und weiterhin „1 von 2" am Einsatzlink → eine Person der anderen Schicht über den fremden Token einzureichen ergibt 403. Dazu die Kundenbestätigung je Schicht: der Kunde zeichnet die erste Schicht ab (das Formular zeigt nur deren Zeilen), nur sie ist danach zu, die Sammelbestätigung entfällt, je Schicht entsteht ein eigener Nachweis (die noch offene Schicht liefert 404) – und ein bereits abgeschlossener Einsatz lässt sich nachträglich je Schicht abzeichnen, obwohl Namen und Besetzung gesperrt sind.
   - `abrechnung.spec.ts`: vor Schritt 1 sind Schritt 2 und 3 zu (Begründung im Klartext, Knöpfe inaktiv) → Bonus und Abzug aufnehmen, die Summe verrechnet beides → Stunden bestätigen und freigeben → der Admin ergänzt die Angaben (ohne Angebotsnummer bleibt „An die Buchhaltung" zu) und gibt sie weiter → der Einsatz wandert in den Korb „Rechnung offen" und aus den beiden davor heraus → die Buchhaltung trägt die Rechnungsnummer in der Liste ein → am Einsatz stehen Rechnung und Status „Abgerechnet", Angaben und Ergänzungen sind gesperrt → die Einsatzliste sagt den Stand im Klartext und filtert danach → Vermerk entfernen und dieselbe Nummer erneut eintragen.
   - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.
   - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.

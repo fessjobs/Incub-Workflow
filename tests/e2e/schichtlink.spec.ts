@@ -257,3 +257,79 @@ Piet Tag2-${RUN2}
     await expect(page.getByText(/Stundennachweis_/)).toHaveCount(2);
   });
 });
+
+// Auch ein längst abgeschlossener Einsatz lässt sich je Schicht noch
+// abzeichnen – genau der Fall, wenn der Kunde erst später dazu kommt.
+test.describe.serial("Fertiger Auftrag: Kunde zeichnet nachträglich ab", () => {
+  const RUN3 = `${RUN}c`;
+  const RAW3 = `Artist: Nachtraeglich ${RUN3}
+Location: Porsche Arena Stuttgart
+Kunde: Mannheimer Power GmbH
+Arbeitsbeginn ${de(TAG1)}:
+Catering | 09:00 - 15:00 Uhr | 1x Hands
+Rana Spaet-${RUN3}
+Arbeitsbeginn ${de(TAG2)}:
+Technik | 09:00 - 15:00 Uhr | 1x Hands
+Umut Spaet-${RUN3}
+`;
+  let url = "";
+  let crewPfad = "";
+  let schichtIds: string[] = [];
+
+  test("Einsatz anlegen, alle unterschreiben, abschließen", async ({ page }) => {
+    await login(page);
+    await page.goto("/einsaetze/neu");
+    await page.getByTestId("raw-input").fill(RAW3);
+    await page.getByTestId("parse-button").click();
+    await expect(page.getByTestId("person-0-0")).toBeVisible();
+    for (const feld of [page.getByTestId("person-0-0"), page.getByTestId("person-1-0")]) {
+      if ((await feld.inputValue()) === "") await feld.selectOption("__neu");
+    }
+    await page.getByTestId("save-button").click();
+    const konflikte = page.getByLabel("Konflikte geprüft, trotzdem speichern");
+    if (await konflikte.isVisible().catch(() => false)) {
+      await konflikte.check();
+      await page.getByTestId("save-button").click();
+    }
+    await page.waitForURL(/\/einsaetze\/(?!neu$)[a-z0-9]+$/);
+    url = page.url();
+    crewPfad = new URL((await page.getByTestId("gruppen-link").getAttribute("title")) ?? "").pathname;
+
+    await page.goto(crewPfad);
+    await tutorialWeg(page);
+    for (let i = 0; i < 2; i++) {
+      await page.locator('[data-testid^="crew-sign-"]').first().click();
+      await page.getByTestId("unterweisung-check").check();
+      await drawSignature(page);
+      await page.getByTestId("crew-submit").click();
+      await unterschriftAngekommen(page, i + 1, 2);
+    }
+    schichtIds = (await (await page.request.get(`/api/e/crew/${crewPfad.split("/").pop()}`)).json()).schichten.map((s: { id: string }) => s.id);
+
+    // Der Abschluss läuft über einen Job (im Test kein Hintergrund-Worker);
+    // die Anmeldung von oben gilt in diesem Test weiter.
+    await page.request.post("/api/jobs/run");
+    await page.goto(url);
+    await expect(page.getByText("Abgeschlossen").first()).toBeVisible();
+  });
+
+  test("Im abgeschlossenen Einsatz steht das Unterschriftsfeld weiter unter jeder Schicht", async ({ page }) => {
+    await page.goto(crewPfad);
+    await tutorialWeg(page);
+    // Namen sind gesperrt (Einsatz abgeschlossen), die Unterschrift nicht
+    await expect(page.locator('[data-testid^="crew-add-"]')).toHaveCount(0);
+    for (const id of schichtIds) {
+      await expect(page.getByTestId(`schicht-kunde-unterschreibt-${id}`)).toBeVisible();
+    }
+
+    await page.getByTestId(`schicht-kunde-unterschreibt-${schichtIds[0]}`).click();
+    await page.getByTestId("kunde-name").fill("Spaeter Chef");
+    await drawSignature(page, "kunde-signature");
+    await page.getByTestId("kunde-submit").click();
+    await expect(page.getByTestId(`schicht-kunde-${schichtIds[0]}`)).toContainText("Spaeter Chef");
+
+    await login(page);
+    await page.request.post("/api/jobs/run");
+    expect((await page.request.get(`/api/e/crew/${crewPfad.split("/").pop()}/pdf?shift=${schichtIds[0]}`)).status()).toBe(200);
+  });
+});
