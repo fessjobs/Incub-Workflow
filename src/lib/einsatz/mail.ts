@@ -4,7 +4,7 @@
 // trotzdem in der Dispo-Ansicht bereit.
 import nodemailer from "nodemailer";
 import { envBase, normalizeBase } from "./base-url";
-import { berlinDateKey, berlinTime, formatKeyDE } from "./tz";
+import { addDaysToKey, berlinDateKey, berlinTime, formatKeyDE, weekdayLangDE, weekdayOfKey } from "./tz";
 
 export function isMailConfigured(): boolean {
   return Boolean(process.env.SMTP_URL);
@@ -150,4 +150,79 @@ export async function sendMail(to: string, subject: string, text: string): Promi
     console.error("Mailversand fehlgeschlagen:", message);
     return { sent: false, error: message };
   }
+}
+
+// ─── Aushang für die WhatsApp-Gruppe ────────────────────────────────────────
+//
+// Keine Nachricht an die eingeteilte Crew, sondern der Aufruf *davor*: Wer hat
+// Zeit? Deshalb steht hier kein Link und kein Name, sondern nur, was man zum
+// Zusagen wissen muss – und ein klarer Handlungsaufruf.
+
+export type AushangInput = {
+  projekt: string;
+  artist: string | null;
+  einsatzort: string;
+  // Schichten in zeitlicher Reihenfolge; „offen" ist die noch gesuchte Anzahl
+  schichten: Array<{ bezeichnung: string; taetigkeit: string; planStart: Date; planEnde: Date; treffpunkt: string | null; offen: number }>;
+  // Bezugstag für „heute"/„morgen" (Testbarkeit); Standard: jetzt
+  heute?: string;
+};
+
+// „Lanxess Arena, Köln" → Halle und Stadt getrennt; ohne Komma ist das letzte
+// Wort die beste Vermutung für die Stadt („Porsche Arena Stuttgart").
+export function ortTeile(einsatzort: string): { halle: string; stadt: string } {
+  const teile = einsatzort.split(",").map((t) => t.trim()).filter(Boolean);
+  if (teile.length > 1) return { halle: teile.slice(0, -1).join(", "), stadt: teile[teile.length - 1] };
+  const woerter = einsatzort.trim().split(/\s+/);
+  return { halle: einsatzort.trim(), stadt: woerter.length > 1 ? woerter[woerter.length - 1] : "" };
+}
+
+export function aushangText(i: AushangInput): string {
+  const heute = i.heute ?? berlinDateKey(new Date());
+  const morgen = addDaysToKey(heute, 1);
+  const erste = i.schichten[0];
+  const tag = erste ? berlinDateKey(erste.planStart) : heute;
+  const istHeute = tag === heute;
+  const istMorgen = tag === morgen;
+  const wochentag = weekdayLangDE(weekdayOfKey(tag));
+  const tagKurz = formatKeyDE(tag).slice(0, 6); // 06.10.
+  const { halle, stadt } = ortTeile(i.einsatzort);
+  const name = i.artist?.trim() || i.projekt;
+
+  // Abends ist „heute Abend" die natürliche Ansprache
+  const abends = erste ? Number(berlinTime(erste.planStart).slice(0, 2)) >= 16 : false;
+  const wann = istHeute ? (abends ? "heute Abend" : "heute") : istMorgen ? "morgen" : `am ${tagKurz}`;
+
+  const zeilen: string[] = [];
+  zeilen.push(istHeute ? "🚨 KURZFRISTIGER EINSATZ HEUTE 🚨" : istMorgen ? "🚨 KURZFRISTIGER EINSATZ MORGEN 🚨" : `🚨 EINSATZ AM ${tagKurz} 🚨`);
+  zeilen.push("");
+  zeilen.push(`🎤 ${name}${stadt && stadt !== halle ? ` in ${stadt}` : ""}`);
+  zeilen.push(`📅 ${istHeute ? "Heute, " : istMorgen ? "Morgen, " : ""}${wochentag} ${tagKurz}`);
+  for (const s of i.schichten) {
+    const mehrere = i.schichten.length > 1;
+    zeilen.push(`⏰ Call${mehrere ? ` ${s.bezeichnung}` : ""}: ${berlinTime(s.planStart)} Uhr`);
+  }
+  zeilen.push(`📍 ${halle}`);
+  const treffpunkte = [...new Set(i.schichten.map((s) => s.treffpunkt).filter((t): t is string => Boolean(t)))];
+  if (treffpunkte.length > 0) zeilen.push(`🚪 Treffpunkt: ${treffpunkte.join(" / ")}`);
+
+  // Gesucht wird, was noch frei ist – je Tätigkeit zusammengefasst
+  const gesucht = new Map<string, number>();
+  for (const s of i.schichten) {
+    if (s.offen <= 0) continue;
+    const art = s.taetigkeit?.trim() || s.bezeichnung;
+    gesucht.set(art, (gesucht.get(art) ?? 0) + s.offen);
+  }
+  if (gesucht.size > 0) {
+    zeilen.push(`👥 Gesucht: ${[...gesucht.entries()].map(([art, n]) => `${n}x ${art}`).join(", ")}`);
+  }
+
+  zeilen.push("");
+  zeilen.push(`Wer ${wann} kann, bitte auf die Nachricht mit „👍🏻“ reagieren`);
+  zeilen.push("und der Gruppe beitreten.");
+  zeilen.push("");
+  zeilen.push("Weitere Infos folgen");
+  zeilen.push("");
+  zeilen.push("Danke euch 💪");
+  return zeilen.join("\n");
 }

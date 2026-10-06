@@ -174,6 +174,8 @@ export async function createAssignment(actor: ModuleActor, input: CreateAssignme
 
 export const assignmentInclude = {
   customer: true,
+  // Sammelmappe, über die ggf. die Rechnung läuft
+  project: { select: { id: true, name: true } },
   confirmations: { orderBy: { zeitpunkt: "desc" as const } },
   shifts: {
     orderBy: [{ planStart: "asc" as const }, { sortOrder: "asc" as const }],

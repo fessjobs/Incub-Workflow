@@ -10,7 +10,7 @@ import { pruefeEinsatzLoeschbar } from "@/lib/einsatz/service/loeschen";
 import { ERGAENZUNG_LABELS, pruefeAbrechnungsfreigabe, summeErgaenzungen } from "@/lib/einsatz/service/abrechnung";
 import { db } from "@/lib/db";
 import { gruppenlinkFor, linkRows, schichtlinkeFor } from "@/lib/einsatz/service/links";
-import { baseUrlFromRequest } from "@/lib/einsatz/mail";
+import { aushangText, baseUrlFromRequest } from "@/lib/einsatz/mail";
 import { hasConfiguredBase, misconfiguredBase } from "@/lib/einsatz/base-url";
 import { berlinDateKey, berlinTime, dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
 import { formatDateTime } from "@/lib/format";
@@ -23,6 +23,7 @@ import { PasteNames } from "./paste-names";
 import { RenamePerson } from "./rename-person";
 import { Zeitvorgabe } from "./zeitvorgabe";
 import { SchichtNachweis } from "./schicht-nachweis";
+import { Aushang } from "./aushang";
 import { RatePerson } from "./rate-person";
 import { BilanzBadge, ErfahrungZeile } from "../rating-badges";
 import { AbrechnungCard } from "./abrechnung-card";
@@ -49,6 +50,24 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   const links = linkRows(a, base);
   const gruppe = gruppenlinkFor(a, base);
   const schichtlinks = schichtlinkeFor(a, base);
+  // Aufruf für die WhatsApp-Gruppe: gesucht wird, was auf den Schichten noch
+  // frei ist (Soll minus besetzte Plätze).
+  const aushang = aushangText({
+    projekt: a.projekt,
+    artist: a.artist,
+    einsatzort: a.einsatzort,
+    schichten: a.shifts.map((s) => {
+      const besetzt = s.assignments.filter((sa) => sa.status !== "STORNIERT").length;
+      return {
+        bezeichnung: s.bezeichnung,
+        taetigkeit: s.taetigkeit,
+        planStart: s.planStart,
+        planEnde: s.planEnde,
+        treffpunkt: s.treffpunkt,
+        offen: Math.max((s.anzahlSoll ?? besetzt) - besetzt, 0),
+      };
+    }),
+  });
   const von = dateOnlyKey(a.datumVon);
   const bis = dateOnlyKey(a.datumBis);
   // Wie weit der Einsatz noch offen ist – Kunde und Freigabe sind die Grenzen
@@ -287,6 +306,8 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         </div>
       ))}
 
+      {dispo ? <Aushang text={aushang} /> : null}
+
       {dispo ? <LinksPanel assignmentId={a.id} rows={links} gruppe={gruppe} schichten={schichtlinks} baseConfigured={hasConfiguredBase()} fehlkonfiguriert={misconfiguredBase()} /> : null}
 
       <div className="card p-5">
@@ -341,6 +362,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         freigabe={{ von: a.freigabeVon, am: a.freigabeAm ? formatDateTime(a.freigabeAm) : null }}
         angabenMeta={{ von: a.angabenVon, am: a.angabenAm ? formatDateTime(a.angabenAm) : null }}
         rechnung={{ nummer: a.rechnungsnummer, von: a.rechnungVon, am: a.rechnungAm ? formatDateTime(a.rechnungAm) : null }}
+        projekt={a.project ? { id: a.project.id, name: a.project.name } : null}
         darfStunden={darfAbrechnen}
         darfAngaben={canBillingNotes(user)}
         darfRechnung={darfAbrechnen}

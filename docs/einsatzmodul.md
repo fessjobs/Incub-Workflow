@@ -335,6 +335,63 @@ Jeder Schritt ist **zurücknehmbar** und steht mit Nummer, Kunde, Stunden und ha
 
 Die Ergänzungen sind eine Angabe **fürs Backend und die Rechnung**; sie laufen bewusst nicht in den Lohn-Export. Manuelle Zu- und Abschläge für die Lohnabrechnung bleiben, wo sie waren: `manual_deductions` unter `/einsaetze/lohnarten`.
 
+### 7d. Projekte: mehrere Einsätze, eine Rechnung
+
+Ein Kunde bucht über Wochen fünf einzelne Jobs und will dafür **eine** Rechnung. Dafür gibt es das Projekt als Sammelmappe (`service/projekte.ts`, Tabelle `projects`, `Assignment.projectId`, Migration `20261006090000_projekte`). Unter `/einsaetze/projekte` werden Einsätze ausgewählt und unter einem Namen zusammengefasst.
+
+Was wohin gehört:
+
+| | wo gepflegt |
+|---|---|
+| Stunden bestätigen, freigeben, Ergänzungen | **je Einsatz** – dort hängen Unterschriften und Nachweise |
+| Angebotsnummer, Konditionen, Beschreibung | **einmal im Projekt** |
+| Rechnungsnummer | **einmal im Projekt** |
+
+Mit „An die Buchhaltung“ und der Rechnungsnummer schreibt das Projekt beides auf **alle** Einsätze der Mappe durch: Angaben, Rechnungsnummer, Abrechnungsstand und der operative Status. In der Einsatzliste steht danach bei jedem Einsatz dieselbe Rechnungsnummer – die Übersicht bleibt also richtig, ohne dass es eine zweite Wahrheit gibt.
+
+Der **Stand des Projekts wird abgeleitet**, nicht gespeichert (`standVon()`): offen, solange ein Einsatz noch offene Stunden hat; freigegeben, sobald alle Stunden durch sind; bereit, sobald die Angaben gemeldet sind; berechnet, sobald eine Rechnungsnummer steht. So können Projekt und Einsätze nicht auseinanderlaufen.
+
+Grenzen:
+
+- Ein Einsatz gehört zu höchstens einem Projekt; ein bereits berechneter Einsatz wird nicht mehr aufgenommen.
+- Solange die Rechnung des Projekts steht, nimmt es keine Einsätze auf, gibt keine heraus und lässt sich nicht auflösen – erst den Vermerk entfernen.
+- Eine Rechnungsnummer gibt es je Organisation nur einmal: geprüft wird gegen andere Projekte **und** gegen einzeln abgerechnete Einsätze.
+- „Projekt auflösen“ entfernt nur die Mappe; die Einsätze bleiben und werden danach wieder einzeln abgerechnet.
+- Anlegen, Ändern und Auflösen dürfen Admin und Buchhaltung; die Disposition sieht die Mappe.
+
+Am Einsatz selbst treten Schritt 2 und 3 der Abrechnung zurück: Statt der eigenen Felder steht dort der Verweis „läuft über das Projekt …“ samt Link. Schritt 1 (Stunden und Ergänzungen) bleibt unverändert am Einsatz.
+
+### 7e. Aushang für die WhatsApp-Gruppe
+
+Nicht die Nachricht an die eingeteilte Crew, sondern der Aufruf **davor**: Wer hat Zeit? Auf jeder Einsatzseite steht eine fertige Suchmeldung (`aushangText()` in `mail.ts`) zum Kopieren oder direkt „In WhatsApp öffnen“:
+
+```
+🚨 KURZFRISTIGER EINSATZ HEUTE 🚨
+
+🎤 APACHE 207 in Köln
+📅 Heute, Dienstag 06.10.
+⏰ Call: 21:15 Uhr
+📍 Lanxess Arena
+👥 Gesucht: 15x Stagehands
+
+Wer heute Abend kann, bitte auf die Nachricht mit „👍🏻“ reagieren
+und der Gruppe beitreten.
+
+Weitere Infos folgen
+
+Danke euch 💪
+```
+
+Woher die Zeilen kommen:
+
+- **Kopfzeile** – „HEUTE“, „MORGEN“ oder „EINSATZ AM TT.MM.“, je nach Tag der ersten Schicht.
+- **🎤** – Artist, sonst das Projekt, dazu die Stadt. Die ergibt sich aus dem Einsatzort: nach dem letzten Komma („Lanxess Arena, Köln“), sonst das letzte Wort („Porsche Arena Stuttgart“).
+- **⏰** – Beginn je Schicht; bei mehreren Schichten steht deren Name dabei.
+- **👥 Gesucht** – Soll minus besetzte Plätze, je Tätigkeit zusammengefasst. Ist alles besetzt, entfällt die Zeile.
+- **Ansprache** – „heute Abend“ ab 16 Uhr, sonst „heute“, „morgen“ oder „am TT.MM.“.
+
+Der Text steht in einem Feld und ist **vor dem Kopieren frei bearbeitbar** – kurzfristig ändert sich oft noch etwas, und niemand soll deswegen neu tippen. „Zurücksetzen“ stellt die erzeugte Fassung wieder her.
+
 ## 8. Exporte
 
 - Excel (`exceljs`): Blatt „Zeiteinträge“ (Rohform), „Je Person“, „Je Kunde“, „Lohnarten“ (je Person und Monat, inkl. Abzüge). Spaltenbreiten, Zahlenformate, Filterzeile, SUBTOTAL-Summenzeile.
@@ -357,13 +414,14 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 
 ## 10. Tests
 
-- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, Links je Schicht (eigener Token, zugeschnittene Nachricht, Zähler, Kundenbestätigung nur bei einer einzigen Schicht), `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text, die Bearbeitbarkeits-Regeln, Erfahrungsstufen und Bewertungsbilanz, Voraussetzungen der Stundenfreigabe (bestätigbar vs. ohne Unterschrift), Vorzeichen und Summe der Ergänzungen, und wer welchen Schritt der Abrechnung gehen darf; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF; PDF-Stammdatenimport (Dokument-Block, Nachbearbeitung krummer Zeilen, Ablehnung, fehlender Schlüssel, Weiterleitung aus `parseTabelle`).
+- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, Links je Schicht (eigener Token, zugeschnittene Nachricht, Zähler, Kundenbestätigung nur bei einer einzigen Schicht), `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text, die Bearbeitbarkeits-Regeln, Erfahrungsstufen und Bewertungsbilanz, Zahlen und abgeleiteter Stand einer Projektmappe, Aushangtext (heute/morgen/später, Stadt aus dem Einsatzort, Gesucht-Zeile), Voraussetzungen der Stundenfreigabe (bestätigbar vs. ohne Unterschrift), Vorzeichen und Summe der Ergänzungen, und wer welchen Schritt der Abrechnung gehen darf; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF; PDF-Stammdatenimport (Dokument-Block, Nachbearbeitung krummer Zeilen, Ablehnung, fehlender Schlüssel, Weiterleitung aus `parseTabelle`).
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
   - `loeschen.spec.ts`: Stunden löschen (Einteilung bleibt, steht wieder auf „geplant", Erfahrung sinkt) → freigegebene Zeiten sind gesperrt, mit Begründung statt Knopf → nach Rücknahme der Freigabe löscht der Admin den Einsatz mit getippter Nummer (falsches Wort hält den Knopf zu, der Link liefert danach 404) → Person ohne Einteilungen löschen → Person mit unterschriebenen Zeiten bleibt stehen.
   - `bewertung.spec.ts`: neue Person startet bei null Schichten → nach der Unterschrift zählt die Schicht samt Tätigkeit → bewerten mit Notiz → Stundenzettel am Einsatz freigeben → Personalliste und Profil zeigen Erfahrung und Bilanz → **nichts davon im Mitarbeiter-Link oder in der öffentlichen Schnittstelle** → Bewertung zurücknehmen.
   - `schichtlink.spec.ts`: Einsatz über zwei Tage mit zwei Schichten → je Schicht ein eigener Abschnitt mit eigenem Token (keiner davon der Token des Einsatzes) → die Nachricht nennt nur die eigene Schicht → der Link zeigt nur deren Personen, mit Hinweis auf die Schicht, und verweist für die Kundenbestätigung auf den Einsatzlink → unterschreiben über den Schichtlink, die zweite Schicht bleibt unberührt → das Backend zeigt den Stand je Schicht und weiterhin „1 von 2" am Einsatzlink → eine Person der anderen Schicht über den fremden Token einzureichen ergibt 403. Dazu die Kundenbestätigung je Schicht: der Kunde zeichnet die erste Schicht ab (das Formular zeigt nur deren Zeilen), nur sie ist danach zu, die Sammelbestätigung entfällt, je Schicht entsteht ein eigener Nachweis (die noch offene Schicht liefert 404) – und ein bereits abgeschlossener Einsatz lässt sich nachträglich je Schicht abzeichnen, obwohl Namen und Besetzung gesperrt sind.
+  - `projekte.spec.ts`: zwei fertige Einsätze → zu einem Projekt zusammenfassen (Summe beider Stunden) → am Einsatz steht der Verweis aufs Projekt statt eigener Felder → Angaben einmal im Projekt, dann eine Rechnungsnummer für beide (steht danach an beiden Einsätzen und in der Liste) → Rücknahme löst sie bei beiden → ein Einsatz lässt sich wieder herauslösen. Dazu der Aushang: erzeugte Suchmeldung mit Artist, Stadt, Call, Ort und „Gesucht“ aus Soll minus Besetzung, bearbeitbar, der Teilen-Link folgt der Bearbeitung.
   - `abrechnung.spec.ts`: vor Schritt 1 sind Schritt 2 und 3 zu (Begründung im Klartext, Knöpfe inaktiv) → Bonus und Abzug aufnehmen, die Summe verrechnet beides → Stunden bestätigen und freigeben → der Admin ergänzt die Angaben (ohne Angebotsnummer bleibt „An die Buchhaltung" zu) und gibt sie weiter → der Einsatz wandert in den Korb „Rechnung offen" und aus den beiden davor heraus → die Buchhaltung trägt die Rechnungsnummer in der Liste ein → am Einsatz stehen Rechnung und Status „Abgerechnet", Angaben und Ergänzungen sind gesperrt → die Einsatzliste sagt den Stand im Klartext und filtert danach → Vermerk entfernen und dieselbe Nummer erneut eintragen.
   - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.
   - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.

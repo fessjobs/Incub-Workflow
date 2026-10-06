@@ -5,11 +5,14 @@ import { expect, type Page } from "@playwright/test";
 // In den Tests, die etwas anderes prüfen, wird sie weggeklickt – genau so,
 // wie es eine Person auf dem Handy auch tut.
 export async function tutorialWeg(page: Page): Promise<void> {
+  // Die Anleitung erscheint erst, wenn das Client-JavaScript geladen hat –
+  // direkt nach dem Öffnen ist sie noch nicht da. Deshalb kurz darauf warten,
+  // sonst klickt der Test gegen das gerade aufgehende Fenster.
   const schliessen = page.getByTestId("tutorial-schliessen");
-  if (await schliessen.isVisible().catch(() => false)) {
+  if (await schliessen.waitFor({ state: "visible", timeout: 3000 }).then(() => true).catch(() => false)) {
     await schliessen.click();
-    await expect(page.getByTestId("tutorial")).toHaveCount(0);
   }
+  await expect(page.getByTestId("tutorial")).toHaveCount(0);
 }
 
 // Nach dem Absenden verschwindet der „Unterschreiben"-Knopf sofort – auch

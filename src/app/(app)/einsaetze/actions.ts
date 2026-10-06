@@ -8,8 +8,9 @@ import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { canBillingNotes, canDispo, canReview, requireDispo, requireInvoicer, requireModuleUser, requireRater, requireReviewer } from "@/lib/einsatz/access";
 import { processJobsOnce } from "@/lib/einsatz/jobs/worker";
-import { AbrechnungAngabenSchema, CorrectionSchema, ErgaenzungSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RechnungSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
+import { AbrechnungAngabenSchema, CorrectionSchema, ErgaenzungSchema, ProjektAnlegenSchema, ProjektNameSchema, CreateAssignmentSchema, PasteApplySchema, PastePreviewSchema, RatingSchema, RechnungSchema, RenamePersonSchema, UpdateAssignmentSchema, UpdateShiftSchema } from "@/lib/einsatz/schemas";
 import { setzeBewertung } from "@/lib/einsatz/service/personal";
+import { benenneProjekt, gibProjektWeiter, legeProjektAn, loescheProjekt, loeseEinsatzHeraus, nimmEinsatzAuf, nimmProjektAngabenZurueck, nimmProjektRechnungZurueck, setzeProjektRechnung, speichereProjektAngaben } from "@/lib/einsatz/service/projekte";
 import { ergaenzungHinzufuegen, ergaenzungLoeschen, gibAngabenWeiter, gibFuerAbrechnungFrei, nimmAngabenZurueck, nimmFreigabeZurueck, nimmRechnungZurueck, setzeRechnung, speichereAngaben } from "@/lib/einsatz/service/abrechnung";
 import { loescheEinsatz, loeschePerson, loescheZeiterfassung, LoeschError } from "@/lib/einsatz/service/loeschen";
 import { aktualisiereKopf, aktualisiereSchicht, ergaenzePersonen, loescheZeitvorgabe, setzeNamen, vorschauNamen, BesetzungError, type VorschauZeile } from "@/lib/einsatz/service/besetzung";
@@ -429,6 +430,141 @@ export async function withdrawInvoiceAction(assignmentId: string): Promise<Actio
     await nimmRechnungZurueck(user, assignmentId);
     revalidateAbrechnung(assignmentId);
     return { ok: true, message: "Rechnungsvermerk entfernt – der Einsatz ist wieder freigegeben." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ─── Projekte: mehrere Einsätze, eine Rechnung ──────────────────────────────
+
+function revalidateProjekt(projektId?: string): void {
+  if (projektId) revalidatePath(`/einsaetze/projekte/${projektId}`);
+  revalidatePath("/einsaetze/projekte");
+  revalidatePath("/einsaetze/abrechnung");
+  revalidatePath("/einsaetze");
+}
+
+export type ProjektErgebnis = { ok: true; id: string; message: string } | { ok: false; error: string };
+
+export async function createProjektAction(input: unknown): Promise<ProjektErgebnis> {
+  const user = await requireInvoicer();
+  const parsed = ProjektAnlegenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    const res = await legeProjektAn(user, parsed.data);
+    revalidateProjekt(res.id);
+    return { ok: true, id: res.id, message: `Projekt „${res.name}" mit ${res.einsaetze} Einsatz/Einsätzen angelegt.` };
+  } catch (err) {
+    const f = fail(err);
+    return { ok: false, error: f.ok ? "" : f.error };
+  }
+}
+
+export async function renameProjektAction(projektId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  const parsed = ProjektNameSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    await benenneProjekt(user, projektId, parsed.data.name);
+    revalidateProjekt(projektId);
+    return { ok: true, message: "Projekt umbenannt." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function addToProjektAction(projektId: string, assignmentId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    const res = await nimmEinsatzAuf(user, projektId, assignmentId);
+    revalidateProjekt(projektId);
+    revalidatePath(`/einsaetze/${assignmentId}`);
+    return { ok: true, message: `Einsatz ${res.einsatznummer} gehört jetzt zum Projekt.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function removeFromProjektAction(assignmentId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    const res = await loeseEinsatzHeraus(user, assignmentId);
+    revalidateProjekt();
+    revalidatePath(`/einsaetze/${assignmentId}`);
+    return { ok: true, message: `Einsatz ${res.einsatznummer} steht wieder für sich.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function deleteProjektAction(projektId: string, _bestaetigung: string | null = null): Promise<ActionResult> {
+  void _bestaetigung;
+  const user = await requireInvoicer();
+  try {
+    const res = await loescheProjekt(user, projektId);
+    revalidateProjekt();
+    return { ok: true, message: `Projekt „${res.name}" aufgelöst – ${res.einsaetze} Einsatz/Einsätze stehen wieder für sich.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function saveProjektAngabenAction(projektId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  const parsed = AbrechnungAngabenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    await speichereProjektAngaben(user, projektId, parsed.data);
+    revalidateProjekt(projektId);
+    return { ok: true, message: "Angaben gespeichert." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function handOverProjektAction(projektId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  const parsed = AbrechnungAngabenSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    const res = await gibProjektWeiter(user, projektId, parsed.data);
+    revalidateProjekt(projektId);
+    return { ok: true, message: `Projekt „${res.name}" liegt jetzt bei der Buchhaltung.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function withdrawProjektHandOverAction(projektId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    await nimmProjektAngabenZurueck(user, projektId);
+    revalidateProjekt(projektId);
+    return { ok: true, message: "Angaben zurückgeholt." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function setProjektRechnungAction(projektId: string, input: unknown): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  const parsed = RechnungSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.errors[0].message };
+  try {
+    const res = await setzeProjektRechnung(user, projektId, parsed.data.rechnungsnummer);
+    revalidateProjekt(projektId);
+    return { ok: true, message: `Rechnung ${parsed.data.rechnungsnummer} für „${res.name}" vermerkt – ${res.einsaetze} Einsatz/Einsätze sind damit berechnet.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function withdrawProjektRechnungAction(projektId: string): Promise<ActionResult> {
+  const user = await requireInvoicer();
+  try {
+    await nimmProjektRechnungZurueck(user, projektId);
+    revalidateProjekt(projektId);
+    return { ok: true, message: "Rechnungsvermerk entfernt." };
   } catch (err) {
     return fail(err);
   }

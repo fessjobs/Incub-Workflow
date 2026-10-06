@@ -60,6 +60,7 @@ model Organization {
   manualDeductions        ManualDeduction[]
   monthLocks              MonthLock[]
   ergaenzungen            AssignmentAdjustment[]
+  projects                Project[]
   shiftRatings            ShiftRating[]
 
   @@map("organizations")
@@ -619,6 +620,7 @@ model Customer {
   organization  Organization   @relation(fields: [organizationId], references: [id])
   assignments   Assignment[]
   documentLinks DocumentLink[]
+  projects      Project[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -689,10 +691,42 @@ enum AssignmentStatus {
   ABGERECHNET
 }
 
+// Sammelmappe über mehrere Einsätze: Angebotsnummer, Konditionen und vor
+// allem die Rechnung werden einmal fürs Projekt gepflegt und auf alle
+// zugehörigen Einsätze durchgeschrieben – eine Rechnung statt fünf.
+// Die Stunden bleiben je Einsatz, dort werden sie auch freigegeben.
+model Project {
+  id                String    @id @default(cuid())
+  organizationId    String
+  name              String
+  customerId        String?
+  angebotsnummer    String?
+  konditionen       String?
+  abrechnungHinweis String?
+  angabenVon        String?
+  angabenAm         DateTime?
+  rechnungsnummer   String?
+  rechnungVon       String?
+  rechnungAm        DateTime?
+  notizen           String?
+  createdById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  customer     Customer?    @relation(fields: [customerId], references: [id])
+  assignments  Assignment[]
+
+  @@index([organizationId, createdAt])
+  @@map("projects")
+}
+
 model Assignment {
   id                 String           @id @default(cuid())
   organizationId     String
   customerId         String
+  // Gehört der Einsatz zu einem Projekt, läuft die Rechnung über das Projekt
+  projectId          String?
   projekt            String
   artist             String?
   einsatzort         String
@@ -729,6 +763,7 @@ model Assignment {
 
   organization  Organization             @relation(fields: [organizationId], references: [id])
   customer      Customer                 @relation(fields: [customerId], references: [id])
+  project       Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
   shifts        Shift[]
   confirmations AssignmentConfirmation[]
   documentLinks DocumentLink[]
@@ -737,6 +772,7 @@ model Assignment {
   @@unique([organizationId, einsatznummer])
   @@index([organizationId, status, datumVon])
   @@index([organizationId, abrechnung, datumVon])
+  @@index([projectId])
   @@index([organizationId, customerId])
   @@map("assignments")
 }

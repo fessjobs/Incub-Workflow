@@ -300,3 +300,14 @@ export const ErgaenzungSchema = z.object({
   employeeId: z.string().trim().transform((v) => v || null).nullable().default(null),
   bemerkung: z.string().trim().max(300, "Bemerkung ist zu lang.").transform((v) => v || null).nullable().default(null),
 });
+
+// ─── Projekte (Sammelrechnung über mehrere Einsätze) ────────────────────────
+
+export const ProjektAnlegenSchema = z.object({
+  name: z.string().trim().min(2, "Name des Projekts fehlt.").max(120, "Name ist zu lang."),
+  assignmentIds: z.array(z.string().min(1)).min(1, "Mindestens einen Einsatz auswählen."),
+});
+
+export const ProjektNameSchema = z.object({
+  name: z.string().trim().min(2, "Name des Projekts fehlt.").max(120, "Name ist zu lang."),
+});

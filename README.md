@@ -55,11 +55,18 @@ Garantiestunden, Fahrtkosten, Zulagen, Spesen, Abzüge), **Auswertung** mit SQL-
 konfigurierbarem Mapping und Validierung.
 
 - Navigation: **Einsätze** (`/einsaetze`), **Freigabe** (`/einsaetze/freigabe`), **Abrechnung**
-  (`/einsaetze/abrechnung`), **Stunden** (`/auswertung`), **Dokumente** (`/dokumente`)
+  (`/einsaetze/abrechnung`), **Projekte** (`/einsaetze/projekte`), **Stunden** (`/auswertung`),
+  **Dokumente** (`/dokumente`)
 - **Stammdaten-Import**: Excel-, CSV- **und PDF-Listen** für Mitarbeiter
   (`/einsaetze/personal/import`) und Kunden (`/einsaetze/kunden/import`) – Spalten werden
   an den Überschriften erkannt, Vorschau je Zeile vor der Übernahme, keine Dubletten.
   PDFs (auch eingescannte) liest die Claude API aus; Excel und CSV gehen ohne Schlüssel
+- **Projekte** (`/einsaetze/projekte`): mehrere Einsätze zu einer Sammelmappe
+  zusammenfassen – Angebotsnummer, Konditionen und die **eine Rechnung** werden einmal
+  gepflegt und auf alle Einsätze der Mappe durchgeschrieben; die Stunden bleiben je Einsatz
+- **Aushang für die WhatsApp-Gruppe**: auf jeder Einsatzseite eine fertige Suchmeldung
+  (Artist, Stadt, Datum, Call, Ort, „Gesucht: Nx …“) zum Kopieren oder direkt in WhatsApp
+  öffnen – vor dem Versenden frei bearbeitbar
 - **Abrechnung** (`/einsaetze/abrechnung`): vier Körbe in drei Handgriffen – die
   **Buchhaltung** bestätigt die Stunden und nimmt Ergänzungen auf (Bonus, Fahrtkosten,
   Spesen, Zuschläge, Abzüge; je Einsatz oder je Person), dann ergänzt der **Admin**

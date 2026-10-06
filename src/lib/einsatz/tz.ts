@@ -128,6 +128,17 @@ export function weekdayDE(weekday: number): string {
   return ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][weekday] ?? "";
 }
 
+// Ausgeschrieben – für Texte, die Menschen lesen (WhatsApp-Aushang)
+export function weekdayLangDE(weekday: number): string {
+  return ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"][weekday] ?? "";
+}
+
+// Wochentag eines Datumsschlüssels (JJJJ-MM-TT), 0 = Sonntag
+export function weekdayOfKey(dateKey: string): number {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
 export function nowBerlinKey(): string {
   return berlinDateKey(new Date());
 }

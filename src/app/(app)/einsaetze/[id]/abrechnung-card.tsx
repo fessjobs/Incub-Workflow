@@ -43,6 +43,9 @@ type Props = {
   darfStunden: boolean;
   darfAngaben: boolean;
   darfRechnung: boolean;
+  // Gehört der Einsatz zu einem Projekt, laufen Angaben und Rechnung dort –
+  // einmal für alle Einsätze der Mappe.
+  projekt: { id: string; name: string } | null;
 };
 
 const ARTEN: Array<{ wert: Art; label: string }> = [
@@ -287,8 +290,30 @@ export function AbrechnungCard(props: Props) {
         </div>
       </div>
 
+      {/* Im Projekt laufen Schritt 2 und 3 gesammelt – hier nur der Verweis */}
+      {props.projekt ? (
+        <div className="mt-4 border-t border-navy-100 pt-4 dark:border-navy-800" data-testid="abrechnung-projekt">
+          <p className="text-sm font-medium">2. und 3. laufen über das Projekt</p>
+          <p className="mt-1 text-xs text-navy-500">
+            Dieser Einsatz gehört zum Projekt{" "}
+            <a href={`/einsaetze/projekte/${props.projekt.id}`} className="font-medium underline">
+              {props.projekt.name}
+            </a>
+            . Angebotsnummer, Konditionen und die Rechnung werden dort einmal für alle Einsätze gepflegt.
+          </p>
+          {angebotsnummer || nummer ? (
+            <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+              <dt className="text-xs text-navy-400">Angebotsnummer</dt>
+              <dd>{angebotsnummer || "–"}</dd>
+              <dt className="text-xs text-navy-400">Rechnung</dt>
+              <dd>{nummer || "–"}</dd>
+            </dl>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* ── 2 Angaben zur Abrechnung ───────────────────────────────────────── */}
-      <div className="mt-4 border-t border-navy-100 pt-4 dark:border-navy-800">
+      <div className={`mt-4 border-t border-navy-100 pt-4 dark:border-navy-800 ${props.projekt ? "hidden" : ""}`}>
         <p className="text-sm font-medium">2. Angaben zur Abrechnung</p>
         {stand === "OFFEN" ? (
           <p className="mt-1 text-xs text-navy-400" data-testid="angaben-wartet">
@@ -351,7 +376,7 @@ export function AbrechnungCard(props: Props) {
       </div>
 
       {/* ── 3 Rechnung ─────────────────────────────────────────────────────── */}
-      <div className="mt-4 border-t border-navy-100 pt-4 dark:border-navy-800">
+      <div className={`mt-4 border-t border-navy-100 pt-4 dark:border-navy-800 ${props.projekt ? "hidden" : ""}`}>
         <p className="text-sm font-medium">3. Rechnung</p>
         {stand === "BERECHNET" ? (
           <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
