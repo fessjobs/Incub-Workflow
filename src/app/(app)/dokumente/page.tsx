@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireModuleUser } from "@/lib/einsatz/access";
+import { canSeeMoney, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { isValidDateKey, keyToDateOnly } from "@/lib/einsatz/tz";
 import { formatDateTime } from "@/lib/format";
@@ -18,8 +18,11 @@ const s = (v: string | string[] | undefined) => (typeof v === "string" ? v : "")
 export default async function DokumentePage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireModuleUser();
   const sp = await searchParams;
+  // Exporte enthalten Lohnarten und Beträge – die Dispo sieht sie nicht
+  const geldSichtbar = canSeeMoney(user);
   const where: Prisma.DocumentWhereInput = { organizationId: user.organizationId };
-  if (s(sp.category)) where.category = s(sp.category);
+  if (!geldSichtbar) where.category = { not: "export" };
+  if (s(sp.category) && (geldSichtbar || s(sp.category) !== "export")) where.category = s(sp.category);
   const linkFilter: Prisma.DocumentLinkWhereInput = {};
   if (s(sp.customerId)) linkFilter.customerId = s(sp.customerId);
   if (s(sp.employeeId)) linkFilter.employeeId = s(sp.employeeId);
@@ -54,12 +57,16 @@ export default async function DokumentePage({ searchParams }: { searchParams: Pr
       <div>
         <p className="eyebrow">Einsatzmodul</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Dokumente</h1>
-        <p className="mt-1 text-sm text-navy-400">Unveränderliche Ablage: Konkretisierungen, Stundennachweise, Exporte. Jede Datei mit SHA-256-Hash im Audit-Log.</p>
+        <p className="mt-1 text-sm text-navy-400">
+          Unveränderliche Ablage: Konkretisierungen, Stundennachweise{geldSichtbar ? ", Exporte" : ""}. Jede Datei mit SHA-256-Hash im Audit-Log.
+        </p>
       </div>
       <form className="card grid gap-3 p-4 md:grid-cols-6" method="get">
         <select name="category" defaultValue={s(sp.category)} className="input">
           <option value="">Alle Kategorien</option>
-          {Object.entries(DOCUMENT_CATEGORY_LABELS).map(([k, v]) => (
+          {Object.entries(DOCUMENT_CATEGORY_LABELS)
+            .filter(([k]) => geldSichtbar || k !== "export")
+            .map(([k, v]) => (
             <option key={k} value={k}>
               {v}
             </option>

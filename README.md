@@ -94,6 +94,9 @@ konfigurierbarem Mapping und Validierung.
   sich in der Detailansicht nachträglich bearbeiten; **Namen per Copy-Paste** je Schicht
   einfügen (eine Person je Zeile, „Nachname, Vorname“ wird gedreht, Rollenkürzel erkannt).
   **Namen bleiben immer änderbar** – auch nachdem der Kunde unterschrieben hat
+- **Zahlen nur für Admin und Buchhaltung**: Stundensätze, Lohnarten mit Beträgen,
+  Konditionen, Angebots- und Rechnungsnummern, Ergänzungen und Exporte sind für die
+  Disposition nicht sichtbar – serverseitig durchgesetzt, nicht nur ausgeblendet
 - Rollen: Admin/Mitglied = Dispo, **Disponent = eigener Zugang nur fürs Einsatzmodul**,
   Buchhaltung = Freigabe/Lohnarten/Export (lesend) **und die Abrechnung** (Stunden bestätigen,
   Ergänzungen, Rechnung), Kiosk-Konten kein Zugriff

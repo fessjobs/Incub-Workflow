@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { requireReviewer } from "@/lib/einsatz/access";
+import { requireMoney } from "@/lib/einsatz/access";
 import { dateOnlyKey, formatKeyDE, nowBerlinKey } from "@/lib/einsatz/tz";
 import { RuleForm, DeductionForm } from "./rule-form";
 import { deleteDeduction, deleteWageRule, resetWageRules, toggleMonthLock } from "./actions";
@@ -22,7 +22,7 @@ const TYP_LABELS: Record<string, string> = {
 };
 
 export default async function LohnartenPage({ searchParams }: { searchParams: Promise<{ edit?: string }> }) {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const { edit } = await searchParams;
   const [rules, deductions, locks, employees] = await Promise.all([
     db.wageRule.findMany({ where: { organizationId: user.organizationId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),

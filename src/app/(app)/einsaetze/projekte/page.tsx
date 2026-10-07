@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { canInvoice, requireReviewer } from "@/lib/einsatz/access";
+import { canInvoice, requireMoney } from "@/lib/einsatz/access";
 import { standVon, zahlenFuer } from "@/lib/einsatz/service/projekte";
 import { AbrechnungBadge } from "../status-badge";
 import { dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
@@ -34,7 +34,7 @@ export async function freieEinsaetze(organizationId: string): Promise<FreierEins
 // Mehrere Einsätze, eine Rechnung: die Mappe hält Angebotsnummer, Konditionen
 // und die Rechnungsnummer; die Stunden bleiben am einzelnen Einsatz.
 export default async function ProjektePage() {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const [projekte, kandidaten] = await Promise.all([
     db.project.findMany({
       where: { organizationId: user.organizationId },

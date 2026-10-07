@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canBillingNotes, canDispo, canInvoice, canRate, canReview, requireModuleUser } from "@/lib/einsatz/access";
+import { canBillingNotes, canDispo, canInvoice, canRate, canReview, canSeeMoney, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
 import { loadAssignment, progressOf, warningsFor } from "@/lib/einsatz/service/assignments";
 import { bearbeitbarkeit } from "@/lib/einsatz/service/besetzung";
@@ -86,11 +86,14 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
   // Abrechnung: Stunden (Buchhaltung) → Angaben (Admin) → Rechnung (Buchhaltung)
   const abrechnung = pruefeAbrechnungsfreigabe(a);
   const darfAbrechnen = canInvoice(user);
-  const ergaenzungen = await db.assignmentAdjustment.findMany({
-    where: { organizationId: user.organizationId, assignmentId: a.id },
-    orderBy: { createdAt: "asc" },
-    include: { employee: { select: { vorname: true, nachname: true } } },
-  });
+  const geldSichtbar = canSeeMoney(user);
+  const ergaenzungen = geldSichtbar
+    ? await db.assignmentAdjustment.findMany({
+        where: { organizationId: user.organizationId, assignmentId: a.id },
+        orderBy: { createdAt: "asc" },
+        include: { employee: { select: { vorname: true, nachname: true } } },
+      })
+    : [];
   // Für die Auswahl „betrifft nur diese Person" nur die Besetzung dieses Einsatzes
   const besetzung = [
     ...new Map(
@@ -336,6 +339,8 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         )}
       </div>
 
+      {/* Zahlen sieht nur, wer abrechnet – die Dispo nicht */}
+      {geldSichtbar ? (
       <AbrechnungCard
         assignmentId={a.id}
         einsatznummer={a.einsatznummer}
@@ -367,6 +372,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         darfAngaben={canBillingNotes(user)}
         darfRechnung={darfAbrechnen}
       />
+      ) : null}
 
       {dispo && loeschbar ? (
         <div className="card p-5" data-testid="einsatz-loeschen-karte">

@@ -392,6 +392,23 @@ Woher die Zeilen kommen:
 
 Der Text steht in einem Feld und ist **vor dem Kopieren frei bearbeitbar** – kurzfristig ändert sich oft noch etwas, und niemand soll deswegen neu tippen. „Zurücksetzen“ stellt die erzeugte Fassung wieder her.
 
+### 7f. Wer Zahlen sieht
+
+Die Disposition disponiert und prüft Zeiten; **was daraus berechnet wird, geht sie nichts an**. Alles mit Beträgen ist deshalb auf **Admin und Buchhaltung** begrenzt (`canSeeMoney()` in `access.ts`, deckungsgleich mit `canInvoice()`, weil sieht, wer abrechnet). Durchgesetzt wird das serverseitig – die Daten landen gar nicht erst im HTML, nicht nur ausgeblendet:
+
+| Wo | für die Dispo |
+|---|---|
+| `/einsaetze/abrechnung`, `/einsaetze/projekte`, `/einsaetze/lohnarten` | Menüpunkt weg, Aufruf über die Adresszeile leitet nach `/einsaetze` um (`requireMoney()`) |
+| Abrechnungskarte am Einsatz (Angebotsnummer, Konditionen, Ergänzungen, Rechnung) | wird nicht gerendert; die Ergänzungen werden nicht einmal geladen |
+| Einsatzliste: Spalte „Abrechnung" samt Rechnungsnummer und Filter | weg |
+| Auswertung: Spalte „Lohnarten" (Lohnart, Menge, Betrag) | weg; die Lohnarten werden nicht berechnet |
+| Auswertung: Export-Panel und `/auswertung/export` | Panel weg, die Route antwortet mit 403 |
+| Dokumente: archivierte Exporte (Kategorie `export`) | nicht gelistet, nicht filterbar, Download mit 403 |
+
+Was die Dispo **weiter** sieht, weil sie es zum Arbeiten braucht: Stunden, Pausen, Fahrten mit Kilometern, der Haken „Spesen", die Freigabe der Zeiteinträge, Erfahrung und interne Beurteilung. Auch der Spesenbetrag in der Korrektur bleibt – das ist die Auslage der Person auf dem unterschriebenen Beleg, kein Satz und keine Kondition.
+
+Die Rolle **Mitglied** zählt hier wie die Disposition: Zahlen sieht nur, wer ausdrücklich Admin oder Buchhaltung ist.
+
 ## 8. Exporte
 
 - Excel (`exceljs`): Blatt „Zeiteinträge“ (Rohform), „Je Person“, „Je Kunde“, „Lohnarten“ (je Person und Monat, inkl. Abzüge). Spaltenbreiten, Zahlenformate, Filterzeile, SUBTOTAL-Summenzeile.
@@ -421,6 +438,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
   - `loeschen.spec.ts`: Stunden löschen (Einteilung bleibt, steht wieder auf „geplant", Erfahrung sinkt) → freigegebene Zeiten sind gesperrt, mit Begründung statt Knopf → nach Rücknahme der Freigabe löscht der Admin den Einsatz mit getippter Nummer (falsches Wort hält den Knopf zu, der Link liefert danach 404) → Person ohne Einteilungen löschen → Person mit unterschriebenen Zeiten bleibt stehen.
   - `bewertung.spec.ts`: neue Person startet bei null Schichten → nach der Unterschrift zählt die Schicht samt Tätigkeit → bewerten mit Notiz → Stundenzettel am Einsatz freigeben → Personalliste und Profil zeigen Erfahrung und Bilanz → **nichts davon im Mitarbeiter-Link oder in der öffentlichen Schnittstelle** → Bewertung zurücknehmen.
   - `schichtlink.spec.ts`: Einsatz über zwei Tage mit zwei Schichten → je Schicht ein eigener Abschnitt mit eigenem Token (keiner davon der Token des Einsatzes) → die Nachricht nennt nur die eigene Schicht → der Link zeigt nur deren Personen, mit Hinweis auf die Schicht, und verweist für die Kundenbestätigung auf den Einsatzlink → unterschreiben über den Schichtlink, die zweite Schicht bleibt unberührt → das Backend zeigt den Stand je Schicht und weiterhin „1 von 2" am Einsatzlink → eine Person der anderen Schicht über den fremden Token einzureichen ergibt 403. Dazu die Kundenbestätigung je Schicht: der Kunde zeichnet die erste Schicht ab (das Formular zeigt nur deren Zeilen), nur sie ist danach zu, die Sammelbestätigung entfällt, je Schicht entsteht ein eigener Nachweis (die noch offene Schicht liefert 404) – und ein bereits abgeschlossener Einsatz lässt sich nachträglich je Schicht abzeichnen, obwohl Namen und Besetzung gesperrt sind.
+  - `disponent.spec.ts` (erweitert): die Dispo hat keine Menüpunkte in die Zahlenwelt, `/einsaetze/abrechnung`, `/einsaetze/projekte` und `/einsaetze/lohnarten` leiten um, die Einsatzliste zeigt keine Abrechnungsspalte, die Auswertung weder Lohnarten noch Export (die Route antwortet mit 403), Exporte fehlen in den Dokumenten – und am Einsatz selbst steht keine Abrechnungskarte, während Links und Disposition normal funktionieren.
   - `projekte.spec.ts`: zwei fertige Einsätze → zu einem Projekt zusammenfassen (Summe beider Stunden) → am Einsatz steht der Verweis aufs Projekt statt eigener Felder → Angaben einmal im Projekt, dann eine Rechnungsnummer für beide (steht danach an beiden Einsätzen und in der Liste) → Rücknahme löst sie bei beiden → ein Einsatz lässt sich wieder herauslösen. Dazu der Aushang: erzeugte Suchmeldung mit Artist, Stadt, Call, Ort und „Gesucht“ aus Soll minus Besetzung, bearbeitbar, der Teilen-Link folgt der Bearbeitung.
   - `abrechnung.spec.ts`: vor Schritt 1 sind Schritt 2 und 3 zu (Begründung im Klartext, Knöpfe inaktiv) → Bonus und Abzug aufnehmen, die Summe verrechnet beides → Stunden bestätigen und freigeben → der Admin ergänzt die Angaben (ohne Angebotsnummer bleibt „An die Buchhaltung" zu) und gibt sie weiter → der Einsatz wandert in den Korb „Rechnung offen" und aus den beiden davor heraus → die Buchhaltung trägt die Rechnungsnummer in der Liste ein → am Einsatz stehen Rechnung und Status „Abgerechnet", Angaben und Ergänzungen sind gesperrt → die Einsatzliste sagt den Stand im Klartext und filtert danach → Vermerk entfernen und dieselbe Nummer erneut eintragen.
   - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.

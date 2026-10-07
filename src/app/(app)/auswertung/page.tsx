@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { requireModuleUser } from "@/lib/einsatz/access";
+import { canSeeMoney, requireModuleUser } from "@/lib/einsatz/access";
 import { loadEntries, loadSums, loadWageRules, wageLinesForRow } from "@/lib/einsatz/analytics";
 import { AnalyticsFilterSchema } from "@/lib/einsatz/schemas";
 import { berlinTime, formatKeyDE, nowBerlinKey } from "@/lib/einsatz/tz";
@@ -22,6 +22,8 @@ function monthRange(): { von: string; bis: string } {
 
 export default async function AuswertungPage({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireModuleUser();
+  // Lohnarten und Exporte enthalten Beträge – nur für Admin und Buchhaltung
+  const geldSichtbar = canSeeMoney(user);
   const sp = await searchParams;
   const flat = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, typeof v === "string" ? v : undefined]).filter(([, v]) => v));
   const parsed = AnalyticsFilterSchema.safeParse(flat);
@@ -34,7 +36,7 @@ export default async function AuswertungPage({ searchParams }: { searchParams: P
   const [{ rows, total }, sums, rules, employees, customers, locks] = await Promise.all([
     loadEntries(user.organizationId, filter, { page, pageSize }),
     loadSums(user.organizationId, filter),
-    loadWageRules(user.organizationId),
+    geldSichtbar ? loadWageRules(user.organizationId) : Promise.resolve([]),
     db.employee.findMany({ where: { organizationId: user.organizationId }, orderBy: [{ nachname: "asc" }], select: { id: true, vorname: true, nachname: true } }),
     db.customer.findMany({ where: { organizationId: user.organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.monthLock.findMany({ where: { organizationId: user.organizationId } }),
@@ -134,7 +136,9 @@ export default async function AuswertungPage({ searchParams }: { searchParams: P
         ))}
       </div>
 
-      <ExportPanel von={filter.von} bis={filter.bis} customers={customers} employees={employees.map((e) => ({ id: e.id, name: `${e.nachname}, ${e.vorname}` }))} customerId={filter.customerId} employeeId={filter.employeeId} />
+      {geldSichtbar ? (
+        <ExportPanel von={filter.von} bis={filter.bis} customers={customers} employees={employees.map((e) => ({ id: e.id, name: `${e.nachname}, ${e.vorname}` }))} customerId={filter.customerId} employeeId={filter.employeeId} />
+      ) : null}
 
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
@@ -146,20 +150,20 @@ export default async function AuswertungPage({ searchParams }: { searchParams: P
               <th className="px-3 py-2">Zeit</th>
               <th className="px-3 py-2 text-right">Std.</th>
               <th className="px-3 py-2">Tätigkeit</th>
-              <th className="px-3 py-2">Lohnarten</th>
+              {geldSichtbar ? <th className="px-3 py-2">Lohnarten</th> : null}
               <th className="px-3 py-2">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-navy-100 dark:divide-navy-800">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-navy-400">
+                <td colSpan={geldSichtbar ? 8 : 7} className="px-3 py-6 text-center text-navy-400">
                   Keine Zeiteinträge im Filter.
                 </td>
               </tr>
             ) : null}
             {rows.map((r) => {
-              const lines = wageLinesForRow(r, rules);
+              const lines = geldSichtbar ? wageLinesForRow(r, rules) : [];
               const [y, m] = r.datumKey.split("-").map(Number);
               const locked = locks.some((l) => l.jahr === y && l.monat === m);
               return (
@@ -181,14 +185,16 @@ export default async function AuswertungPage({ searchParams }: { searchParams: P
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.stunden.toFixed(2)}</td>
                   <td className="px-3 py-2">{r.taetigkeit}</td>
-                  <td className="px-3 py-2 text-xs">
-                    {lines.map((l, i) => (
-                      <span key={i} className="mr-1 inline-block rounded bg-navy-50 px-1.5 py-0.5 dark:bg-navy-800" title={l.grundlage}>
-                        {l.lohnart} {l.menge.toFixed(2)} {l.einheit === "Stunden" ? "h" : l.einheit}
-                        {l.betrag !== null ? ` · ${l.betrag.toFixed(2)} €` : ""}
-                      </span>
-                    ))}
-                  </td>
+                  {geldSichtbar ? (
+                    <td className="px-3 py-2 text-xs">
+                      {lines.map((l, i) => (
+                        <span key={i} className="mr-1 inline-block rounded bg-navy-50 px-1.5 py-0.5 dark:bg-navy-800" title={l.grundlage}>
+                          {l.lohnart} {l.menge.toFixed(2)} {l.einheit === "Stunden" ? "h" : l.einheit}
+                          {l.betrag !== null ? ` · ${l.betrag.toFixed(2)} €` : ""}
+                        </span>
+                      ))}
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2">
                     <StatusBadge status={r.review} />
                     {locked ? <span className="ml-1 badge bg-navy-900 text-white">gesperrt</span> : null}

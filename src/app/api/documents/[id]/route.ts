@@ -1,7 +1,7 @@
 // Download eines Dokuments aus dem Dokumentenspeicher (PDFs, Exporte) –
 // hinter Login, mandantenbezogen.
 import { NextResponse } from "next/server";
-import { apiUser } from "@/lib/einsatz/access";
+import { apiUser, canSeeMoney } from "@/lib/einsatz/access";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +12,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const doc = await db.document.findFirst({ where: { id, organizationId: user.organizationId } });
   if (!doc) return new NextResponse("Nicht gefunden", { status: 404 });
+  // Exporte führen Lohnarten und Beträge – die gehören Admin und Buchhaltung
+  if (doc.category === "export" && !canSeeMoney(user)) return NextResponse.json({ error: "Keine Berechtigung." }, { status: 403 });
   const download = new URL(req.url).searchParams.get("dl") === "1";
   return new NextResponse(Buffer.from(doc.bytes) as unknown as BodyInit, {
     headers: {

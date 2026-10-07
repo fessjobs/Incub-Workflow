@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ABRECHNUNG_KURZ, ABRECHNUNG_WER, pruefeAbrechnungsfreigabe, summeErgaenzungen, vorzeichen } from "@/lib/einsatz/service/abrechnung";
-import { canBillingNotes, canInvoice } from "@/lib/einsatz/access";
+import { canBillingNotes, canInvoice, canReview, canSeeMoney } from "@/lib/einsatz/access";
 
 type Eintrag = { review: string; stunden: number; unterschrieben?: boolean };
 
@@ -147,5 +147,24 @@ describe("Wer darf was in der Abrechnung", () => {
     const staende = ["OFFEN", "FREIGEGEBEN", "BEREIT", "BERECHNET"] as const;
     expect(Object.keys(ABRECHNUNG_KURZ).sort()).toEqual([...staende].sort());
     for (const st of staende) expect(ABRECHNUNG_WER[st]).toBeTruthy();
+  });
+});
+
+describe("Zahlen sehen nur Admin und Buchhaltung", () => {
+  it("canSeeMoney deckt sich mit canInvoice – wer abrechnet, sieht die Zahlen", () => {
+    for (const role of ["ADMIN", "BUCHHALTUNG", "DISPONENT", "MEMBER", "EINREICHER"] as const) {
+      expect(canSeeMoney({ role })).toBe(canInvoice({ role }));
+    }
+  });
+
+  it("die Disposition sieht keine Zahlen", () => {
+    expect(canSeeMoney({ role: "DISPONENT" })).toBe(false);
+    expect(canSeeMoney({ role: "MEMBER" })).toBe(false);
+    expect(canSeeMoney({ role: "EINREICHER" })).toBe(false);
+  });
+
+  it("die Disposition darf weiter prüfen und freigeben – nur eben ohne Beträge", () => {
+    expect(canReview({ role: "DISPONENT" })).toBe(true);
+    expect(canSeeMoney({ role: "DISPONENT" })).toBe(false);
   });
 });

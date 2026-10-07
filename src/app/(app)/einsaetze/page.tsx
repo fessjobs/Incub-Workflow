@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { canDispo, requireModuleUser } from "@/lib/einsatz/access";
+import { canDispo, canSeeMoney, requireModuleUser } from "@/lib/einsatz/access";
 import { dateOnlyKey, formatKeyDE, keyToDateOnly, isValidDateKey } from "@/lib/einsatz/tz";
 import { StatusBadge, ASSIGNMENT_STATUS_LABELS, AbrechnungBadge } from "./status-badge";
 import { JobsButton } from "./jobs-button";
@@ -17,10 +17,12 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
   const user = await requireModuleUser();
   const sp = await searchParams;
   const dispo = canDispo(user);
+  // Abrechnungsstand und Rechnungsnummer sind Zahlenwelt – nicht für die Dispo
+  const geldSichtbar = canSeeMoney(user);
 
   const where: Prisma.AssignmentWhereInput = { organizationId: user.organizationId };
   if (s(sp.status)) where.status = s(sp.status) as never;
-  if (["OFFEN", "FREIGEGEBEN", "BEREIT", "BERECHNET"].includes(s(sp.abrechnung))) where.abrechnung = s(sp.abrechnung) as never;
+  if (geldSichtbar && ["OFFEN", "FREIGEGEBEN", "BEREIT", "BERECHNET"].includes(s(sp.abrechnung))) where.abrechnung = s(sp.abrechnung) as never;
   if (s(sp.customer)) where.customerId = s(sp.customer);
   if (isValidDateKey(s(sp.from))) where.datumBis = { gte: keyToDateOnly(s(sp.from)) };
   if (isValidDateKey(s(sp.to))) where.datumVon = { ...(where.datumVon as object), lte: keyToDateOnly(s(sp.to)) };
@@ -81,13 +83,15 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
             </option>
           ))}
         </select>
-        <select name="abrechnung" defaultValue={s(sp.abrechnung)} className="input">
-          <option value="">Abrechnung: alle</option>
-          <option value="OFFEN">Stunden offen</option>
-          <option value="FREIGEGEBEN">Stunden freigegeben</option>
-          <option value="BEREIT">Rechnung offen</option>
-          <option value="BERECHNET">Rechnung geschrieben</option>
-        </select>
+        {geldSichtbar ? (
+          <select name="abrechnung" defaultValue={s(sp.abrechnung)} className="input">
+            <option value="">Abrechnung: alle</option>
+            <option value="OFFEN">Stunden offen</option>
+            <option value="FREIGEGEBEN">Stunden freigegeben</option>
+            <option value="BEREIT">Rechnung offen</option>
+            <option value="BERECHNET">Rechnung geschrieben</option>
+          </select>
+        ) : null}
         <select name="customer" defaultValue={s(sp.customer)} className="input">
           <option value="">Alle Kunden</option>
           {customers.map((c) => (
@@ -126,7 +130,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                         <span className="font-mono text-xs text-navy-400">{a.einsatznummer}</span>
                         <span className="flex items-center gap-1">
                           <StatusBadge status={a.status} />
-                          <AbrechnungBadge stand={a.abrechnung} />
+                          {geldSichtbar ? <AbrechnungBadge stand={a.abrechnung} /> : null}
                         </span>
                       </div>
                       <p className="mt-1 font-medium">{a.projekt}</p>
@@ -151,7 +155,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                   <th className="px-4 py-2">Kunde · Ort</th>
                   <th className="px-4 py-2">Status</th>
                   <th className="px-4 py-2">Erfasst</th>
-                  <th className="px-4 py-2">Abrechnung</th>
+                  {geldSichtbar ? <th className="px-4 py-2">Abrechnung</th> : null}
                   <th className="px-4 py-2">Dokumente</th>
                 </tr>
               </thead>
@@ -186,10 +190,12 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                           {p.erfasst} / {p.gesamt}
                         </span>
                       </td>
-                      <td className="px-4 py-2">
-                        <AbrechnungBadge stand={a.abrechnung} />
-                        {a.rechnungsnummer ? <span className="ml-1 block text-xs text-navy-400">Nr. {a.rechnungsnummer}</span> : null}
-                      </td>
+                      {geldSichtbar ? (
+                        <td className="px-4 py-2">
+                          <AbrechnungBadge stand={a.abrechnung} />
+                          {a.rechnungsnummer ? <span className="ml-1 block text-xs text-navy-400">Nr. {a.rechnungsnummer}</span> : null}
+                        </td>
+                      ) : null}
                       <td className="px-4 py-2 text-xs text-navy-400">
                         {docs.has("konkretisierung") ? "Konkretisierung " : ""}
                         {docs.has("stundennachweis") ? "Stundennachweis" : ""}

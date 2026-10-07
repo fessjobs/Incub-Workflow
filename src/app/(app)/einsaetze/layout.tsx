@@ -1,4 +1,4 @@
-import { requireModuleUser, canDispo, canReview, canManageRules } from "@/lib/einsatz/access";
+import { requireModuleUser, canDispo, canReview, canManageRules, canSeeMoney } from "@/lib/einsatz/access";
 import { NavLink } from "@/components/nav-link";
 
 // Unternavigation des Einsatzmoduls
@@ -6,7 +6,9 @@ export default async function EinsaetzeLayout({ children }: { children: React.Re
   const user = await requireModuleUser();
   const links = [
     { href: "/einsaetze", label: "Einsätze" },
-    ...(canReview(user) ? [{ href: "/einsaetze/freigabe", label: "Freigabe" }, { href: "/einsaetze/abrechnung", label: "Abrechnung" }, { href: "/einsaetze/projekte", label: "Projekte" }] : []),
+    ...(canReview(user) ? [{ href: "/einsaetze/freigabe", label: "Freigabe" }] : []),
+    // Abrechnung und Projekte zeigen Zahlen – nur für Admin und Buchhaltung
+    ...(canSeeMoney(user) ? [{ href: "/einsaetze/abrechnung", label: "Abrechnung" }, { href: "/einsaetze/projekte", label: "Projekte" }] : []),
     ...(canDispo(user) ? [{ href: "/einsaetze/kunden", label: "Kunden" }, { href: "/einsaetze/personal", label: "Personal" }] : []),
     ...(canManageRules(user) ? [{ href: "/einsaetze/lohnarten", label: "Lohnarten" }] : []),
   ];

@@ -5,7 +5,7 @@
 // Nur freigegebene Zeiteinträge gehen in den Export.
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { apiUser } from "@/lib/einsatz/access";
+import { apiUser, canSeeMoney } from "@/lib/einsatz/access";
 import { loadDeductions, loadEntries, loadWageRules, wageLinesForRow } from "@/lib/einsatz/analytics";
 import { safeFilename, storeDocument } from "@/lib/einsatz/documents";
 import { ExportRequestSchema } from "@/lib/einsatz/schemas";
@@ -17,7 +17,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function GET(req: Request) {
-  const { user, status } = await apiUser();
+  // Der Export enthält Lohnarten und Beträge – nur Admin und Buchhaltung
+  const { user, status } = await apiUser(canSeeMoney);
   if (!user) return NextResponse.json({ error: "Keine Berechtigung." }, { status });
   const url = new URL(req.url);
   const raw = Object.fromEntries(url.searchParams.entries());

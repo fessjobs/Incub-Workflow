@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { AbrechnungStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { canInvoice, requireReviewer } from "@/lib/einsatz/access";
+import { canInvoice, requireMoney } from "@/lib/einsatz/access";
 import { ABRECHNUNG_WER, summeErgaenzungen } from "@/lib/einsatz/service/abrechnung";
 import { dateOnlyKey, formatKeyDE, keyToDateOnly, isValidDateKey } from "@/lib/einsatz/tz";
 import { formatDateTime } from "@/lib/format";
@@ -27,7 +27,7 @@ const stundenTxt = (n: number) => `${n.toFixed(2).replace(".", ",")} h`;
 // Übersicht für den Weg zur Rechnung: Stunden (Buchhaltung) → Angaben (Admin)
 // → Rechnung (Buchhaltung). Jeder Korb sagt, wer als Nächstes dran ist.
 export default async function AbrechnungPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const sp = await searchParams;
   const stand = (TABS.some((t) => t.stand === s(sp.stand)) ? s(sp.stand) : "OFFEN") as AbrechnungStatus;
   const aktiv = TABS.find((t) => t.stand === stand)!;

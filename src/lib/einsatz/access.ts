@@ -51,9 +51,25 @@ export function canBillingNotes(user: Pick<User, "role">): boolean {
   return user.role === "ADMIN" || user.role === "BUCHHALTUNG";
 }
 
+// Geld: Stundensätze, Lohnarten mit Beträgen, Konditionen, Angebots- und
+// Rechnungsnummern, Ergänzungen, Exporte mit Beträgen. Das sehen nur die, die
+// auch abrechnen – Admin und Buchhaltung. Die Disposition disponiert und
+// prüft Zeiten; was daraus berechnet wird, geht sie nichts an.
+export function canSeeMoney(user: Pick<User, "role">): boolean {
+  return canInvoice(user);
+}
+
 export async function requireInvoicer() {
   const user = await requireUser();
   if (!canInvoice(user)) redirect("/einsaetze");
+  return user;
+}
+
+// Für Seiten, die nur Zahlen zeigen: wer sie nicht sehen darf, landet in der
+// Einsatzliste statt vor einer leeren Seite.
+export async function requireMoney() {
+  const user = await requireUser();
+  if (!canSeeMoney(user)) redirect("/einsaetze");
   return user;
 }
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { canInvoice, requireReviewer } from "@/lib/einsatz/access";
+import { canInvoice, requireMoney } from "@/lib/einsatz/access";
 import { standVon, zahlenFuer } from "@/lib/einsatz/service/projekte";
 import { summeErgaenzungen } from "@/lib/einsatz/service/abrechnung";
 import { dateOnlyKey, formatKeyDE } from "@/lib/einsatz/tz";
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 
 export default async function ProjektDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const { id } = await params;
   const p = await db.project.findFirst({
     where: { id, organizationId: user.organizationId },

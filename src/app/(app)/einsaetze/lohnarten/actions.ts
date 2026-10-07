@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { requireReviewer } from "@/lib/einsatz/access";
+import { requireMoney } from "@/lib/einsatz/access";
 import { DeductionSchema, WageRuleSchema } from "@/lib/einsatz/schemas";
 import { keyToDateOnly } from "@/lib/einsatz/tz";
 import { DEFAULT_WAGE_RULES } from "@/lib/einsatz/wage";
@@ -11,7 +11,7 @@ import { DEFAULT_WAGE_RULES } from "@/lib/einsatz/wage";
 export type FormState = { error?: string; ok?: boolean };
 
 export async function saveWageRule(ruleId: string | null, _prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const parsed = WageRuleSchema.safeParse({
     name: formData.get("name"),
     typ: formData.get("typ"),
@@ -44,7 +44,7 @@ export async function saveWageRule(ruleId: string | null, _prev: FormState, form
 }
 
 export async function deleteWageRule(ruleId: string): Promise<void> {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const existing = await db.wageRule.findFirst({ where: { id: ruleId, organizationId: user.organizationId } });
   if (!existing) return;
   await db.wageRule.delete({ where: { id: ruleId } });
@@ -53,7 +53,7 @@ export async function deleteWageRule(ruleId: string): Promise<void> {
 }
 
 export async function resetWageRules(): Promise<void> {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const missing = DEFAULT_WAGE_RULES.filter(() => true);
   const existing = await db.wageRule.findMany({ where: { organizationId: user.organizationId }, select: { typ: true, name: true } });
   for (const r of missing) {
@@ -65,7 +65,7 @@ export async function resetWageRules(): Promise<void> {
 }
 
 export async function addDeduction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const num = (k: string) => {
     const v = String(formData.get(k) ?? "").trim().replace(",", ".");
     return v === "" ? null : Number(v);
@@ -92,7 +92,7 @@ export async function addDeduction(_prev: FormState, formData: FormData): Promis
 }
 
 export async function deleteDeduction(id: string): Promise<void> {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   const existing = await db.manualDeduction.findFirst({ where: { id, organizationId: user.organizationId } });
   if (!existing) return;
   await db.manualDeduction.delete({ where: { id } });
@@ -101,7 +101,7 @@ export async function deleteDeduction(id: string): Promise<void> {
 }
 
 export async function toggleMonthLock(jahr: number, monat: number): Promise<void> {
-  const user = await requireReviewer();
+  const user = await requireMoney();
   if (!Number.isInteger(jahr) || !Number.isInteger(monat) || monat < 1 || monat > 12) return;
   const existing = await db.monthLock.findUnique({ where: { organizationId_jahr_monat: { organizationId: user.organizationId, jahr, monat } } });
   if (existing) await db.monthLock.delete({ where: { id: existing.id } });
