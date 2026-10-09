@@ -6,6 +6,15 @@ import { neueAudit, type PvState } from "../state/store";
 
 export const BEARBEITER = "Maik (Admin)";
 
+// Im echten System setzt das Dashboard hier den angemeldeten Benutzer ein
+let aktuellerBearbeiter = BEARBEITER;
+export function setzeBearbeiter(name: string): void {
+  aktuellerBearbeiter = name || BEARBEITER;
+}
+export function bearbeiter(): string {
+  return aktuellerBearbeiter;
+}
+
 export function uebernehmeAenderungen(st: PvState, geaendert: Array<{ row: StundenRow; aenderungen: Aenderung[] }>, grund: string | null): PvState {
   if (geaendert.length === 0) return st;
   const neu = new Map<string, StundenRow>();
@@ -21,7 +30,7 @@ export function uebernehmeAenderungen(st: PvState, geaendert: Array<{ row: Stund
       aenderungen.push({ feld: "status", alt: "freigegeben", neu: "geprueft" });
     }
     neu.set(row.id, row);
-    for (const a of aenderungen) audit.push(neueAudit(BEARBEITER, "time_entries", row.id, a.feld, a.alt, a.neu, grund));
+    for (const a of aenderungen) audit.push(neueAudit(bearbeiter(), "time_entries", row.id, a.feld, a.alt, a.neu, grund));
   }
   return { ...st, stunden: st.stunden.map((r) => neu.get(r.id) ?? r), audit: [...audit.reverse(), ...st.audit] };
 }
@@ -30,7 +39,7 @@ export function setzeStatus(st: PvState, ids: Set<string>, status: StundenStatus
   const audit: AuditEintrag[] = [];
   const stunden = st.stunden.map((r) => {
     if (!ids.has(r.id) || r.status === status) return r;
-    audit.push(neueAudit(BEARBEITER, "time_entries", r.id, "status", r.status, status, grund));
+    audit.push(neueAudit(bearbeiter(), "time_entries", r.id, "status", r.status, status, grund));
     return { ...r, status };
   });
   return { ...st, stunden, audit: [...audit.reverse(), ...st.audit] };

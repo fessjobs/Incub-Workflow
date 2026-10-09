@@ -1,7 +1,8 @@
 "use client";
 import { useMemo } from "react";
-import { usePv, initialerZustand, type Einstellungen } from "../state/store";
-import { Bar, Btn, Chip, Karte, Kopf, Note, Offen } from "../ui/kit";
+import { useState } from "react";
+import { usePv, standardEinstellungen, type Einstellungen } from "../state/store";
+import { Bar, Btn, Chip, Karte, Kopf, Modal, Note, Offen } from "../ui/kit";
 import { bewertung } from "./helfer";
 import { formatDezimal } from "../logic/zeit";
 
@@ -16,7 +17,8 @@ function Zahl({ label, wert, onChange, schritt = 1, hint, id }: { label: string;
 }
 
 export function AdminEinstellungen() {
-  const { s, set, melde } = usePv();
+  const { s, set, melde, modus, echt } = usePv();
+  const [bestaetige, setBestaetige] = useState(false);
   const e = s.einst;
   const ändere = (fn: (x: Einstellungen) => Einstellungen) => set((st) => ({ ...st, einst: fn(st.einst) }));
 
@@ -35,7 +37,7 @@ export function AdminEinstellungen() {
 
   return (
     <>
-      <Kopf eyebrow="System" titel="Einstellungen" sub="Alle Werte, die später in der Tabelle „settings“ liegen. Hier ändern sie sich sofort im Prototyp." aktionen={<Btn v="sec" onClick={() => { const i = initialerZustand().einst; set((st) => ({ ...st, einst: i })); melde("Einstellungen auf Standard zurückgesetzt."); }}>Auf Standard zurücksetzen</Btn>} />
+      <Kopf eyebrow="System" titel="Einstellungen" sub={modus === "demo" ? "Alle Werte, die später in der Tabelle „settings“ liegen. Hier ändern sie sich sofort im Prototyp." : "Werte für Score, XP, Grenzen und Export. Änderungen gelten sofort und werden gespeichert."} aktionen={<Btn v="sec" onClick={() => { const i = standardEinstellungen(); set((st) => ({ ...st, einst: i })); melde("Einstellungen auf Standard zurückgesetzt."); }}>Auf Standard zurücksetzen</Btn>} />
 
       <div className="pva-grid c2">
         <Karte titel="Score und Kategorien (Fragebogen)">
@@ -106,6 +108,22 @@ export function AdminEinstellungen() {
           <div className="pv-hint">Platzhalter: {"{vorname}"} und {"{link}"}.</div>
         </Karte>
       </div>
+      {modus === "echt" ? (
+        <div className="mt3">
+          <Karte titel="Beispieldaten">
+            <p className="small">Zum Ausprobieren lassen sich erfundene Personen, Aufträge und Stunden laden. Sie sind als Beispiel markiert und lassen sich gesammelt wieder entfernen – <b>eigene Daten bleiben dabei unberührt</b>.</p>
+            <div className="row wrap mt2">
+              <Btn v="sec" data-testid="beispiel-laden" onClick={() => void echt?.beispieldatenLaden()}>Beispieldaten laden</Btn>
+              <Btn v="danger" data-testid="beispiel-entfernen" onClick={() => setBestaetige(true)}>Beispieldaten entfernen</Btn>
+            </div>
+          </Karte>
+          {bestaetige ? (
+            <Modal titel="Beispieldaten entfernen?" onClose={() => setBestaetige(false)} fuss={<><Btn v="sec" onClick={() => setBestaetige(false)}>Abbrechen</Btn><Btn v="danger" data-testid="beispiel-entfernen-ok" onClick={async () => { setBestaetige(false); await echt?.beispieldatenEntfernen(); }}>Ja, entfernen</Btn></>}>
+              <p>Alle als Beispiel markierten Personen, Aufträge, Bewerbungen und Stunden werden gelöscht. Selbst angelegte Daten bleiben erhalten.</p>
+            </Modal>
+          ) : null}
+        </div>
+      ) : null}
     </>
   );
 }

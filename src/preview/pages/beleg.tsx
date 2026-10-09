@@ -16,7 +16,7 @@ export function BelegLink({ token }: { token: string }) {
   const [art, setArt] = useState<Belegart>("Tanken");
   const [datei, setDatei] = useState<string>("");
   const [betrag, setBetrag] = useState("");
-  const [datum, setDatum] = useState("2026-10-08");
+  const [datum, setDatum] = useState(HEUTE);
   const [haendler, setHaendler] = useState("");
   const [zweck, setZweck] = useState("Anfahrt zum Einsatz");
   const [pnr, setPnr] = useState("P9001");

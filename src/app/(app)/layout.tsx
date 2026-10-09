@@ -41,6 +41,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: "/einstellungen", label: "Einstellungen", number: "10" },
         ]
       : []),
+    // Neues Dashboard (Crew, Stunden, Disposition), läuft parallel zum bisherigen System
+    ...(isAdmin ? [{ href: "/admin", label: "Neu · Crew & Stunden", number: "NEU" }] : []),
     // Klick-Prototyp „Testversion“: nur sichtbar, wenn das Flag gesetzt ist (Ausbauplan, Regel 0)
     ...(isAdmin && process.env.PREVIEW_ENABLED === "1" ? [{ href: "/preview", label: "Testversion", number: "11" }] : []),
   ];

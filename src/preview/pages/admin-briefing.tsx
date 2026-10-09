@@ -5,7 +5,7 @@ import { usePv, crewNachPnr } from "../state/store";
 import { Btn, Chip, Karte, Kopf, Note, kopiere } from "../ui/kit";
 import { neueZeile } from "../logic/stundentabelle";
 import { neueAudit } from "../state/store";
-import { BEARBEITER } from "./stunden-aktionen";
+import { bearbeiter } from "./stunden-aktionen";
 import { fahrgemeinschaftsVorschlaege } from "../logic/passung";
 import { formatDatumDE } from "../logic/zeit";
 import type { Crew, Job, Schicht } from "../logic/types";
@@ -34,7 +34,7 @@ function text(vorlage: string, c: Crew, job: Job, sch: Schicht, fahrt: string): 
 }
 
 export function AdminBriefing({ id }: { id: string }) {
-  const { s, set, melde } = usePv();
+  const { s, set, melde, modus } = usePv();
   const job = s.jobs.find((j) => j.id === id);
   const [vorlage, setVorlage] = useState(VORLAGE);
   const crewMap = useMemo(() => crewNachPnr(s), [s]);
@@ -64,7 +64,7 @@ export function AdminBriefing({ id }: { id: string }) {
             <textarea className="pv-textarea" style={{ minHeight: 300, fontFamily: "var(--body)" }} value={vorlage} onChange={(e) => setVorlage(e.target.value)} aria-label="Vorlage" />
             <div className="pv-hint">Platzhalter: {"{vorname} {titel} {datum} {schicht} {start} {ende} {ort} {treffpunkt} {dresscode} {psa} {parken} {verpflegung} {fahrt}"}</div>
             <div className="row mt2">
-              <Btn data-testid="briefing-senden" onClick={() => { set((st) => ({ ...st, briefingGesendet: { ...st.briefingGesendet, [job.id]: new Date().toISOString() } })); melde(`Briefing an ${eingeplant.length} Personen vorbereitet. Im echten System geht es per WhatsApp raus – hier wird nichts verschickt.`); }}>An alle {eingeplant.length} senden</Btn>
+              <Btn data-testid="briefing-senden" onClick={() => { set((st) => ({ ...st, briefingGesendet: { ...st.briefingGesendet, [job.id]: new Date().toISOString() } })); melde(modus === "demo" ? `Briefing an ${eingeplant.length} Personen vorbereitet. Im echten System geht es per WhatsApp raus – hier wird nichts verschickt.` : `Briefing für ${eingeplant.length} Personen als vorbereitet markiert. Der Versand per WhatsApp folgt – bis dahin den Text je Person kopieren.`); }}>{modus === "demo" ? `An alle ${eingeplant.length} senden` : "Als vorbereitet markieren"}</Btn>
               {gesendet ? <Chip ton="gut">vorbereitet</Chip> : null}
             </div>
           </Karte>
@@ -86,7 +86,7 @@ export function AdminBriefing({ id }: { id: string }) {
                 if (neue.length === 0) return melde("Die Vorlage ist schon angelegt.");
                 set((st) => {
                   const auftraege = st.auftraege.some((a) => a.id === job.id) ? st.auftraege : [...st.auftraege, { id: job.id, kunde: job.kunde, titel: job.titel, taetigkeit: job.schichten[0].taetigkeit }];
-                  return { ...st, auftraege, stunden: [...st.stunden, ...neue], audit: [neueAudit(BEARBEITER, "time_entries", job.id, "vorlage", "", `${neue.length} Zeilen vorbereitet`, null), ...st.audit] };
+                  return { ...st, auftraege, stunden: [...st.stunden, ...neue], audit: [neueAudit(bearbeiter(), "time_entries", job.id, "vorlage", "", `${neue.length} Zeilen vorbereitet`, null), ...st.audit] };
                 });
                 melde(`${neue.length} Zeilen in der Stundentabelle vorbereitet.`);
               }}>Zeilen in der Stundentabelle vorbereiten</Btn>

@@ -101,3 +101,8 @@ export function formatDezimal(n: number, stellen = 2): string {
 export function formatEuro(n: number): string {
   return `${n.toFixed(2).replace(".", ",")} €`;
 }
+
+// Heutiger Tag in Deutschland (JJJJ-MM-TT), unabhängig von der Zeitzone des Servers
+export function heuteBerlin(jetzt: Date = new Date()): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
+}

@@ -16,7 +16,7 @@ const ZEICHEN: Record<UnterweisungStatus, { text: string; ton?: "gut" | "warn" |
 };
 
 export function AdminUnterweisungen() {
-  const { s, melde } = usePv();
+  const { s, melde, modus } = usePv();
   const [tab, setTab] = useState<"matrix" | "texte" | "erinnerung">("matrix");
   const [nurProbleme, setNurProbleme] = useState(false);
   const [modulId, setModulId] = useState(MODULE[0].id);
@@ -100,7 +100,7 @@ export function AdminUnterweisungen() {
                 </div>
               ))}
             </div>
-            <div className="row mt3"><Btn v="sec" onClick={() => melde("Prototyp: neue Version veröffentlichen – alle müssen neu bestätigen.")}>Neue Version veröffentlichen</Btn><Offen nr={0}>Freigabe der Texte durch Fachkraft für Arbeitssicherheit</Offen></div>
+            {modus === "demo" ? <div className="row mt3"><Btn v="sec" onClick={() => melde("Prototyp: neue Version veröffentlichen – alle müssen neu bestätigen.")}>Neue Version veröffentlichen</Btn><Offen nr={0}>Freigabe der Texte durch Fachkraft für Arbeitssicherheit</Offen></div> : null}
           </Karte>
         </div>
       ) : null}
@@ -120,7 +120,7 @@ export function AdminUnterweisungen() {
                 ))}
               </tbody>
             </table>
-            <div className="small muted mt2">Im Prototyp wird nichts verschickt.</div>
+            <div className="small muted mt2">{modus === "demo" ? "Im Prototyp wird nichts verschickt." : "Erinnerungen werden noch nicht automatisch verschickt – der Text lässt sich hier kopieren und per WhatsApp senden."}</div>
           </Karte>
         </div>
       ) : null}

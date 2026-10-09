@@ -1,15 +1,20 @@
 "use client";
 import { useMemo } from "react";
+import { useState } from "react";
 import { Link } from "../nav";
 import { crewNachPnr, usePv, HEUTE } from "../state/store";
-import { Bar, Chip, Kopf, Karte, Stat } from "../ui/kit";
+import { Bar, Btn, Chip, Kopf, Karte, Stat } from "../ui/kit";
+import { AuftragModal, PersonModal } from "./formulare";
 import { pruefeZeilen, zaehleWarnungen } from "../logic/stunden";
 import { ampelVertrag } from "../logic/grenzen";
 import { formatDatumDE } from "../logic/zeit";
 import { besetzt, unterweisungsStand } from "./helfer";
 
 export function AdminUebersicht() {
-  const { s } = usePv();
+  const { s, modus, echt } = usePv();
+  const [person, setPerson] = useState(false);
+  const [auftrag, setAuftrag] = useState(false);
+  const [laedt, setLaedt] = useState(false);
   const warn = useMemo(() => {
     const personen = new Map([...crewNachPnr(s)].map(([pnr, c]) => [pnr, { vertraege: c.contract ? [c.contract] : [] }]));
     return zaehleWarnungen(pruefeZeilen(s.stunden, { personen }));
@@ -34,7 +39,26 @@ export function AdminUebersicht() {
 
   return (
     <>
-      <Kopf eyebrow="Dashboard" titel="Übersicht" sub={`Stand ${formatDatumDE(HEUTE)} · Beispieldaten`} />
+      <Kopf eyebrow="Dashboard" titel="Übersicht" sub={modus === "echt" ? `Stand ${formatDatumDE(HEUTE)}` : `Stand ${formatDatumDE(HEUTE)} · Beispieldaten`} aktionen={modus === "echt" ? <><Btn v="sec" onClick={() => setPerson(true)}>+ Person</Btn><Btn v="sec" onClick={() => setAuftrag(true)}>+ Auftrag</Btn></> : undefined} />
+      {modus === "echt" && s.crew.length === 0 && s.jobs.length === 0 && s.stunden.length === 0 ? (
+        <div className="mb-3" style={{ marginBottom: "1rem" }}>
+          <Karte titel="Willkommen im neuen Dashboard">
+            <p>Dieses Dashboard läuft <b>parallel</b> zum bisherigen System und hat <b>eigene Daten</b>. Das bisherige System (Belege, Einsätze, Stunden, Dokumente) wird weder gelesen noch verändert. Es ist noch leer – so geht es los:</p>
+            <ol className="small mt2" style={{ paddingLeft: "1.2rem" }}>
+              <li><b>Personen</b> anlegen (mit Vertrag) und per Einladungslink zum Fragebogen schicken.</li>
+              <li><b>Aufträge</b> anlegen, im Job-Board veröffentlichen und in der Disposition besetzen.</li>
+              <li><b>Stunden</b> in die Stundentabelle eintragen oder aus Excel einfügen, prüfen und exportieren.</li>
+            </ol>
+            <div className="row wrap mt3">
+              <Btn onClick={() => setPerson(true)}>Person anlegen</Btn>
+              <Btn v="sec" onClick={() => setAuftrag(true)}>Auftrag anlegen</Btn>
+              <Btn v="ghost" disabled={laedt} data-testid="beispieldaten-laden" onClick={async () => { setLaedt(true); await echt?.beispieldatenLaden(); setLaedt(false); }}>{laedt ? "Lädt …" : "Mit Beispieldaten ausprobieren"}</Btn>
+            </div>
+          </Karte>
+        </div>
+      ) : null}
+      {person ? <PersonModal onClose={() => setPerson(false)} /> : null}
+      {auftrag ? <AuftragModal onClose={() => setAuftrag(false)} /> : null}
       <div className="pva-grid c4">
         <Stat wert={aktive.length} label="aktive Crew" />
         <Stat wert={s.jobs.length} label="Aufträge in den nächsten 10 Tagen" />

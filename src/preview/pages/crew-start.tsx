@@ -155,7 +155,7 @@ export function statusText(st: string, de: boolean): string {
 }
 
 export function CrewProfil() {
-  const { s, set, melde, reset } = usePv();
+  const { s, set, melde, reset, abmelden } = usePv();
   const de = s.lang === "de";
   const ich = selbst(s);
   const [loeschen, setLoeschen] = useState(false);
@@ -181,7 +181,7 @@ export function CrewProfil() {
         </div>
         <div className="mt2"><Offen nr={17}>{de ? "Bewerber ohne Einsatz werden nach 6 Monaten zum Löschen gemeldet" : "Applicants without a job are flagged for deletion after 6 months"}</Offen></div>
       </Karte>
-      <Btn v="ghost" block onClick={() => { set((st) => ({ ...st, eingeloggt: false })); gehe("/crew"); }}>{de ? "Abmelden" : "Sign out"}</Btn>
+      <Btn v="ghost" block onClick={() => { if (abmelden) return abmelden(); set((st) => ({ ...st, eingeloggt: false })); gehe("/crew"); }}>{de ? "Abmelden" : "Sign out"}</Btn>
 
       {loeschen ? (
         <Modal titel={de ? "Daten wirklich löschen?" : "Delete your data?"} onClose={() => setLoeschen(false)} fuss={<><Btn v="sec" onClick={() => setLoeschen(false)}>{de ? "Abbrechen" : "Cancel"}</Btn><Btn v="danger" data-testid="loeschen-ok" onClick={() => { reset(); setLoeschen(false); gehe("/crew"); melde(de ? "Alle Angaben gelöscht (Prototyp: zurück auf Anfang)." : "All data deleted (prototype: back to start)."); }}>{de ? "Ja, löschen" : "Yes, delete"}</Btn></>}>

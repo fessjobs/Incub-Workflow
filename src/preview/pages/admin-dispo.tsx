@@ -11,6 +11,7 @@ import { addTage, formatDatumDE, tagNummer } from "../logic/zeit";
 import { schichtStunden } from "../logic/passung";
 import { autoFuellen, belegLinkFuer, besetzungSchicht, einplanKonflikte, entferne, plane, whatsappAushang, wochentag } from "./dispo-aktionen";
 import { besetzt, bewertung, passungFuer, vollName } from "./helfer";
+import { AuftragModal } from "./formulare";
 
 const STATUS: JobStatus[] = ["Entwurf", "offen", "voll", "laufend", "abgerechnet"];
 
@@ -54,14 +55,16 @@ function Wochenplan() {
 export function AdminDispo() {
   const { s, melde } = usePv();
   const [ansicht, setAnsicht] = useState<"liste" | "woche">("liste");
+  const [neuerAuftrag, setNeuerAuftrag] = useState(false);
   return (
     <>
       <Kopf
         eyebrow="Betrieb"
         titel="Disposition"
         sub="Aufträge aus „Planung Regios“ oder manuell – Bewerber auf Schichten einteilen."
-        aktionen={<Btn v="sec" onClick={() => melde("Prototyp: Aufträge kommen später aus Planung Regios oder werden hier manuell angelegt.")}>+ Auftrag anlegen</Btn>}
+        aktionen={<Btn onClick={() => setNeuerAuftrag(true)} data-testid="auftrag-anlegen">+ Auftrag anlegen</Btn>}
       />
+      {neuerAuftrag ? <AuftragModal onClose={() => setNeuerAuftrag(false)} /> : null}
       <div className="pva-grid c4">
         <Stat wert={s.jobs.length} label="Aufträge" />
         <Stat wert={s.jobs.reduce((n, j) => n + besetzt(s, j).besetzt, 0)} label="Plätze besetzt" ton="gut" />
@@ -106,7 +109,7 @@ interface Anfrage {
 }
 
 export function AdminDispoDetail({ id }: { id: string }) {
-  const { s, set, melde } = usePv();
+  const { s, set, melde, modus, basis } = usePv();
   const job = s.jobs.find((j) => j.id === id);
   const [aktiv, setAktiv] = useState<string>(job?.schichten[0]?.id ?? "");
   const [auchOhne, setAuchOhne] = useState(false);
@@ -260,17 +263,45 @@ export function AdminDispoDetail({ id }: { id: string }) {
 
       {anfrage ? <KonfliktModal anfrage={anfrage} onClose={() => setAnfrage(null)} onOk={(grund) => { set((st) => plane(st, job, anfrage.schicht.id, anfrage.c.pnr, grund)); melde(`${vollName(anfrage.c)} eingeplant – mit Begründung im Protokoll.`); setAnfrage(null); }} /> : null}
 
-      {aushang ? <AushangModal text={whatsappAushang(s, job)} onClose={() => setAushang(false)} /> : null}
+      {aushang ? <AushangModal text={whatsappAushang(s, job, modus === "echt" ? `${(basis ?? window.location.origin).replace(/\/$/, "")}/crew/jobs/${job.id}` : undefined)} onClose={() => setAushang(false)} /> : null}
 
-      {belegLink ? (
-        <Modal titel="Beleg-Link für diesen Auftrag" onClose={() => setBelegLink(false)} fuss={<Btn onClick={async () => melde((await kopiere(belegLinkFuer(job))) ? "Link kopiert." : "Kopieren nicht möglich.")}>Link kopieren</Btn>}>
-          <p>Mit diesem Link reicht die Crew Belege zu <b>{job.id}</b> ein – ohne Anmeldung, nur Foto, Betrag und Datum.</p>
-          <div className="pv-card flat mono mt2" style={{ background: "var(--mist)", wordBreak: "break-all" }}>{belegLinkFuer(job)}</div>
-          <div className="row mt2"><Link href={`/b/demo-${job.id}`} className="pv-btn sec">Vorschau öffnen (Handy-Sicht)</Link></div>
-          <div className="small muted mt2">Der Link ist je Auftrag eindeutig und läuft {formatDatumDE(HEUTE.slice(0, 4) + "-12-31")} ab. Die Belege landen im Unterlagen-Archiv.</div>
-        </Modal>
-      ) : null}
+      {belegLink ? <BelegLinkModal job={job} onClose={() => setBelegLink(false)} /> : null}
     </>
+  );
+}
+
+function BelegLinkModal({ job, onClose }: { job: Job; onClose: () => void }) {
+  const { modus, melde, basis } = usePv();
+  const [link, setLink] = useState<string | null>(modus === "demo" ? belegLinkFuer(job) : null);
+  const [pfad, setPfad] = useState<string | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const erzeugen = async () => {
+    setFehler(null);
+    for (let versuch = 0; versuch < 8; versuch++) {
+      const r = await fetch("/api/neu/beleg-link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: job.id }) });
+      const j = (await r.json().catch(() => null)) as { pfad?: string; error?: string } | null;
+      if (r.ok && j?.pfad) {
+        setPfad(j.pfad);
+        setLink(`${(basis ?? window.location.origin).replace(/\/$/, "")}${j.pfad}`);
+        return;
+      }
+      if (r.status !== 404) return setFehler(j?.error ?? "Link konnte nicht erzeugt werden.");
+      await new Promise((res) => setTimeout(res, 700));
+    }
+    setFehler("Der Auftrag ist noch nicht gespeichert. Bitte kurz warten und noch einmal versuchen.");
+  };
+  return (
+    <Modal titel="Beleg-Link für diesen Auftrag" onClose={onClose} fuss={link ? <Btn onClick={async () => melde((await kopiere(link)) ? "Link kopiert." : "Kopieren nicht möglich.")} data-testid="beleg-link-kopieren">Link kopieren</Btn> : undefined}>
+      <p>Mit diesem Link reicht die Crew Belege zu <b>{job.id}</b> ein – ohne Anmeldung, nur Foto, Betrag und Datum.</p>
+      {link ? (
+        <>
+          <div className="pv-card flat mono mt2" style={{ background: "var(--mist)", wordBreak: "break-all" }} data-testid="beleg-link">{link}</div>
+          <div className="row mt2">{modus === "demo" ? <Link href={`/b/demo-${job.id}`} className="pv-btn sec">Vorschau öffnen (Handy-Sicht)</Link> : pfad ? <a href={pfad} target="_blank" rel="noreferrer" className="pv-btn sec">Vorschau öffnen (Handy-Sicht)</a> : null}</div>
+          <div className="small muted mt2">{modus === "demo" ? `Der Link ist je Auftrag eindeutig und läuft ${formatDatumDE(HEUTE.slice(0, 4) + "-12-31")} ab.` : "Der Link gilt 90 Tage und ist je Erzeugung eindeutig."} Die Belege landen im Unterlagen-Archiv.</div>
+        </>
+      ) : <div className="mt2"><Btn onClick={erzeugen} data-testid="beleg-link-erzeugen">Link erzeugen</Btn></div>}
+      {fehler ? <div className="pv-error" role="alert">{fehler}</div> : null}
+    </Modal>
   );
 }
 

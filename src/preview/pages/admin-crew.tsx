@@ -1,8 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Link } from "../nav";
-import { usePv, sichtbareCrew, HEUTE } from "../state/store";
-import { AmpelPunkt, Bar, Chip, Initialen, Kopf, Karte, Offen, Stat, Tabs, Btn, Note } from "../ui/kit";
+import { Link, gehe } from "../nav";
+import { usePv, sichtbareCrew, neueAudit, HEUTE } from "../state/store";
+import { AmpelPunkt, Bar, Chip, Initialen, Kopf, Karte, Modal, Offen, Stat, Tabs, Btn, Note } from "../ui/kit";
 import { POOLS, geocodePlz } from "../logic/geo";
 import { levelFuer } from "../logic/xp";
 import { formatDatumDE, formatDezimal, formatEuro } from "../logic/zeit";
@@ -12,18 +12,20 @@ import { statusFuer, ablaufDatum } from "../logic/unterweisung";
 import type { Crew, Pool, Vertragsart } from "../logic/types";
 import { TAETIGKEITEN } from "../logic/types";
 import { SITUATIONSFRAGEN } from "../logic/fragen";
-import { ampelTon, bewertung, grenzenFuer, MONATE, unterweisungsStand, vollName } from "./helfer";
+import { EinladungModal, PersonModal } from "./formulare";
+import { ampelTon, bewertung, grenzenFuer, monateListe, unterweisungsStand, vollName } from "./helfer";
 
 const POOL_LISTE = Object.keys(POOLS) as Pool[];
 
 export function AdminCrew() {
   const { s } = usePv();
+  const [neuePerson, setNeuePerson] = useState(false);
   const [ansicht, setAnsicht] = useState<"liste" | "karte">("liste");
   const [suche, setSuche] = useState("");
   const [pool, setPool] = useState("");
   const [art, setArt] = useState("");
   const [ampel, setAmpel] = useState("");
-  const [monat, setMonat] = useState("2026-09");
+  const [monat, setMonat] = useState(() => monateListe()[0].wert);
 
   const liste = useMemo(() => {
     const q = suche.trim().toLowerCase();
@@ -41,7 +43,8 @@ export function AdminCrew() {
 
   return (
     <>
-      <Kopf eyebrow="Personal" titel="Crew" sub="Alle Personen mit Vertrag, Grenzen und Unterweisung auf einen Blick." />
+      <Kopf eyebrow="Personal" titel="Crew" sub="Alle Personen mit Vertrag, Grenzen und Unterweisung auf einen Blick." aktionen={<Btn onClick={() => setNeuePerson(true)} data-testid="person-anlegen">+ Person anlegen</Btn>} />
+      {neuePerson ? <PersonModal onClose={() => setNeuePerson(false)} /> : null}
       <div className="pva-grid c4">
         <Stat wert={liste.length} label="Personen in der Auswahl" />
         <Stat wert={rot} label="Grenze überschritten oder Vertrag abgelaufen" ton={rot ? "err" : "gut"} />
@@ -70,7 +73,7 @@ export function AdminCrew() {
           <option value="gruen">grün</option>
         </select>
         <select className="pv-select" style={{ maxWidth: 220 }} value={monat} onChange={(e) => setMonat(e.target.value)} aria-label="Monat">
-          {MONATE.map((m) => (
+          {monateListe().map((m) => (
             <option key={m.wert} value={m.wert}>
               {m.label}
             </option>
@@ -251,10 +254,13 @@ function KartePools({ personen }: { personen: Crew[] }) {
 }
 
 export function AdminCrewDetail({ id }: { id: string }) {
-  const { s, set, melde } = usePv();
+  const { s, set, melde, modus, echt } = usePv();
+  const [bearbeiten, setBearbeiten] = useState(false);
+  const [einladung, setEinladung] = useState(false);
+  const [loeschen, setLoeschen] = useState(false);
   const c = s.crew.find((x) => x.id === id);
   const [tab, setTab] = useState<"ueberblick" | "fragebogen" | "unterweisung" | "stunden" | "bewertung">("ueberblick");
-  const [monat, setMonat] = useState("2026-09");
+  const [monat, setMonat] = useState(() => monateListe()[0].wert);
   if (!c) return <Note ton="err">Person nicht gefunden.</Note>;
   const b = bewertung(c, s.einst);
   const g = grenzenFuer(s, c, monat);
@@ -272,8 +278,32 @@ export function AdminCrewDetail({ id }: { id: string }) {
             <span className="mono small">{c.telefon}</span>
           </span>
         }
-        aktionen={<Link href="/admin/crew" className="pv-btn sec sm">← Alle Crew</Link>}
+        aktionen={
+          <>
+            {modus === "echt" ? <Btn v="sec" groesse="sm" onClick={() => setBearbeiten(true)} data-testid="person-bearbeiten">Bearbeiten</Btn> : null}
+            {modus === "echt" ? <Btn v="sec" groesse="sm" onClick={() => setEinladung(true)} data-testid="einladung-oeffnen">Einladungslink</Btn> : null}
+            <Link href="/admin/crew" className="pv-btn sec sm">← Alle Crew</Link>
+          </>
+        }
       />
+      {bearbeiten ? <PersonModal person={c} onClose={() => setBearbeiten(false)} /> : null}
+      {einladung ? <EinladungModal person={c} onClose={() => setEinladung(false)} /> : null}
+      {loeschen ? (
+        <Modal titel="Person und Daten löschen?" onClose={() => setLoeschen(false)} fuss={<><Btn v="sec" onClick={() => setLoeschen(false)}>Abbrechen</Btn><Btn v="danger" data-testid="loeschen-bestaetigen" onClick={() => {
+          set((st) => ({
+            ...st,
+            crew: st.crew.filter((x) => x.id !== c.id),
+            bewerbungen: st.bewerbungen.filter((b) => b.pnr !== c.pnr),
+            zuweisung: Object.fromEntries(Object.entries(st.zuweisung).map(([k, v]) => [k, v.filter((z) => z.pnr !== c.pnr)])),
+            audit: [neueAudit(echt?.benutzer ?? "Admin", "crew", c.id, "loeschung", vollName(c), "gelöscht (DSGVO)", null), ...st.audit],
+          }));
+          melde(`${vollName(c)} gelöscht.`);
+          gehe("/admin/crew");
+        }}>Ja, löschen</Btn></>}>
+          <p>Profil, Fragebogen, Unterweisungen und Bewerbungen von {vollName(c)} werden aus dem neuen System entfernt. Das geht nicht rückgängig.</p>
+          <div className="small muted mt2">Stundenzeilen bleiben (Aufbewahrungspflicht) und zeigen weiter die Personalnummer.</div>
+        </Modal>
+      ) : null}
       <Tabs
         wert={tab}
         onChange={setTab}
@@ -300,7 +330,7 @@ export function AdminCrewDetail({ id }: { id: string }) {
                     <td>Stunden im Monat</td>
                     <td>
                       <select className="pv-select sm" style={{ width: "auto" }} value={monat} onChange={(e) => setMonat(e.target.value)}>
-                        {MONATE.map((m) => <option key={m.wert} value={m.wert}>{m.label}</option>)}
+                        {monateListe().map((m) => <option key={m.wert} value={m.wert}>{m.label}</option>)}
                       </select>{" "}
                       <b className="mono">{formatDezimal(g.stunden, 1)} h</b>{c.contract.monatsgrenzeStd ? ` von ${c.contract.monatsgrenzeStd} h` : ""} <AmpelPunkt a={g.auslastung} mitText />
                     </td>
@@ -340,13 +370,17 @@ export function AdminCrewDetail({ id }: { id: string }) {
               onChange={(e) => set((x) => ({ ...x, crew: x.crew.map((p) => (p.id === c.id ? { ...p, notizen: e.target.value } : p)) }))}
               placeholder="Interne Notiz zur Person"
             />
-            <div className="pv-hint">Wird im Prototyp nur im Browser gehalten.</div>
+            {modus === "demo" ? <div className="pv-hint">Wird im Prototyp nur im Browser gehalten.</div> : null}
           </Karte>
           <Karte titel="Aktionen">
             <div className="row wrap">
-              <Btn v="sec" onClick={() => melde("Prototyp: hier würde die Person gesperrt (mit Begründung im Audit-Log).")}>Sperren</Btn>
-              <Btn v="sec" onClick={() => melde("Prototyp: Vertragsverlängerung läuft über DocuSign (bleibt wie bisher).")}>Vertrag verlängern</Btn>
-              <Btn v="danger" onClick={() => melde("Prototyp: Löschen nach DSGVO – mit Bestätigung und Eintrag im Audit-Log.")}>Daten löschen</Btn>
+              <Btn v="sec" data-testid="sperren" onClick={() => {
+                const neu = c.status === "gesperrt" ? "aktiv" : "gesperrt";
+                set((st) => ({ ...st, crew: st.crew.map((x) => (x.id === c.id ? { ...x, status: neu } : x)), audit: [neueAudit(echt?.benutzer ?? "Admin", "crew", c.id, "status", c.status, neu, null), ...st.audit] }));
+                melde(neu === "gesperrt" ? `${vollName(c)} ist gesperrt und wird nicht mehr eingeplant.` : `${vollName(c)} ist wieder aktiv.`);
+              }}>{c.status === "gesperrt" ? "Entsperren" : "Sperren"}</Btn>
+              <Btn v="sec" onClick={() => (modus === "echt" ? setBearbeiten(true) : melde("Prototyp: Vertragsverlängerung läuft über DocuSign (bleibt wie bisher)."))}>Vertrag bearbeiten</Btn>
+              <Btn v="danger" onClick={() => (modus === "echt" ? setLoeschen(true) : melde("Prototyp: Löschen nach DSGVO – mit Bestätigung und Eintrag im Audit-Log."))}>Daten löschen</Btn>
             </div>
           </Karte>
         </div>

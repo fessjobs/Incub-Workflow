@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "../nav";
 import type { Ampel as AmpelTyp } from "../logic/grenzen";
+import { usePv } from "../state/store";
 import { ampelText } from "../logic/grenzen";
 
 type Variante = "prim" | "sec" | "navy" | "ghost" | "danger";
@@ -32,6 +33,9 @@ export function Chip({ ton, children, mono, title }: { ton?: "gut" | "warn" | "e
 
 // Markiert eine Annahme, die Maik noch bestätigen muss (offene Punkte des Plans)
 export function Offen({ children, nr }: { children?: ReactNode; nr?: number }) {
+  const { modus } = usePv();
+  // Im echten System sind die offenen Punkte in docs/neu-system.md festgehalten, nicht auf jeder Seite
+  if (modus !== "demo") return null;
   return (
     <span className="pv-offen" title="Offener Punkt – Annahme des Prototyps, bitte prüfen">
       ⚑ offen{nr ? ` ${nr}` : ""}

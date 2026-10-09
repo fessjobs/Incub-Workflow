@@ -8,6 +8,10 @@ const PUBLIC_PATHS = ["/login", "/registrieren"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Neues System: Crew-Seiten und Beleg-Link sind öffentlich (Schutz über Einladungs-/Beleg-Token,
+  // Sitzungs-Cookie und Rate-Limit in den Routen). Das neue Dashboard (/admin) und /api/neu/*
+  // bleiben hinter der normalen Anmeldung und prüfen die Rolle selbst.
+  if (pathname === "/crew" || pathname.startsWith("/crew/") || pathname.startsWith("/b/") || pathname.startsWith("/api/neu/crew/") || pathname.startsWith("/api/neu/b/")) return NextResponse.next();
   // Testversion (Klick-Prototyp): hat ein eigenes Passwort und existiert nur mit
   // PREVIEW_ENABLED=1 – die Seite selbst prüft beides, hier nur durchlassen
   if (pathname === "/preview" || pathname.startsWith("/preview/")) return NextResponse.next();

@@ -56,7 +56,7 @@ export function CrewModul({ id }: { id: string }) {
 }
 
 function ModulInhalt({ id }: { id: string }) {
-  const { s, set, melde } = usePv();
+  const { s, set, melde, modus } = usePv();
   const de = s.lang === "de";
   const ich = selbst(s);
   const mod = modulById(id);
@@ -80,7 +80,7 @@ function ModulInhalt({ id }: { id: string }) {
   };
 
   const nachweisText = [
-    "NACHWEIS UNTERWEISUNG (Prototyp)",
+    modus === "demo" ? "NACHWEIS UNTERWEISUNG (Prototyp)" : "NACHWEIS UNTERWEISUNG",
     `Person: ${ich.vorname} ${ich.nachname} (${ich.pnr})`,
     `Modul: ${t(mod.titel, "de")}`,
     `Bestätigt am: ${formatDatumDE(HEUTE)}`,

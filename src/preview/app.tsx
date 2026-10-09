@@ -16,9 +16,11 @@ function NichtGefunden() {
   );
 }
 
-function Router() {
+// `nur`: erlaubt nur Routen mit diesem Anfang (das echte System zeigt /admin, /crew oder /b/ getrennt)
+export function Router({ nur }: { nur?: string }) {
   const pfad = usePath();
   for (const r of ROUTEN) {
+    if (nur && !r.muster.startsWith(nur)) continue;
     const p = passt(r.muster, pfad);
     if (!p) continue;
     const inhalt: ReactNode = r.render(p);

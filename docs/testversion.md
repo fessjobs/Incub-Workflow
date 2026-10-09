@@ -1,5 +1,8 @@
 # Testversion: der Klick-Prototyp (Phase 2)
 
+> Das **echte** neue System (mit Datenbank, Einladungslinks, Beleg-Upload) steht in
+> `docs/neu-system.md`. Diese Seite beschreibt den reinen Klick-Prototyp mit Beispieldaten.
+
 Stand: 09.10.2026 · Zweck: durchklicken, wie es werden könnte – **bevor** irgendetwas
 Echtes gebaut wird. Das laufende System ist dafür nicht angefasst (Regel 0 des
 Ausbauplans).

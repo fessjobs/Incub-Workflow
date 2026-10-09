@@ -274,3 +274,7 @@
   .pvg-scroll { max-height: calc(100vh - 220px); }
 }
 @media (max-width: 700px) { .pvc h1 { font-size: 1.7rem; } }
+
+/* Ohne Banner (Mitarbeiterlink im echten System) */
+.pv.nobanner .pvc { min-height: 100vh; }
+.pv.nobanner .pvc-top { top: 0; }

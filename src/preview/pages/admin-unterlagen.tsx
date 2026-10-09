@@ -11,6 +11,7 @@ type Typ = "Vertrag" | "Unterweisung" | "Stundennachweis" | "Beleg";
 
 interface Dokument {
   id: string;
+  dateiId?: string;
   typ: Typ;
   titel: string;
   person: string;
@@ -21,7 +22,7 @@ interface Dokument {
 }
 
 export function AdminUnterlagen() {
-  const { s, melde } = usePv();
+  const { s, melde, modus } = usePv();
   const [typ, setTyp] = useState("");
   const [suche, setSuche] = useState("");
   const [auftrag, setAuftrag] = useState("");
@@ -44,7 +45,7 @@ export function AdminUnterlagen() {
       nachAuftrag.set(r.auftrag, e);
     }
     for (const [a, e] of nachAuftrag) out.push({ id: `s-${a}`, typ: "Stundennachweis", titel: `Stundennachweis ${a} (${e.n} Zeilen)`, person: "", pnr: "", auftrag: a, datum: e.datum, quelle: "Bestehendes Einsatzmodul" });
-    for (const b of s.belege) out.push({ id: b.id, typ: "Beleg", titel: `${BELEG_BEZEICHNUNG[b.art]} ${b.dateiname}`, person: s.crew.find((c) => c.pnr === b.pnr)?.vorname ?? b.pnr, pnr: b.pnr, auftrag: b.auftragId, datum: b.datum, quelle: "Beleg-Link" });
+    for (const b of s.belege) out.push({ id: b.id, dateiId: b.dateiId, typ: "Beleg", titel: `${BELEG_BEZEICHNUNG[b.art]} ${b.dateiname}`, person: s.crew.find((c) => c.pnr === b.pnr)?.vorname ?? b.pnr, pnr: b.pnr, auftrag: b.auftragId, datum: b.datum, quelle: "Beleg-Link" });
     return out.sort((a, b) => b.datum.localeCompare(a.datum));
   }, [s]);
 
@@ -87,7 +88,9 @@ export function AdminUnterlagen() {
                 <td>{formatDatumDE(d.datum)}</td>
                 <td className="small">{d.quelle}</td>
                 <td className="small">{d.typ === "Beleg" || d.typ === "Stundennachweis" ? `bis ${formatDatumDE(addTage(d.datum, 3652))}` : "nach Vertragsende prüfen"}</td>
-                <td><Btn groesse="sm" v="sec" onClick={() => melde("Prototyp: hier würde das PDF geladen.")}>Öffnen</Btn></td>
+                <td>
+                  {d.dateiId ? <a className="pv-btn sec sm" href={`/api/neu/files/${d.dateiId}`} target="_blank" rel="noreferrer">Öffnen</a> : modus === "echt" ? <span className="tiny muted" title="Liegt im bisherigen System bzw. folgt">–</span> : <Btn groesse="sm" v="sec" onClick={() => melde("Prototyp: hier würde das PDF geladen.")}>Öffnen</Btn>}
+                </td>
               </tr>
             ))}
           </tbody>

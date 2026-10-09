@@ -2,7 +2,11 @@
 import { useMemo, useState } from "react";
 import { Link } from "../nav";
 import { crewNachPnr, usePv, HEUTE } from "../state/store";
-import { Bar, Btn, Chip, Initialen, Karte, Kopf, Note, Offen, Stat, Tabs, kopiere } from "../ui/kit";
+import { Bar, Btn, Chip, Feld, Initialen, Karte, Kopf, Note, Offen, Stat, Tabs, kopiere } from "../ui/kit";
+import { EinladungModal, naechsteBewerberNr, neueId } from "./formulare";
+import type { Crew } from "../logic/types";
+import { SELF_ID } from "../data/demo";
+import { neueAudit } from "../state/store";
 import { addTage, formatDatumDE, formatDezimal } from "../logic/zeit";
 import { fahrminuten, geocodePlz, POOLS } from "../logic/geo";
 import type { BewerbungStatus } from "../logic/types";
@@ -11,14 +15,19 @@ import { bewertung, passungFuer, schichtMitJob, vollName } from "./helfer";
 const STATUS: BewerbungStatus[] = ["neu", "passt", "Warteliste", "abgelehnt", "bestätigt"];
 
 export function AdminBewerber() {
-  const { s, set, melde } = usePv();
+  const { s, set, melde, modus, echt } = usePv();
+  const [einladung, setEinladung] = useState<Crew | null>(null);
+  const [nachname, setNachname] = useState("");
+  const [fehlerEinl, setFehlerEinl] = useState<string | null>(null);
   const [tab, setTab] = useState<"fragebogen" | "bewerbungen">("fragebogen");
   const [jobFilter, setJobFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [telefon, setTelefon] = useState("0151 0000 9001");
-  const [vorname, setVorname] = useState("Mara");
+  const [telefon, setTelefon] = useState(modus === "demo" ? "0151 0000 9001" : "");
+  const [vorname, setVorname] = useState(modus === "demo" ? "Mara" : "");
 
   const frageboegen = s.crew.filter((c) => c.status === "Bewerber" && c.profile);
+  // Eingeladen, aber noch nicht ausgefüllt (nur im echten System; Mara ist die Demo-Person)
+  const wartend = s.crew.filter((c) => c.status === "Bewerber" && !c.profile && c.id !== SELF_ID);
   const crewMap = useMemo(() => crewNachPnr(s), [s]);
   const bewerbungen = s.bewerbungen.filter((a) => (!jobFilter || a.jobId === jobFilter) && (!statusFilter || a.status === statusFilter));
 
@@ -27,6 +36,7 @@ export function AdminBewerber() {
   return (
     <>
       <Kopf eyebrow="Betrieb" titel="Bewerber" sub="Fragebögen sichten und Bewerbungen auf Jobs bearbeiten." />
+      {einladung ? <EinladungModal person={einladung} onClose={() => setEinladung(null)} /> : null}
       <div className="pva-grid c4">
         <Stat wert={frageboegen.length} label="Fragebögen zu prüfen" />
         <Stat wert={s.bewerbungen.filter((a) => a.status === "neu").length} label="neue Bewerbungen" />
@@ -35,6 +45,29 @@ export function AdminBewerber() {
       </div>
 
       <div className="mt3">
+        {modus === "echt" ? (
+          <Karte titel="Neue Person einladen">
+            <p className="small">Name und Handynummer eintragen – es entsteht ein Bewerber-Eintrag und ein persönlicher Link zum Fragebogen, den du (oder Merle) per WhatsApp schickst.</p>
+            <div className="pva-grid c3 mt2">
+              <Feld label="Vorname"><input className="pv-input" aria-label="Vorname" value={vorname} onChange={(e) => setVorname(e.target.value)} /></Feld>
+              <Feld label="Nachname"><input className="pv-input" aria-label="Nachname" value={nachname} onChange={(e) => setNachname(e.target.value)} /></Feld>
+              <Feld label="Handynummer (WhatsApp)"><input className="pv-input" aria-label="Handynummer" value={telefon} onChange={(e) => setTelefon(e.target.value)} /></Feld>
+            </div>
+            {fehlerEinl ? <div className="pv-error" role="alert">{fehlerEinl}</div> : null}
+            <div className="row mt1">
+              <Btn data-testid="einladen" onClick={() => {
+                if (!vorname.trim() || !nachname.trim()) return setFehlerEinl("Vor- und Nachname fehlen.");
+                setFehlerEinl(null);
+                const person: Crew = { id: neueId("c"), pnr: naechsteBewerberNr(s.crew), vorname: vorname.trim(), nachname: nachname.trim(), telefon: telefon.trim(), email: "", wohnort: "", plz: "", pool: "Stuttgart", status: "Bewerber", xp: 0, einsaetze: 0, arbeitstageJahr: 0, profile: null, contract: null, unterweisungen: {}, ratings: [], notizen: "" };
+                set((st) => ({ ...st, crew: [...st.crew, person], audit: [neueAudit(echt?.benutzer ?? "Admin", "crew", person.id, "anlage", "", "als Bewerber eingeladen", null), ...st.audit] }));
+                setVorname("");
+                setNachname("");
+                setTelefon("");
+                setEinladung(person);
+              }}>Person anlegen und Link erzeugen</Btn>
+            </div>
+          </Karte>
+        ) : (
         <Karte titel="Fragebogen-Link verschicken" aktionen={<Offen nr={12}>Merle verschickt, Annahme</Offen>}>
           <div className="pva-grid c2">
             <div>
@@ -53,6 +86,7 @@ export function AdminBewerber() {
             </div>
           </div>
         </Karte>
+        )}
       </div>
 
       <div className="mt3">
@@ -62,6 +96,19 @@ export function AdminBewerber() {
       {tab === "fragebogen" ? (
         <div className="mt2">
           {frageboegen.length === 0 ? <Note>Keine offenen Fragebögen.</Note> : null}
+          {wartend.length > 0 ? (
+            <div className="pv-card mb-2" style={{ marginBottom: "0.8rem" }} data-testid="wartend">
+              <b>Eingeladen, Fragebogen noch offen ({wartend.length})</b>
+              <div className="col gap1 mt1">
+                {wartend.map((c) => (
+                  <div key={c.id} className="row between">
+                    <span><Link href={`/admin/crew/${c.id}`}>{vollName(c)}</Link> <span className="tiny muted mono">{c.pnr} · {c.telefon}</span></span>
+                    <Btn groesse="sm" v="sec" onClick={() => setEinladung(c)}>Neuen Link erzeugen</Btn>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="pv-card pv-scroll" style={{ padding: 0 }}>
             <table className="pv-table" data-testid="fragebogen-tabelle">
               <thead><tr><th>Person</th><th>Ort und Pool</th><th>Score je Block</th><th>Kategorie</th><th>Löschhinweis ab</th><th /></tr></thead>
@@ -110,7 +157,11 @@ export function AdminBewerber() {
                         >
                           Als Crew aufnehmen
                         </Btn>{" "}
-                        <Btn groesse="sm" v="ghost" onClick={() => melde("Prototyp: Absage mit Textvorschlag, kein Versand.")}>Absagen</Btn>
+                        <Btn groesse="sm" v="ghost" onClick={() => {
+                          if (modus === "demo") return melde("Prototyp: Absage mit Textvorschlag, kein Versand.");
+                          set((st) => ({ ...st, crew: st.crew.map((p) => (p.id === c.id ? { ...p, status: "ausgeschieden" } : p)), audit: [neueAudit(echt?.benutzer ?? "Admin", "crew", c.id, "status", c.status, "ausgeschieden", "Absage"), ...st.audit] }));
+                          melde(`${vollName(c)} als „ausgeschieden“ markiert (nichts verschickt).`);
+                        }}>Absagen</Btn>
                       </td>
                     </tr>
                   );

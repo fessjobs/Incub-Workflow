@@ -122,10 +122,23 @@ export function besetzt(s: PvState, job: Job): { bedarf: number; besetzt: number
   return { bedarf, besetzt: b };
 }
 
-export const MONATE: Array<{ wert: string; label: string }> = [
-  { wert: "2026-09", label: "September 2026" },
-  { wert: "2026-10", label: "Oktober 2026 (bis 08.10.)" },
-];
+const MONATSNAMEN = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+
+export function monatsName(monat: string): string {
+  const [y, m] = monat.split("-").map(Number);
+  return `${MONATSNAMEN[(m || 1) - 1]} ${y}`;
+}
+
+// Letzter voller Monat zuerst, dann der laufende (relativ zu „heute“)
+export function monateListe(): Array<{ wert: string; label: string }> {
+  const [y, m] = HEUTE.split("-").map(Number);
+  const aktuell = `${y}-${String(m).padStart(2, "0")}`;
+  const vorher = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  return [
+    { wert: vorher, label: monatsName(vorher) },
+    { wert: aktuell, label: `${monatsName(aktuell)} (laufend)` },
+  ];
+}
 
 export function ampelTon(a: Ampel): "gut" | "warn" | "err" | undefined {
   return a === "gruen" ? "gut" : a === "gelb" ? "warn" : a === "rot" ? "err" : undefined;

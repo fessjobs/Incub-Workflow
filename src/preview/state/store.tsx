@@ -44,6 +44,9 @@ export interface BelegEintrag {
   gelesen: BelegAuslesung;
   abweichungen: Abweichung[];
   beiblatt: string;
+  // Echtes System: die hochgeladene Datei und ob der Beleg ausgelesen wurde
+  dateiId?: string;
+  ausgelesen?: boolean;
 }
 
 export interface Zuweisung {
@@ -89,6 +92,18 @@ export interface PvState {
   entwurf: Record<string, BewerbungEntwurf>;
 }
 
+export function standardEinstellungen(): Einstellungen {
+  return { scoring: DEFAULT_SCORING, xp: DEFAULT_XP, exp: DEFAULT_EXPORT, minijobEur: 603, fragebogenLinkText: "Hallo {vorname}, hier ist dein persönlicher Link zum Crew-Fragebogen von fess.jobs: {link} – dauert ca. 8 Minuten, du kannst jederzeit unterbrechen und später weitermachen." };
+}
+
+// Leerer Zustand ohne Beispieldaten (Ausgangspunkt des echten neuen Systems)
+export function leererZustand(): PvState {
+  return {
+    lang: "de", crew: [], jobs: [], bewerbungen: [], auftraege: [], stunden: [], audit: [], einst: standardEinstellungen(), zuweisung: {}, briefingGesendet: {}, belege: [], notizen: [],
+    antworten: leereAntworten(), etappe: 1, fragebogenFertig: false, dsgvo: false, eingeloggt: false, rueck: null, entwurf: {},
+  };
+}
+
 export function initialerZustand(): PvState {
   const d = baueDemo();
   const crew = [...d.crew, d.self];
@@ -100,38 +115,42 @@ export function initialerZustand(): PvState {
     (zuweisung[sid] ??= []).push({ pnr: a.pnr, begruendung: null });
   }
   return {
-    lang: "de",
+    ...leererZustand(),
     crew,
     jobs: d.jobs,
     bewerbungen: d.bewerbungen,
     auftraege: d.auftraege,
     stunden: d.stunden,
-    audit: [],
-    einst: { scoring: DEFAULT_SCORING, xp: DEFAULT_XP, exp: DEFAULT_EXPORT, minijobEur: 603, fragebogenLinkText: "Hallo {vorname}, hier ist dein persönlicher Link zum Crew-Fragebogen von fess.jobs: {link} – dauert ca. 8 Minuten, du kannst jederzeit unterbrechen und später weitermachen." },
     zuweisung,
-    briefingGesendet: {},
-    belege: [],
-    notizen: [],
-    antworten: leereAntworten(),
-    etappe: 1,
-    fragebogenFertig: false,
-    dsgvo: false,
-    eingeloggt: false,
-    rueck: null,
-    entwurf: {},
   };
 }
 
-interface Ctx {
+export type Modus = "demo" | "echt" | "crew";
+
+export interface Ctx {
   s: PvState;
+  // demo = Testversion mit Beispieldaten, echt = neues Dashboard, crew = Mitarbeiterlink
+  modus: Modus;
+  // Adresse, unter der Links nach außen gehen (aus der Konfiguration), sonst die des Browsers
+  basis?: string | null;
   set: (fn: (s: PvState) => PvState) => void;
   reset: () => void;
   toast: string | null;
   melde: (text: string) => void;
   geladen: boolean;
+  // Mitarbeiterlink im echten System: diese Sitzung beenden
+  abmelden?: () => void;
+  // Nur im echten System: Speicherstand und Aktionen gegen den Server
+  speicher?: "ok" | "laeuft" | "fehler";
+  echt?: {
+    benutzer: string;
+    neuLaden: () => Promise<void>;
+    beispieldatenLaden: () => Promise<void>;
+    beispieldatenEntfernen: () => Promise<void>;
+  };
 }
 
-const PvContext = createContext<Ctx | null>(null);
+export const PvContext = createContext<Ctx | null>(null);
 
 export function PvProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<PvState>(() => initialerZustand());
@@ -197,7 +216,7 @@ export function PvProvider({ children }: { children: ReactNode }) {
     toastTimer.current = setTimeout(() => setToast(null), 3200);
   }, []);
 
-  const wert = useMemo(() => ({ s, set, reset, toast, melde, geladen }), [s, set, reset, toast, melde, geladen]);
+  const wert = useMemo<Ctx>(() => ({ s, modus: "demo", set, reset, toast, melde, geladen }), [s, set, reset, toast, melde, geladen]);
   return <PvContext.Provider value={wert}>{children}</PvContext.Provider>;
 }
 
@@ -210,7 +229,8 @@ export function usePv(): Ctx {
 // ─── Ableitungen ────────────────────────────────────────────────────────────
 
 export function selbst(s: PvState): Crew {
-  return s.crew.find((c) => c.id === SELF_ID) as Crew;
+  // Im Mitarbeiterlink des echten Systems ist die eigene Person die einzige im Zustand
+  return (s.crew.find((c) => c.id === SELF_ID) ?? s.crew[0]) as Crew;
 }
 
 export function crewNachPnr(s: PvState): Map<string, Crew> {
@@ -226,4 +246,8 @@ export function neueAudit(user: string, tabelle: string, datensatz: string, feld
   return { id: `au-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`, zeitpunkt: new Date().toISOString(), user, tabelle, datensatz, feld, alt, neu, grund };
 }
 
-export const HEUTE = DEMO_HEUTE;
+// „Heute“: im Prototyp ein fester Tag, im echten System der heutige Tag in Deutschland
+export let HEUTE: string = DEMO_HEUTE;
+export function setzeHeute(tag: string): void {
+  HEUTE = tag;
+}

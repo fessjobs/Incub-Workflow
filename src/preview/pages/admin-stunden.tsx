@@ -10,9 +10,9 @@ import type { StundenRow, StundenStatus, Warnung } from "../logic/types";
 import { BEARBEITBAR, SPALTEN, einfuegen, feldWert, istTabellenText, neueZeile, parseEinfuegen, setzeFeld, setzePausen, spaltenFuerWarnung, type EditKontext, type Spalte, type SpalteKey } from "../logic/stundentabelle";
 import { formatDatumDE, formatDezimal, formatEuro, gesamtzeit } from "../logic/zeit";
 import { DEFAULT_EXPORT, excelCsv, exportZeilen, pruefbericht, zvooveCsv } from "../logic/export";
-import { BEARBEITER, naechsterStatus, setzeStatus, uebernehmeAenderungen } from "./stunden-aktionen";
+import { bearbeiter, naechsterStatus, setzeStatus, uebernehmeAenderungen } from "./stunden-aktionen";
 import { neueAudit } from "../state/store";
-import { vollName } from "./helfer";
+import { monateListe, monatsName, vollName } from "./helfer";
 
 const H = 32;
 const W_SEL = 34;
@@ -24,7 +24,6 @@ const BREITE = W_SEL + W_STATUS + W_WARN + SPALTEN.reduce((n, sp) => n + sp.brei
 type Gruppe = "" | "auftrag" | "kunde" | "mitarbeiter" | "tag" | "monat";
 type Item = { k: "g"; key: string; label: string; n: number; std: number } | { k: "z"; row: StundenRow; r: number };
 
-const MONAT_NAME: Record<string, string> = { "2026-09": "September 2026", "2026-10": "Oktober 2026" };
 
 // ─── Eingabezelle ───────────────────────────────────────────────────────────
 
@@ -107,7 +106,7 @@ export function AdminStunden() {
 
   const kundenListe = useMemo(() => [...new Set(s.auftraege.map((a) => a.kunde))].sort(), [s.auftraege]);
   const auftragListe = useMemo(() => s.auftraege.map((a) => a.id), [s.auftraege]);
-  const ctx = useMemo<EditKontext>(() => ({ jahr: 2026, auftraege: new Map(s.auftraege.map((a) => [a.id, a.kunde])), kunden: kundenListe }), [s.auftraege, kundenListe]);
+  const ctx = useMemo<EditKontext>(() => ({ jahr: Number(HEUTE.slice(0, 4)), auftraege: new Map(s.auftraege.map((a) => [a.id, a.kunde])), kunden: kundenListe }), [s.auftraege, kundenListe]);
 
   // Filter
   const [monat, setMonat] = useState("");
@@ -158,7 +157,7 @@ export function AdminStunden() {
         return c ? `${key} · ${vollName(c)}` : key;
       }
       if (gruppe === "tag") return formatDatumDE(key);
-      if (gruppe === "monat") return MONAT_NAME[key] ?? key;
+      if (gruppe === "monat") return monatsName(key);
       return key;
     };
     const out: Item[] = [];
@@ -330,7 +329,7 @@ export function AdminStunden() {
   const neueZeileAnlegen = () => {
     const id = `z-neu-${Date.now().toString(36)}`;
     const row = neueZeile(id, HEUTE);
-    set((st) => ({ ...st, stunden: [...st.stunden, row], audit: [neueAudit(BEARBEITER, "time_entries", id, "zeile", "", "neu angelegt (manuell)", null), ...st.audit] }));
+    set((st) => ({ ...st, stunden: [...st.stunden, row], audit: [neueAudit(bearbeiter(), "time_entries", id, "zeile", "", "neu angelegt (manuell)", null), ...st.audit] }));
     setKunde("");
     setAuftrag("");
     setStatus("");
@@ -393,8 +392,7 @@ export function AdminStunden() {
       <div className="row wrap gap2" style={{ marginBottom: "0.6rem" }}>
         <select className="pv-select sm" style={{ width: "auto" }} value={monat} onChange={(e) => setMonat(e.target.value)} aria-label="Monat">
           <option value="">Alle Monate</option>
-          <option value="2026-09">September 2026</option>
-          <option value="2026-10">Oktober 2026</option>
+          {monateListe().map((m) => <option key={m.wert} value={m.wert}>{m.label}</option>)}
         </select>
         <select className="pv-select sm" style={{ width: "auto", maxWidth: 190 }} value={kunde} onChange={(e) => setKunde(e.target.value)} aria-label="Kunde">
           <option value="">Alle Kunden</option>
@@ -573,7 +571,7 @@ function Protokoll({ onClose }: { onClose: () => void }) {
 // ─── Zeilen-Detail: Original-Zettel, Pausen, Verlauf ────────────────────────
 
 function Detail({ row, warnungen, onClose, onPausen }: { row: StundenRow; warnungen: Warnung[]; onClose: () => void; onPausen: (p: StundenRow["pausen"]) => void }) {
-  const { s } = usePv();
+  const { s, modus } = usePv();
   const c = s.crew.find((x) => x.pnr === row.pnr);
   const verlauf = s.audit.filter((a) => a.datensatz === row.id);
   return (
@@ -583,6 +581,10 @@ function Detail({ row, warnungen, onClose, onPausen }: { row: StundenRow; warnun
       {warnungen.length > 0 ? <div className="col gap1 mt2">{warnungen.map((w, i) => <Note key={i} ton={w.level === "fehler" ? "err" : "warn"}>{w.text}</Note>)}</div> : null}
 
       <h4 className="mt3">Original</h4>
+      {modus === "echt" ? (
+        <Note>{row.quelle === "manuell" ? "Manuell in der Tabelle erfasst – kein Zettel." : `Quelle: ${row.quelle}${row.sourceRef ? ` (${row.sourceRef})` : ""}. Der Original-Zettel liegt im bisherigen System; die Anbindung folgt.`}</Note>
+      ) : (
+        <>
       {row.quelle === "manuell" ? (
         <Note>Manuell in der Tabelle erfasst – kein Zettel.</Note>
       ) : (
@@ -596,6 +598,8 @@ function Detail({ row, warnungen, onClose, onPausen }: { row: StundenRow; warnun
             <span style={{ fontSize: "1.5rem" }}>✍ Unterschrift Kunde</span>
           </div>
           <div className="pv-hint">Beispiel-Darstellung. Im echten System ist das das eingelesene Dokument aus dem bestehenden Einsatzmodul ({row.sourceRef}), nur zum Lesen.</div>
+        </>
+      )}
         </>
       )}
 
@@ -681,7 +685,7 @@ function Massen({ ids, onClose, onFertig, warn, ctx }: { ids: Set<string>; onClo
 // ─── Export ─────────────────────────────────────────────────────────────────
 
 function ExportModal({ rows, alle, warn, onClose }: { rows: StundenRow[]; alle: StundenRow[]; warn: Map<string, Warnung[]>; onClose: () => void }) {
-  const { s, set, melde } = usePv();
+  const { s, set, melde, modus } = usePv();
   const [tab, setTab] = useState<"pruef" | "zvoove" | "excel" | "kunden">("pruef");
   const [trotzdem, setTrotzdem] = useState(false);
   const [markieren, setMarkieren] = useState(true);
@@ -751,7 +755,7 @@ function ExportModal({ rows, alle, warn, onClose }: { rows: StundenRow[]; alle: 
       {tab === "excel" ? (
         <div>
           <p>Alle {rows.length.toLocaleString("de-DE")} Zeilen des Filters mit den 18 Spalten der Tabelle.</p>
-          <p className="small muted mt1">Im Prototyp als CSV (öffnet in Excel). Im echten System eine .xlsx-Datei.</p>
+          <p className="small muted mt1">Als CSV (öffnet in Excel).</p>
           <div className="row mt3"><Btn onClick={() => { ladeTextHerunter(`stundentabelle-${HEUTE}.csv`, excelCsv(rows, crewMap)); melde("Excel-Datei geladen."); }}>Excel (18 Spalten) laden</Btn></div>
         </div>
       ) : null}
@@ -761,7 +765,7 @@ function ExportModal({ rows, alle, warn, onClose }: { rows: StundenRow[]; alle: 
             <table className="pv-table"><thead><tr><th>Auftrag</th><th>Kunde</th><th>Personen</th><th className="right">Stunden</th><th className="right">Spesen</th><th className="right">Reisekosten</th></tr></thead>
               <tbody>{nachAuftrag.map(([a, e]) => <tr key={a}><td className="mono small">{a}</td><td>{e.kunde}</td><td className="mono">{e.personen.size}</td><td className="mono right">{formatDezimal(e.std)}</td><td className="mono right">{formatEuro(e.spesen)}</td><td className="mono right">{formatEuro(e.reise)}</td></tr>)}</tbody></table>
           </div>
-          <div className="row mt3"><Btn v="sec" onClick={() => melde("Prototyp: hier entsteht je Auftrag eine PDF-Übersicht für den Kunden.")}>PDF je Auftrag</Btn></div>
+          <div className="row mt3"><Btn v="sec" disabled={modus === "echt"} title={modus === "echt" ? "Folgt" : undefined} onClick={() => melde("Prototyp: hier entsteht je Auftrag eine PDF-Übersicht für den Kunden.")}>PDF je Auftrag</Btn></div>
         </div>
       ) : null}
       <div className="small muted mt3">{alle.length.toLocaleString("de-DE")} Zeilen insgesamt · Export nutzt den aktuellen Filter der Tabelle.</div>

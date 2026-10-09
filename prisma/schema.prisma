@@ -1196,3 +1196,81 @@ model Job {
   @@index([status, runAt])
   @@map("jobs")
 }
+
+// ─── Neues System, parallel zum Bestand (docs/neu-system.md) ───────────────
+// Rein additiv: eigene Tabellen mit Präfix v2_, KEINE Beziehung zu den
+// bestehenden Tabellen, nichts am Bestand wird gelesen oder geschrieben.
+// organizationId kommt immer aus der Sitzung bzw. dem Token.
+
+// Dokumentspeicher der Phase 1: je Art (crew, job, stunde, …) ein Datensatz als JSON.
+// Später in eigene Tabellen überführen (docs/schema-v2-entwurf.md).
+model V2Record {
+  organizationId String
+  kind           String
+  id             String
+  data           Json
+  // zählt bei jeder Änderung hoch: verhindert, dass ein veralteter Bildschirm neuere Daten überschreibt
+  rev            Int      @default(1)
+  // Beispieldaten lassen sich gesammelt wieder entfernen
+  demo           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  updatedBy      String?
+
+  @@id([organizationId, kind, id])
+  @@index([organizationId, kind])
+  @@map("v2_records")
+}
+
+// Änderungsprotokoll des neuen Systems (das bestehende audit_log bleibt unberührt)
+model V2Audit {
+  id             String   @id @default(cuid())
+  organizationId String
+  zeitpunkt      DateTime @default(now())
+  user           String
+  tabelle        String
+  datensatz      String
+  feld           String
+  alt            String   @default("")
+  neu            String   @default("")
+  grund          String?
+
+  @@index([organizationId, zeitpunkt])
+  @@map("v2_audit")
+}
+
+// Zugangs-Tokens: Einladung zum Fragebogen, Crew-Sitzung, Beleg-Link. Nur der Hash wird gespeichert.
+model V2Access {
+  tokenHash      String    @id
+  organizationId String
+  kind           String
+  refId          String
+  expiresAt      DateTime
+  uses           Int       @default(0)
+  maxUses        Int?
+  meta           Json?
+  createdAt      DateTime  @default(now())
+  createdBy      String?
+  lastUsedAt     DateTime?
+
+  @@index([organizationId, kind])
+  @@index([kind, refId])
+  @@map("v2_access")
+}
+
+// Hochgeladene Belege (Bytes in der Datenbank, wie die Unterschriften im Bestand)
+model V2File {
+  id             String   @id @default(cuid())
+  organizationId String
+  kind           String
+  name           String
+  mime           String
+  size           Int
+  sha256         String
+  data           Bytes
+  meta           Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, kind])
+  @@map("v2_files")
+}

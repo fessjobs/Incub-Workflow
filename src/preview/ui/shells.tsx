@@ -3,13 +3,39 @@
 // (Seitenleiste) und Crew-Gerüst (Handy, untere Leiste).
 import { useState, type ReactNode } from "react";
 import { Link, STANDALONE, usePath } from "../nav";
-import { usePv } from "../state/store";
+import { selbst, usePv } from "../state/store";
 import { Btn, Modal } from "./kit";
 import { MODULE } from "../data/trainings";
 import { statusFuer } from "../logic/unterweisung";
 import { HEUTE } from "../state/store";
 
+// Schmale Leiste im echten neuen Dashboard: sagt, dass es parallel zum bisherigen System läuft
+function NeuBanner() {
+  const { speicher, echt } = usePv();
+  return (
+    <div className="pv-banner pv-noprint" role="banner">
+      <span className="tag">Neu</span>
+      <span style={{ color: "rgba(255,255,255,.8)" }}>Parallel zum bisherigen System · eigene Daten, am Bestand wird nichts verändert</span>
+      <span className="grow" />
+      <span className="small" data-testid="speicherstand" style={{ color: speicher === "fehler" ? "#ffb4b4" : "rgba(255,255,255,.85)" }}>
+        {speicher === "laeuft" ? "Speichert …" : speicher === "fehler" ? "Nicht gespeichert" : "Gespeichert ✓"}
+      </span>
+      <button type="button" onClick={() => void echt?.neuLaden()}>
+        Neu laden
+      </button>
+      <a href="/dashboard">← Bisheriges Dashboard</a>
+    </div>
+  );
+}
+
 export function Banner() {
+  const { modus } = usePv();
+  if (modus === "echt") return <NeuBanner />;
+  if (modus === "crew") return null;
+  return <DemoBanner />;
+}
+
+function DemoBanner() {
   const pfad = usePath();
   const { reset, melde, s } = usePv();
   const [bestaetige, setBestaetige] = useState(false);
@@ -75,7 +101,7 @@ interface NavEintrag {
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pfad = usePath();
-  const { s } = usePv();
+  const { s, modus } = usePv();
   const offeneBewerber = s.crew.filter((c) => c.status === "Bewerber" && c.profile).length;
   const neueBewerbungen = s.bewerbungen.filter((a) => a.status === "neu").length;
   const eintraege: NavEintrag[] = [
@@ -105,7 +131,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </div>
         ))}
         <div className="foot">
-          Belege, Auslagen und Einsätze bleiben unverändert und sind hier nicht gezeigt. Der Prototyp zeigt nur die neuen Bereiche.
+          {modus === "echt" ? (
+            <>
+              Das bisherige System (Belege, Auslagen, Einsätze, Stunden) läuft unverändert weiter. <a href="/dashboard" style={{ padding: 0, display: "inline", color: "#fff", textDecoration: "underline" }}>Zum bisherigen Dashboard</a>
+            </>
+          ) : (
+            "Belege, Auslagen und Einsätze bleiben unverändert und sind hier nicht gezeigt. Der Prototyp zeigt nur die neuen Bereiche."
+          )}
         </div>
       </nav>
       <main className="pva-main" id="inhalt">
@@ -118,7 +150,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 export function CrewShell({ children, titel }: { children: ReactNode; titel?: string }) {
   const pfad = usePath();
   const { s } = usePv();
-  const ich = s.crew.find((c) => c.id === "c-self");
+  const ich = selbst(s);
   const offeneUnterweisung = ich ? MODULE.filter((m) => statusFuer(ich.unterweisungen[m.id], HEUTE) === "fehlt").length : 0;
   const nav: Array<{ href: string; label: string; ic: string; on: boolean }> = [
     { href: "/crew", label: s.lang === "de" ? "Start" : "Home", ic: "⌂", on: pfad === "/crew" },

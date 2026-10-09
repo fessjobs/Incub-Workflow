@@ -80,7 +80,7 @@ function tagLabel(datum: string): string {
 }
 
 // Aushang für die WhatsApp-Gruppe zum Rauskopieren
-export function whatsappAushang(st: PvState, job: Job): string {
+export function whatsappAushang(st: PvState, job: Job, link?: string): string {
   const zeilen: string[] = [];
   const kurzfristig = tagNummer(job.datumVon) - tagNummer(HEUTE) <= 2;
   zeilen.push(`🚨 ${kurzfristig ? "KURZFRISTIGER " : ""}EINSATZ ${tagLabel(job.datumVon)} 🚨`);
@@ -95,7 +95,7 @@ export function whatsappAushang(st: PvState, job: Job): string {
   if (job.psa.length) zeilen.push(`🦺 Mitbringen: ${job.psa.join(", ")}`);
   zeilen.push(`🍽️ ${job.verpflegung}`);
   zeilen.push("");
-  zeilen.push(`👉 Bewerben in 1 Minute: https://fess.jobs/jobs/${job.id}`);
+  zeilen.push(`👉 Bewerben in 1 Minute: ${link ?? `https://fess.jobs/jobs/${job.id}`}`);
   zeilen.push("Danke euch 💪");
   return zeilen.join("\n");
 }

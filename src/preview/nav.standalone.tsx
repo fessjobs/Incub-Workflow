@@ -2,8 +2,13 @@
 // Hash, z. B. #/admin/stunden. Wird beim Bündeln anstelle von nav.tsx genutzt.
 import { useSyncExternalStore, type AnchorHTMLAttributes, type MouseEvent, type ReactNode } from "react";
 
-export const BASIS = "";
 export const STANDALONE = true;
+
+// Gleiche Schnittstelle wie nav.tsx; in der Einzeldatei gibt es nur den Prototyp.
+export function setzeBasis(_b: string): void {}
+export function BasisProvider({ children }: { basis: string; children?: ReactNode }) {
+  return <>{children}</>;
+}
 
 function abonnieren(cb: () => void): () => void {
   window.addEventListener("hashchange", cb);
