@@ -143,10 +143,13 @@ export async function generateStundennachweisPdf(
         taetigkeit: entry.taetigkeit || s.taetigkeit,
         pkw: entry.pkw ? (entry.pkwArt === "FIRMA" ? "Firma" : "privat") : "–",
         spesen: entry.spesen ? (entry.spesenBetrag !== null ? `${Number(entry.spesenBetrag).toFixed(2).replace(".", ",")} €` : "ja") : "–",
-        notiz: [entry.notiz, entry.version > 1 ? `Korrektur v${entry.version}: ${entry.korrekturGrund ?? ""}` : null].filter(Boolean).join(" · "),
+        // Der Vermerk gehört zur Korrektur durch die Dispo – die hat immer
+        // eine Begründung. Bessert jemand seine Zeiten im Link nach, bevor
+        // der Kunde zeichnet, steht auf dem Beleg nur der gültige Stand.
+        notiz: [entry.notiz, entry.korrekturGrund ? `Korrektur v${entry.version}: ${entry.korrekturGrund}` : null].filter(Boolean).join(" · "),
         signature,
         unterschriftZeitpunkt: entry.unterschriftZeitpunkt ? stamp(entry.unterschriftZeitpunkt) : null,
-        status: signature ? "unterschrieben" : entry.version > 1 ? "korrigiert" : "offen",
+        status: signature ? "unterschrieben" : entry.korrekturGrund ? "korrigiert" : "offen",
       });
       if (entry.pkw && entry.trips.length > 0) {
         const km = entry.trips.reduce((sum, t) => sum + Number(t.km), 0);

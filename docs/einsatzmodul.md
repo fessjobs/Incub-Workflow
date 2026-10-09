@@ -182,14 +182,37 @@ Darüber steht hervorgehoben der Hinweis, die **Sicherheitsunterweisung vor Arbe
 
 Gemerkt wird das im `localStorage` des Browsers (`fess.einsatz.tutorial.v1`, versioniert: ändert sich der Text, erscheint die Anleitung einmal wieder). Schlägt der Zugriff fehl – privater Modus, blockierte Speicherung –, erscheint sie eben erneut; die Seite funktioniert in beiden Fällen. Über das **?** oben rechts lässt sie sich jederzeit noch einmal aufrufen, Escape und ein Klick daneben schließen sie.
 
+### 6b2. Nachbessern bis zur Unterschrift des Kunden
+
+Eine Schicht läuft selten so ab wie geplant: jemand bleibt länger, die Pause fällt aus, der Beginn verschiebt sich. Die **eigene Unterschrift ist deshalb kein Schlussstrich** – im Link lässt sich ändern, bis der Kunde gezeichnet hat.
+
+Die Grenze zieht `linkSperre()` in `service/time-entries.ts`, und zwar an drei Stellen gleich (Einzellink, Gruppenlink, Namenskorrektur):
+
+| Sperre | wann |
+|---|---|
+| `kunde` | der Kunde hat **diese Schicht** oder den **ganzen Einsatz** bestätigt |
+| `freigegeben` | die Buchhaltung hat die Stunden dieses Eintrags freigegeben – sie sind Grundlage für Lohn und Rechnung |
+| `storniert` | die Einteilung ist storniert |
+
+Solange nichts davon greift, bleibt der Zustand des Einzellinks `offen`, auch nach der eigenen Unterschrift. In der Oberfläche heißt das:
+
+- **Gruppenlink**: Der Knopf bleibt stehen und heißt „Zeiten ändern"; daneben steht der grüne Haken. Das Formular ist mit den **eigenen** Zeiten vorbelegt (vor der Schichtvorgabe und vor den Planzeiten), inklusive Fahrten, Spesen und Notiz – nichts muss neu getippt werden.
+- **Einzellink**: dasselbe, dazu ein Hinweis mit dem Zeitpunkt der letzten Unterschrift; der Absendeknopf heißt „Geänderte Zeiten absenden".
+- **Namen** folgen derselben Grenze: „Name falsch?" bleibt offen, bis der Kunde zeichnet.
+- Nach der Bestätigung des Kunden verschwinden beide Knöpfe; die Leseansicht nennt den Grund.
+
+**Unterschrieben wird jedes Mal neu** – die Signatur gilt den Zeiten, die danebenstehen, und die Unterweisung wird erneut bestätigt. Intern entsteht wie bisher eine neue Version (`version + 1`, `korrigiertVonId`), jede Einreichung steht mit IP und Gerät im Audit-Log.
+
+Auf dem **Stundenzettel** erscheint dabei **kein Korrekturvermerk**: der ist der Dispo vorbehalten. Maßstab dafür ist nicht mehr die Versionsnummer, sondern der `korrekturGrund` – den gibt es nur bei einer Korrektur durch die Dispo, und dort ist er Pflicht. Ändert eine Person ihre Zeiten vor der Kundenunterschrift, steht auf dem Beleg schlicht der gültige Stand; ändert die Dispo danach, steht dort „Korrektur v2: …“ wie gehabt.
+
 ### 6c. Die Crew korrigiert sich selbst
 
 Der Parser verliest sich bei Namen, und manchmal kommt jemand kurzfristig dazu. Beides lässt sich im Gruppenlink ohne Login richtigstellen:
 
-- **„Name falsch?“** je Person: richtige Schreibweise eintragen. Gibt es im Stamm schon jemanden mit dem Namen, wird die Einteilung dorthin umgehängt; ist der bisherige Datensatz nur für diesen Einsatz entstanden (keine Personalnummer, keine Kontaktdaten, keine zweite Einteilung), wird er umbenannt – so entstehen keine Karteileichen.
+- **„Name falsch?“** je Person (bis der Kunde zeichnet, siehe 6b2): richtige Schreibweise eintragen. Gibt es im Stamm schon jemanden mit dem Namen, wird die Einteilung dorthin umgehängt; ist der bisherige Datensatz nur für diesen Einsatz entstanden (keine Personalnummer, keine Kontaktdaten, keine zweite Einteilung), wird er umbenannt – so entstehen keine Karteileichen.
 - **„+ Person ergänzen“** je Schicht: Vor- und Nachname eintragen, die Person kann sofort unterschreiben. Vorhandene Personen werden erkannt statt doppelt angelegt; eine stornierte Einteilung wird reaktiviert.
 
-Grenzen: Eine Person, die bereits unterschrieben hat, wird nicht mehr umbenannt (der Name steht auf dem Beleg). Nach der Kundenbestätigung sind beide Aktionen gesperrt – ab da korrigiert nur noch die Dispo. Jede Änderung steht mit altem und neuem Namen, IP und Quelle `crew-link` im Audit-Log.
+Grenzen: Nach der Kundenbestätigung – für die Schicht oder den ganzen Einsatz – sind beide Aktionen gesperrt, ebenso bei freigegebenen Stunden; ab da korrigiert nur noch die Dispo. Jede Änderung steht mit altem und neuem Namen, IP und Quelle `crew-link` im Audit-Log.
 
 ### 6d. Zeiten für alle übernehmen
 
@@ -226,8 +249,8 @@ Im Backend steht die Bestätigung je Schicht am Schichtkopf und als Kennzeichen 
 ### 6f. Einzellink und Technik
 
 - `/e/[token]`: mobil zuerst, hell, Akzent `#E3682E`, große Touchflächen. Kopf (Einsatz, Kunde, Ort, Datum, eigene Schicht), Zeiten vorbelegt, Pause, Tätigkeit, PKW (privat/Firma, beliebig viele Fahrten), Spesen (+ optionaler Betrag), Notiz, aufklappbare Unterweisung mit Pflicht-Haken, Signatur-Canvas, Absenden.
-- Danach gesperrt (Leseansicht + PDF). Änderungen nur durch die Dispo mit Begründung als neue Version.
-- Token: UUID v4 (122 Bit, unerratbar), 30 Tage ab Schichtende gültig, einmalige Nutzung für die Signatur (`tokenUsedAt`). Rate-Limit je IP (30 GET / 10 POST pro Minute, 20 PDF-Abrufe) und Sperre nach 10 unbekannten Tokens in 15 Minuten. „Links erneuern“ erzeugt neue Tokens für alle, die noch nicht unterschrieben haben.
+- Änderbar bis zur Unterschrift des Kunden (6b2), danach Leseansicht + PDF. Ab dann Änderungen nur durch die Dispo mit Begründung als neue Version.
+- Token: UUID v4 (122 Bit, unerratbar), 30 Tage ab Schichtende gültig. `tokenUsedAt` hält fest, wann zuerst unterschrieben wurde (Anzeige in der Dispo); gesperrt wird nicht darüber, sondern über `linkSperre()`. Rate-Limit je IP (30 GET / 10 POST pro Minute, 20 PDF-Abrufe) und Sperre nach 10 unbekannten Tokens in 15 Minuten. „Links erneuern“ erzeugt neue Tokens für alle, die noch nicht unterschrieben haben.
 - Die Links sind immer vollständige, öffentlich erreichbare Adressen. `base-url.ts` nimmt `APP_BASE_URL`, sonst `NEXT_PUBLIC_APP_URL`, sonst `RAILWAY_PUBLIC_DOMAIN`, sonst den Host des laufenden Aufrufs – und verwirft dabei interne Adressen (`*.railway.internal`, `localhost`, private IP-Bereiche), die sich auf dem Handy nicht öffnen lassen. Steht `APP_BASE_URL` auf so einer Adresse, sagt die Detailansicht das im Klartext.
 - Offline: Service Worker `sw-einsatz.js` (Scope `/e/`) hält Seite und letzte Token-Daten vor; Einreichungen landen bei fehlendem Netz in IndexedDB und werden beim nächsten `online`-Event/Öffnen nachgesendet (Background Sync, wo verfügbar). Fachliche Ablehnungen (z. B. bereits signiert) werden nicht endlos wiederholt.
 - Versand: beim Klick „Links planen“ werden je Person zwei Jobs angelegt – `link.versand` (24 h vor Schichtbeginn, sofort falls näher) und `link.erinnerung` (2 h nach Schichtende, nur wenn noch nicht erfasst). E-Mail über SMTP (`SMTP_URL`, `MAIL_FROM`), sonst nur der fertige Text zum Kopieren.
@@ -431,12 +454,13 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
 
 ## 10. Tests
 
-- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, Links je Schicht (eigener Token, zugeschnittene Nachricht, Zähler, Kundenbestätigung nur bei einer einzigen Schicht), `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text, die Bearbeitbarkeits-Regeln, Erfahrungsstufen und Bewertungsbilanz, Zahlen und abgeleiteter Stand einer Projektmappe, Aushangtext (heute/morgen/später, Stadt aus dem Einsatzort, Gesucht-Zeile), Voraussetzungen der Stundenfreigabe (bestätigbar vs. ohne Unterschrift), Vorzeichen und Summe der Ergänzungen, und wer welchen Schritt der Abrechnung gehen darf; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF; PDF-Stammdatenimport (Dokument-Block, Nachbearbeitung krummer Zeilen, Ablehnung, fehlender Schlüssel, Weiterleitung aus `parseTabelle`).
+- `npm test` – vitest: Stunden (Mitternacht, DST, Nachtfenster, Sonntag), Lohnarten (alle Regeltypen, Feiertag je Bundesland, Garantie), Feiertage/Bundesland, Heuristik-Parser (Beispiel-Rohtext, Trennlinien), Konflikte, zvoove-Mapping/Validierung/Encoding, Link-Adressen und Gruppennachricht, die Sperre im Link (eigene Unterschrift offen, Kunde/Freigabe/Storno zu) und der daraus abgeleitete Linkzustand, Links je Schicht (eigener Token, zugeschnittene Nachricht, Zähler, Kundenbestätigung nur bei einer einzigen Schicht), `base-url` (interne Adressen), Tabellen-Import und Zeilenprüfung, Anhänge (Bild/PDF/Text/Excel, Ablehnungen), Namen aus eingefügtem Text, die Bearbeitbarkeits-Regeln, Erfahrungsstufen und Bewertungsbilanz, Zahlen und abgeleiteter Stand einer Projektmappe, Aushangtext (heute/morgen/später, Stadt aus dem Einsatzort, Gesucht-Zeile), Voraussetzungen der Stundenfreigabe (bestätigbar vs. ohne Unterschrift), Vorzeichen und Summe der Ergänzungen, und wer welchen Schritt der Abrechnung gehen darf; Integration: Parser mit gemocktem `@anthropic-ai/sdk` inkl. Inhaltsblöcken für Bild und PDF; PDF-Stammdatenimport (Dokument-Block, Nachbearbeitung krummer Zeilen, Ablehnung, fehlender Schlüssel, Weiterleitung aus `parseTabelle`).
 - `npm run build && npm run test:e2e` – Playwright gegen den Standalone-Build:
   - `einsatz.spec.ts`: Rohtext → speichern → Konkretisierung-PDF → Mitarbeiter-Link (mobil) → Unterschrift → Sperre → zweite Person + Kunde → Jobs → Stundennachweis unter `stundennachweis` → Freigabe → Auswertung (Summen) → Excel- und zvoove-Export inkl. Validierung.
   - `crew.spec.ts`: Gruppenlink und WhatsApp-Nachricht → Name korrigieren → Person ergänzen (inkl. Dublettenschutz) → alle unterschreiben → Kunde bestätigt → PDF abrufbar und teilbar → Korrekturen danach gesperrt.
   - `loeschen.spec.ts`: Stunden löschen (Einteilung bleibt, steht wieder auf „geplant", Erfahrung sinkt) → freigegebene Zeiten sind gesperrt, mit Begründung statt Knopf → nach Rücknahme der Freigabe löscht der Admin den Einsatz mit getippter Nummer (falsches Wort hält den Knopf zu, der Link liefert danach 404) → Person ohne Einteilungen löschen → Person mit unterschriebenen Zeiten bleibt stehen.
   - `bewertung.spec.ts`: neue Person startet bei null Schichten → nach der Unterschrift zählt die Schicht samt Tätigkeit → bewerten mit Notiz → Stundenzettel am Einsatz freigeben → Personalliste und Profil zeigen Erfahrung und Bilanz → **nichts davon im Mitarbeiter-Link oder in der öffentlichen Schnittstelle** → Bewertung zurücknehmen.
+  - `nachbessern.spec.ts`: nach der eigenen Unterschrift heißt der Knopf „Zeiten ändern" → das Formular ist mit den eigenen Zeiten vorbelegt, geänderte Zeiten ersetzen die alten und der Stundenzettel bleibt ohne Vermerk → im Einzellink derselbe Weg → nach der Unterschrift des Kunden verschwinden Knopf und Namenskorrektur → die Dispo korrigiert danach weiter, dann mit Vermerk (v2).
   - `schichtlink.spec.ts`: Einsatz über zwei Tage mit zwei Schichten → je Schicht ein eigener Abschnitt mit eigenem Token (keiner davon der Token des Einsatzes) → die Nachricht nennt nur die eigene Schicht → der Link zeigt nur deren Personen, mit Hinweis auf die Schicht, und verweist für die Kundenbestätigung auf den Einsatzlink → unterschreiben über den Schichtlink, die zweite Schicht bleibt unberührt → das Backend zeigt den Stand je Schicht und weiterhin „1 von 2" am Einsatzlink → eine Person der anderen Schicht über den fremden Token einzureichen ergibt 403. Dazu die Kundenbestätigung je Schicht: der Kunde zeichnet die erste Schicht ab (das Formular zeigt nur deren Zeilen), nur sie ist danach zu, die Sammelbestätigung entfällt, je Schicht entsteht ein eigener Nachweis (die noch offene Schicht liefert 404) – und ein bereits abgeschlossener Einsatz lässt sich nachträglich je Schicht abzeichnen, obwohl Namen und Besetzung gesperrt sind.
   - `disponent.spec.ts` (erweitert): die Dispo hat keine Menüpunkte in die Zahlenwelt, `/einsaetze/abrechnung`, `/einsaetze/projekte` und `/einsaetze/lohnarten` leiten um, die Einsatzliste zeigt keine Abrechnungsspalte, die Auswertung weder Lohnarten noch Export (die Route antwortet mit 403), Exporte fehlen in den Dokumenten – und am Einsatz selbst steht keine Abrechnungskarte, während Links und Disposition normal funktionieren.
   - `projekte.spec.ts`: zwei fertige Einsätze → zu einem Projekt zusammenfassen (Summe beider Stunden) → am Einsatz steht der Verweis aufs Projekt statt eigener Felder → Angaben einmal im Projekt, dann eine Rechnungsnummer für beide (steht danach an beiden Einsätzen und in der Liste) → Rücknahme löst sie bei beiden → ein Einsatz lässt sich wieder herauslösen. Dazu der Aushang: erzeugte Suchmeldung mit Artist, Stadt, Call, Ort und „Gesucht“ aus Soll minus Besetzung, bearbeitbar, der Teilen-Link folgt der Bearbeitung.

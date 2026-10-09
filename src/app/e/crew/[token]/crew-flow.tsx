@@ -22,8 +22,24 @@ type Person = {
   endeDatum: string;
   ende: string;
   erfasst: boolean;
+  // Darf hier noch geändert werden? Zu ist erst, wenn der Kunde gezeichnet
+  // hat (oder die Stunden freigegeben sind).
+  aenderbar: boolean;
   nameAenderbar: boolean;
-  eintrag: { stundenGesamt: number; start: string; ende: string; pauseMinuten: number } | null;
+  eintrag: {
+    stundenGesamt: number;
+    startDatum: string;
+    start: string;
+    endeDatum: string;
+    ende: string;
+    pauseMinuten: number;
+    notiz: string;
+    pkw: boolean;
+    pkwArt: "PRIVAT" | "FIRMA" | null;
+    fahrten: Array<{ von: string; nach: string; km: number }>;
+    spesen: boolean;
+    unterschriftZeitpunkt: string | null;
+  } | null;
 };
 
 // Zeiten, die eine Person für die ganze Schicht übernommen hat
@@ -286,14 +302,25 @@ export function CrewFlow({ token }: { token: string }) {
                       ) : null}
                     </p>
                   </div>
-                  {p.erfasst ? (
-                    <span className="ez-pill ez-pill-green">✓ unterschrieben</span>
-                  ) : isQueued ? (
+                  {isQueued ? (
                     <span className="ez-pill ez-pill-orange">wartet auf Netz</span>
+                  ) : p.erfasst && !p.aenderbar ? (
+                    <span className="ez-pill ez-pill-green">✓ unterschrieben</span>
                   ) : (
-                    <button type="button" className="ez-btn ez-btn-small" disabled={view.state === "abgelaufen"} onClick={() => setActive({ person: p, schicht: s })} data-testid={`crew-sign-${p.shiftAssignmentId}`}>
-                      Unterschreiben
-                    </button>
+                    // Nach der eigenen Unterschrift bleibt der Knopf stehen:
+                    // bis der Kunde zeichnet, lässt sich nachbessern.
+                    <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      {p.erfasst ? <span className="ez-pill ez-pill-green">✓</span> : null}
+                      <button
+                        type="button"
+                        className={`ez-btn ez-btn-small${p.erfasst ? " ez-btn-ghost" : ""}`}
+                        disabled={view.state === "abgelaufen"}
+                        onClick={() => setActive({ person: p, schicht: s })}
+                        data-testid={`crew-sign-${p.shiftAssignmentId}`}
+                      >
+                        {p.erfasst ? "Zeiten ändern" : "Unterschreiben"}
+                      </button>
+                    </span>
                   )}
                 </div>
                 {nameOffen === p.shiftAssignmentId ? (
@@ -553,21 +580,23 @@ function PersonForm({
   onCancel: () => void;
   onSubmit: (body: unknown) => Promise<{ ok: boolean; error?: string }>;
 }) {
-  // Hat jemand seine Zeiten für die Schicht übernommen, stehen die hier
-  // schon drin – sonst die Planzeiten.
+  // Reihenfolge: eigene Zeiten (wer nachbessert, sieht seine eigenen), sonst
+  // die von einer Kollegin für die Schicht übernommenen, sonst die Planzeiten.
+  const e = person.eintrag;
   const v = schicht.vorgabe;
-  const [startDatum, setStartDatum] = useState(v?.startDatum ?? person.startDatum);
-  const [start, setStart] = useState(v?.start ?? person.start);
-  const [endeDatum, setEndeDatum] = useState(v?.endeDatum ?? person.endeDatum);
-  const [ende, setEnde] = useState(v?.ende ?? person.ende);
-  const [pause, setPause] = useState(String(v?.pauseMinuten ?? 30));
-  const [pkw, setPkw] = useState(false);
-  const [pkwArt, setPkwArt] = useState<"PRIVAT" | "FIRMA" | null>(null);
-  const [km, setKm] = useState("");
-  const [von, setVon] = useState("");
-  const [nach, setNach] = useState("");
-  const [spesen, setSpesen] = useState(false);
-  const [notiz, setNotiz] = useState("");
+  const fahrt = e?.fahrten[0];
+  const [startDatum, setStartDatum] = useState(e?.startDatum ?? v?.startDatum ?? person.startDatum);
+  const [start, setStart] = useState(e?.start ?? v?.start ?? person.start);
+  const [endeDatum, setEndeDatum] = useState(e?.endeDatum ?? v?.endeDatum ?? person.endeDatum);
+  const [ende, setEnde] = useState(e?.ende ?? v?.ende ?? person.ende);
+  const [pause, setPause] = useState(String(e?.pauseMinuten ?? v?.pauseMinuten ?? 30));
+  const [pkw, setPkw] = useState(e?.pkw ?? false);
+  const [pkwArt, setPkwArt] = useState<"PRIVAT" | "FIRMA" | null>(e?.pkwArt ?? null);
+  const [km, setKm] = useState(fahrt ? String(fahrt.km) : "");
+  const [von, setVon] = useState(fahrt?.von ?? "");
+  const [nach, setNach] = useState(fahrt?.nach ?? "");
+  const [spesen, setSpesen] = useState(e?.spesen ?? false);
+  const [notiz, setNotiz] = useState(e?.notiz ?? "");
   const [unterweisung, setUnterweisung] = useState(false);
   const [sigEmpty, setSigEmpty] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -616,7 +645,11 @@ function PersonForm({
       </div>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }} style={{ display: "grid", gap: "0.8rem", marginTop: "0.8rem" }}>
         <div className="ez-card" style={{ display: "grid", gap: "0.7rem" }}>
-          {v ? (
+          {e ? (
+            <div className="ez-info" data-testid="schon-unterschrieben">
+              {person.vorname} hat schon unterschrieben ({e.start}–{e.ende}). Ändern geht, bis der Kunde bestätigt – bitte danach einmal neu unterschreiben.
+            </div>
+          ) : v ? (
             <div className="ez-info" data-testid="vorgabe-hinweis">
               Zeiten von {v.von} übernommen: {v.start}–{v.ende} Uhr, Pause {v.pauseMinuten} min. Wenn es bei dir anders war, hier ändern.
             </div>
@@ -672,7 +705,7 @@ function PersonForm({
         </div>
         {error ? <div className="ez-error" role="alert">{error}</div> : null}
         <button type="submit" className="ez-btn" disabled={busy || sigEmpty || !unterweisung} data-testid="crew-submit">
-          {busy ? "Wird gespeichert …" : "Bestätigen & weiter"}
+          {busy ? "Wird gespeichert …" : e ? "Geänderte Zeiten bestätigen" : "Bestätigen & weiter"}
         </button>
         <button type="button" className="ez-btn ez-btn-ghost" onClick={onCancel}>
           Abbrechen

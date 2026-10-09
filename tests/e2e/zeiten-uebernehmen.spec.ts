@@ -1,7 +1,7 @@
 // Zeiten für alle übernehmen: Die erste Person erfasst, ihre Zeiten gelten
 // als Vorgabe für die Übrigen – vorausgefüllt, jede unterschreibt selbst.
 import { expect, test, type Page } from "@playwright/test";
-import { tutorialWeg, unterschriftAngekommen } from "./helpers";
+import { naechsteUnterschrift, tutorialWeg, unterschriftAngekommen } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -94,7 +94,7 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
     await expect(page.locator('[data-testid^="zeiten-fuer-alle-"]')).toHaveCount(0);
 
     // Die nächste Person bekommt die Zeiten vorausgefüllt
-    await page.locator('[data-testid^="crew-sign-"]').first().click();
+    await naechsteUnterschrift(page).click();
     await expect(page.getByTestId("vorgabe-hinweis")).toContainText("06:30–16:45");
     await expect(page.locator('input[type="time"]').first()).toHaveValue("06:30");
     await expect(page.locator('input[type="time"]').nth(1)).toHaveValue("16:45");
@@ -129,10 +129,12 @@ test.describe.serial("Zeiten für alle übernehmen", () => {
     await page.locator('[data-testid^="vorgabe-loeschen-"]').first().click();
     await expect(page.locator('[data-testid^="vorgabe-c"]')).toHaveCount(0);
 
-    // Danach startet die nächste Erfassung wieder mit den Planzeiten
+    // Danach startet die nächste Erfassung wieder mit den Planzeiten. Wer
+    // schon unterschrieben hat, sieht weiter die eigenen Zeiten – deshalb
+    // gezielt die Person, die noch offen ist.
     await page.goto(crewPath);
     await tutorialWeg(page);
-    await page.locator('[data-testid^="crew-sign-"]').first().click();
+    await naechsteUnterschrift(page).click();
     await expect(page.getByTestId("vorgabe-hinweis")).toHaveCount(0);
     await expect(page.locator('input[type="time"]').first()).toHaveValue("07:00");
   });

@@ -23,7 +23,9 @@ export type RequestMeta = { ip: string | null; userAgent: string | null; geraet?
 
 const tokenInclude = {
   employee: true,
-  shift: { include: { assignment: { include: { customer: true } } } },
+  // Die Bestätigungen des Kunden entscheiden, ob im Link noch etwas geändert
+  // werden darf – darum hängen sie mit an jeder Token-Abfrage.
+  shift: { include: { assignment: { include: { customer: true, confirmations: { select: { shiftId: true } } } } } },
   timeEntries: { where: { aktuell: true }, include: { trips: { orderBy: { reihenfolge: "asc" as const } } } },
 } as const;
 
@@ -32,11 +34,63 @@ export async function loadByToken(token: string) {
   return db.shiftAssignment.findUnique({ where: { token }, include: tokenInclude });
 }
 
+// Bis wann darf im Link geändert werden?
+//
+// Eine Schicht läuft selten so ab wie geplant: jemand bleibt länger, die
+// Pause fällt aus, der Beginn verschiebt sich. Die eigene Unterschrift ist
+// deshalb kein Schlussstrich – geändert werden darf, **bis der Kunde
+// gezeichnet hat**. Danach steht der Beleg, und Änderungen laufen über die
+// Dispo (mit Vermerk auf dem Stundenzettel).
+//
+// Zwei Dinge sperren vorher: eine stornierte Einteilung und Stunden, welche
+// die Buchhaltung schon freigegeben hat – die sind Grundlage für Lohn und
+// Rechnung.
+export type LinkSperre = "storniert" | "kunde" | "freigegeben" | null;
+
+export function linkSperre(input: {
+  status: string;
+  shiftId: string;
+  // Prüfstand des aktuellen Eintrags, null wenn noch nichts erfasst ist
+  review: string | null;
+  // Bestätigungen des Kunden am Einsatz; shiftId null = ganzer Einsatz
+  confirmations: Array<{ shiftId: string | null }>;
+}): LinkSperre {
+  if (input.status === "STORNIERT") return "storniert";
+  if (input.confirmations.some((c) => c.shiftId === null || c.shiftId === input.shiftId)) return "kunde";
+  if (input.review === "FREIGEGEBEN") return "freigegeben";
+  return null;
+}
+
+export const SPERR_TEXT: Record<Exclude<LinkSperre, null>, string> = {
+  storniert: "Diese Einteilung wurde storniert.",
+  kunde: "Der Kunde hat bereits bestätigt – Änderungen bitte über die Dispo.",
+  freigegeben: "Diese Stunden sind schon freigegeben – Änderungen bitte über die Dispo.",
+};
+
+type SperrQuelle = {
+  status: string;
+  shiftId: string;
+  timeEntries: Array<{ review: string }>;
+  shift: { assignment: { confirmations: Array<{ shiftId: string | null }> } };
+};
+
+export function sperreVon(sa: SperrQuelle): LinkSperre {
+  return linkSperre({
+    status: sa.status,
+    shiftId: sa.shiftId,
+    review: sa.timeEntries[0]?.review ?? null,
+    confirmations: sa.shift.assignment.confirmations,
+  });
+}
+
 export type TokenState = "offen" | "erfasst" | "abgelaufen" | "storniert";
 
-export function tokenState(sa: { tokenExpiresAt: Date; tokenUsedAt: Date | null; status: string }): TokenState {
-  if (sa.status === "STORNIERT") return "storniert";
-  if (sa.tokenUsedAt) return "erfasst";
+// „erfasst" heißt jetzt: zu. Solange noch geändert werden darf, bleibt der
+// Zustand „offen" – auch wenn schon unterschrieben wurde.
+export function tokenState(sa: SperrQuelle & { tokenExpiresAt: Date }): TokenState {
+  const sperre = sperreVon(sa);
+  if (sperre === "storniert") return "storniert";
+  if (sperre) return "erfasst";
   if (sa.tokenExpiresAt < new Date()) return "abgelaufen";
   return "offen";
 }
@@ -66,7 +120,8 @@ export async function submitTimeEntry(
   if (!sa) throw new TimeEntryError("Zuordnung nicht gefunden.", 404);
   if (sa.status === "STORNIERT") throw new TimeEntryError("Diese Einteilung wurde storniert.", 409);
   const current = sa.timeEntries[0];
-  if (current?.unterschriftZeitpunkt) throw new TimeEntryError("Dieser Eintrag wurde bereits unterschrieben und ist gesperrt.", 409);
+  const sperre = sperreVon(sa);
+  if (sperre) throw new TimeEntryError(SPERR_TEXT[sperre], 409);
 
   const { istStart, istEnde } = resolveTimes(input);
   await assertMonthOpen(sa.organizationId, istStart);
@@ -145,7 +200,14 @@ const CREW_INCLUDE = {
   confirmations: { orderBy: { zeitpunkt: "desc" } },
   shifts: {
     orderBy: { planStart: "asc" },
-    include: { assignments: { include: { employee: true, timeEntries: { where: { aktuell: true } } }, orderBy: { createdAt: "asc" } } },
+    include: {
+      assignments: {
+        // Fahrten gehören dazu: wer nachbessert, soll seine Kilometer
+        // vorgefüllt sehen statt sie neu eintippen zu müssen.
+        include: { employee: true, timeEntries: { where: { aktuell: true }, include: { trips: { orderBy: { reihenfolge: "asc" } } } } },
+        orderBy: { createdAt: "asc" },
+      },
+    },
   },
 } satisfies Prisma.AssignmentInclude;
 

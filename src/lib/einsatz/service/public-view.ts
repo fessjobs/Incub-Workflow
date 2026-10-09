@@ -10,7 +10,8 @@ import { zeitvorgabeVon, type Zeitvorgabe } from "./besetzung";
 type SAWithAll = Prisma.ShiftAssignmentGetPayload<{
   include: {
     employee: true;
-    shift: { include: { assignment: { include: { customer: true } } } };
+    // Die Bestätigungen des Kunden entscheiden über die Sperre im Link
+    shift: { include: { assignment: { include: { customer: true; confirmations: { select: { shiftId: true } } } } } };
     timeEntries: { include: { trips: true } };
   };
 }>;

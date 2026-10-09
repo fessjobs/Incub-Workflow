@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { checkRateLimit, clientIp, registerTokenMiss, tooManyTokenMisses } from "@/lib/einsatz/rate-limit";
 import { CrewNameSchema, CrewPersonSchema, CrewSubmitSchema, CrewZeitenSchema, CustomerSignSchema } from "@/lib/einsatz/schemas";
 import { entryView } from "@/lib/einsatz/service/public-view";
-import { customerSign, loadCrewByToken, submitTimeEntry, TimeEntryError } from "@/lib/einsatz/service/time-entries";
+import { customerSign, linkSperre, loadCrewByToken, submitTimeEntry, TimeEntryError } from "@/lib/einsatz/service/time-entries";
 import { ergaenzePerson, korrigiereName, RosterError } from "@/lib/einsatz/service/crew-roster";
 import { uebernimmZeitenFuerAlle, zeitvorgabeVon } from "@/lib/einsatz/service/besetzung";
 import { SAFETY_SECTIONS, SAFETY_VERSION, CONFIRMATION_TEXT } from "@/lib/einsatz/safety";
@@ -72,6 +72,9 @@ function crewView(ctx: CrewKontext) {
         .filter((sa) => sa.status !== "STORNIERT")
         .map((sa) => {
           const entry = sa.timeEntries.find((t) => t.aktuell) ?? null;
+          // Geändert werden darf, bis der Kunde zeichnet – die eigene
+          // Unterschrift ist kein Schlussstrich.
+          const sperre = linkSperre({ status: sa.status, shiftId: s.id, review: entry?.review ?? null, confirmations: a.confirmations });
           return {
             shiftAssignmentId: sa.id,
             name: `${sa.employee.vorname} ${sa.employee.nachname}`,
@@ -81,8 +84,9 @@ function crewView(ctx: CrewKontext) {
             endeDatum: berlinDateKey(sa.planEnde),
             ende: berlinTime(sa.planEnde),
             erfasst: Boolean(entry?.unterschriftZeitpunkt),
-            nameAenderbar: !entry?.unterschriftZeitpunkt,
-            eintrag: entry ? entryView({ ...entry, trips: [] }) : null,
+            aenderbar: !expired && sperre === null,
+            nameAenderbar: !expired && sperre === null,
+            eintrag: entry ? entryView(entry) : null,
           };
         }),
       };

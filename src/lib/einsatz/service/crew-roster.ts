@@ -46,14 +46,16 @@ export async function korrigiereName(
 
   const sa = await db.shiftAssignment.findFirst({
     where: { id: shiftAssignmentId, shift: { assignmentId: a.id } },
-    include: { timeEntries: { where: { aktuell: true }, select: { unterschriftZeitpunkt: true } } },
+    include: { timeEntries: { where: { aktuell: true }, select: { review: true } } },
   });
   if (!sa) throw new BesetzungError("Person gehört nicht zu diesem Einsatz.", 403);
   // Jetzt ist die Schicht bekannt – ist genau sie bestätigt, ist zu.
   await assertOffen(assignmentId, sa.shiftId);
   if (sa.status === "STORNIERT") throw new BesetzungError("Diese Einteilung ist storniert.", 409);
-  if (sa.timeEntries.some((t) => t.unterschriftZeitpunkt)) {
-    throw new BesetzungError("Diese Person hat bereits unterschrieben – der Name steht so auf dem Beleg. Bitte die Dispo ansprechen.", 409);
+  // Der Name folgt derselben Grenze wie die Zeiten: änderbar, bis der Kunde
+  // gezeichnet hat (prüft assertOffen) oder die Stunden freigegeben sind.
+  if (sa.timeEntries.some((t) => t.review === "FREIGEGEBEN")) {
+    throw new BesetzungError("Diese Stunden sind schon freigegeben – Änderungen bitte über die Dispo.", 409);
   }
 
   return setzeNamen(a.organizationId, sa.id, eingabe, { userId: null, ip: meta.ip, quelle: "crew-link" });

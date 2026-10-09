@@ -1,7 +1,7 @@
 // Link je Schicht: die Dispo verschickt für jede Schicht eine eigene
 // Nachricht. Wer sie öffnet, sieht nur die Personen dieser Schicht.
 import { expect, test, type Page } from "@playwright/test";
-import { tutorialWeg, unterschriftAngekommen } from "./helpers";
+import { naechsteUnterschrift, tutorialWeg, unterschriftAngekommen } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -191,7 +191,7 @@ Piet Tag2-${RUN2}
     await page.goto(crewPfad);
     await tutorialWeg(page);
     for (let i = 0; i < 2; i++) {
-      await page.locator('[data-testid^="crew-sign-"]').first().click();
+      await naechsteUnterschrift(page).click();
       await page.getByTestId("unterweisung-check").check();
       await drawSignature(page);
       await page.getByTestId("crew-submit").click();
@@ -298,7 +298,7 @@ Umut Spaet-${RUN3}
     await page.goto(crewPfad);
     await tutorialWeg(page);
     for (let i = 0; i < 2; i++) {
-      await page.locator('[data-testid^="crew-sign-"]').first().click();
+      await naechsteUnterschrift(page).click();
       await page.getByTestId("unterweisung-check").check();
       await drawSignature(page);
       await page.getByTestId("crew-submit").click();

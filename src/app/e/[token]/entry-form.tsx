@@ -73,7 +73,7 @@ function ReadOnly({ view, token, pending }: { view: TokenView; token: string; pe
         ) : (
           <>
             <span className="ez-pill ez-pill-green" data-testid="state-erfasst">✓ Unterschrieben</span>
-            <p style={{ marginTop: "0.6rem" }}>Danke! Dein Eintrag ist gespeichert und gesperrt. Änderungen kann nur noch die Dispo mit Begründung vornehmen.</p>
+            <p style={{ marginTop: "0.6rem" }}>Danke! Dein Eintrag steht fest – der Kunde hat bestätigt bzw. die Stunden sind freigegeben. Änderungen nimmt nur noch die Dispo vor, mit Vermerk auf dem Stundenzettel.</p>
           </>
         )}
       </div>
@@ -156,14 +156,24 @@ export function EntryForm({ token }: { token: string }) {
       }
       const v = (await res.json()) as TokenView;
       setView(v);
-      // Hat jemand seine Zeiten für die ganze Schicht übernommen, stehen die
-      // hier schon drin – sonst die Planzeiten.
-      setStartDatum(v.vorgabe?.startDatum ?? v.schicht.startDatum);
-      setStart(v.vorgabe?.start ?? v.schicht.start);
-      setEndeDatum(v.vorgabe?.endeDatum ?? v.schicht.endeDatum);
-      setEnde(v.vorgabe?.ende ?? v.schicht.ende);
-      if (v.vorgabe) setPause(String(v.vorgabe.pauseMinuten));
-      setTaetigkeit(v.schicht.taetigkeit);
+      // Reihenfolge: eigene Zeiten (wer nachbessert, sieht seine eigenen),
+      // sonst die von einer Kollegin übernommenen, sonst die Planzeiten.
+      const e = v.eintrag;
+      setStartDatum(e?.startDatum ?? v.vorgabe?.startDatum ?? v.schicht.startDatum);
+      setStart(e?.start ?? v.vorgabe?.start ?? v.schicht.start);
+      setEndeDatum(e?.endeDatum ?? v.vorgabe?.endeDatum ?? v.schicht.endeDatum);
+      setEnde(e?.ende ?? v.vorgabe?.ende ?? v.schicht.ende);
+      if (e) setPause(String(e.pauseMinuten));
+      else if (v.vorgabe) setPause(String(v.vorgabe.pauseMinuten));
+      setTaetigkeit(e?.taetigkeit || v.schicht.taetigkeit);
+      if (e) {
+        setNotiz(e.notiz);
+        setPkw(e.pkw);
+        setPkwArt(e.pkwArt);
+        if (e.fahrten.length > 0) setFahrten(e.fahrten.map((f) => ({ von: f.von, nach: f.nach, km: String(f.km) })));
+        setSpesen(e.spesen);
+        setSpesenBetrag(e.spesenBetrag === null ? "" : String(e.spesenBetrag));
+      }
     } catch {
       setLoadError("Keine Verbindung. Sobald wieder Netz da ist, bitte neu laden.");
     }
@@ -293,6 +303,12 @@ export function EntryForm({ token }: { token: string }) {
       >
         <div className="ez-card" style={{ display: "grid", gap: "0.7rem" }}>
           <p className="ez-eyebrow">Arbeitszeit</p>
+          {view.eintrag ? (
+            <div className="ez-info" data-testid="schon-unterschrieben">
+              Du hast am {new Date(view.eintrag.unterschriftZeitpunkt ?? "").toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} Uhr
+              unterschrieben. Ändern geht noch, bis der Kunde bestätigt – danach bitte einmal neu unterschreiben.
+            </div>
+          ) : null}
           {view.vorgabe ? (
             <div className="ez-info" data-testid="vorgabe-hinweis">
               Zeiten von {view.vorgabe.von} übernommen: {view.vorgabe.start}–{view.vorgabe.ende} Uhr, Pause {view.vorgabe.pauseMinuten} min. Wenn es bei dir anders war, hier ändern.
@@ -391,7 +407,7 @@ export function EntryForm({ token }: { token: string }) {
         {error ? <div className="ez-error" role="alert">{error}</div> : null}
 
         <button type="submit" className="ez-btn" disabled={submitting || sigEmpty || !unterweisung} data-testid="submit">
-          {submitting ? "Wird gesendet …" : "Zeiten bestätigen & absenden"}
+          {submitting ? "Wird gesendet …" : view.eintrag ? "Geänderte Zeiten absenden" : "Zeiten bestätigen & absenden"}
         </button>
         <p className="ez-muted" style={{ fontSize: "0.8rem", textAlign: "center" }}>
           Nach dem Absenden ist dein Eintrag gesperrt. Zeitstempel, Gerät und IP werden protokolliert.

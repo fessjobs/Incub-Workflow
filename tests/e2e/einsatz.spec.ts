@@ -2,7 +2,7 @@
 // → Stundennachweis-PDF → Freigabe → Auswertung → Excel-/zvoove-Export.
 // Läuft gegen den Production-Build mit der Seed-Datenbank (Admin-Login).
 import { expect, test, type Page } from "@playwright/test";
-import { tutorialWeg } from "./helpers";
+import { naechsteUnterschrift, tutorialWeg } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -89,7 +89,7 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     tokenUrl = new URL(tokenUrl).pathname;
   });
 
-  test("Mitarbeiter erfasst auf dem Handy und unterschreibt; Eintrag ist danach gesperrt", async ({ browser }) => {
+  test("Mitarbeiter erfasst auf dem Handy und unterschreibt; nachbessern bleibt möglich", async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const page = await context.newPage();
     await page.goto(tokenUrl);
@@ -105,10 +105,11 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     await drawSignature(page);
     await expect(page.getByTestId("submit")).toBeEnabled();
     await page.getByTestId("submit").click();
-    await expect(page.getByTestId("state-erfasst")).toBeVisible();
-    // Zweiter Versuch über die API wird abgelehnt (einmalige Signatur)
-    const again = await page.request.post(`/api${tokenUrl}`, { data: { startDatum: DATE, start: "07:00", endeDatum: DATE, ende: "15:00", unterweisungBestaetigt: true, unterschrift: "x".repeat(200) } });
-    expect(again.status()).toBe(409);
+    // Gespeichert – aber nicht zu: bis der Kunde zeichnet, darf nachgebessert
+    // werden, und das Formular steht mit den eigenen Zeiten wieder da.
+    await expect(page.getByTestId("schon-unterschrieben")).toBeVisible();
+    await expect(page.getByTestId("submit")).toHaveText("Geänderte Zeiten absenden");
+    await expect(page.locator("#pause")).toHaveValue("30");
     await context.close();
   });
 
@@ -120,9 +121,9 @@ test.describe.serial("Einsatzmodul – kompletter Weg", () => {
     // Domain ist im Test simuliert, deshalb lokal über den Pfad öffnen
     await page.goto(new URL(url).pathname);
     await tutorialWeg(page);
-    const signButtons = page.locator('[data-testid^="crew-sign-"]');
-    await expect(signButtons).toHaveCount(1);
-    await signButtons.first().click();
+    // Zwei Knöpfe: die erste Person kann nachbessern, die zweite fehlt noch
+    await expect(page.locator('[data-testid^="crew-sign-"]')).toHaveCount(2);
+    await naechsteUnterschrift(page).click();
     await page.getByTestId("unterweisung-check").check();
     await drawSignature(page);
     await page.getByTestId("crew-submit").click();

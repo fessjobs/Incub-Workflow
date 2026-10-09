@@ -32,7 +32,7 @@ export function CorrectionForm({ entry, name }: { entry: EntryInput; name: strin
   if (entry.review === "FREIGEGEBEN") return <span className="text-xs text-navy-400">freigegeben – keine Korrektur</span>;
   if (!open) {
     return (
-      <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(true)}>
+      <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(true)} data-testid={`korrektur-open-${entry.id}`}>
         Korrigieren
       </button>
     );
@@ -60,12 +60,13 @@ export function CorrectionForm({ entry, name }: { entry: EntryInput; name: strin
         </label>
         <input className="input" value={f.spesenBetrag} disabled={!f.spesen} onChange={(e) => setF({ ...f, spesenBetrag: e.target.value })} placeholder="Spesen €" />
         <input className="input md:col-span-2" value={f.notiz} onChange={(e) => setF({ ...f, notiz: e.target.value })} placeholder="Notiz" />
-        <input className="input md:col-span-4" value={f.grund} onChange={(e) => setF({ ...f, grund: e.target.value })} placeholder="Grund der Korrektur (Pflicht)" />
+        <input className="input md:col-span-4" value={f.grund} onChange={(e) => setF({ ...f, grund: e.target.value })} placeholder="Grund der Korrektur (Pflicht)" data-testid={`korrektur-grund-${entry.id}`} />
         <div className="flex gap-2 md:col-span-2">
           <button
             type="button"
             className="btn-accent"
             disabled={pending}
+            data-testid={`korrektur-save-${entry.id}`}
             onClick={() =>
               start(async () => {
                 setError(null);

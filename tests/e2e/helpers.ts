@@ -1,5 +1,5 @@
 // Gemeinsame Handgriffe der E2E-Tests.
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 // Beim ersten Öffnen eines Mitarbeiter-Links steht die Kurzanleitung davor.
 // In den Tests, die etwas anderes prüfen, wird sie weggeklickt – genau so,
@@ -21,4 +21,12 @@ export async function tutorialWeg(page: Page): Promise<void> {
 // muss auf den Zähler schauen: der stammt aus der Antwort des Servers.
 export async function unterschriftAngekommen(page: Page, unterschrieben: number, gesamt: number): Promise<void> {
   await expect(page.getByText(`${unterschrieben} von ${gesamt} unterschrieben`)).toBeVisible();
+}
+
+// Nach der eigenen Unterschrift bleibt der Knopf im Gruppenlink stehen und
+// heißt „Zeiten ändern" – geändert werden darf, bis der Kunde zeichnet. Wer
+// der Reihe nach unterschreiben lässt, greift deshalb gezielt die Person ab,
+// die noch nicht unterschrieben hat.
+export function naechsteUnterschrift(page: Page): Locator {
+  return page.locator('[data-testid^="crew-sign-"]', { hasText: "Unterschreiben" }).first();
 }

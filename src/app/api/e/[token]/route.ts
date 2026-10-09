@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { checkRateLimit, clientIp, registerTokenMiss, tooManyTokenMisses } from "@/lib/einsatz/rate-limit";
 import { TimeEntrySubmitSchema } from "@/lib/einsatz/schemas";
 import { tokenView } from "@/lib/einsatz/service/public-view";
-import { loadByToken, submitTimeEntry, TimeEntryError, tokenState } from "@/lib/einsatz/service/time-entries";
+import { loadByToken, sperreVon, SPERR_TEXT, submitTimeEntry, TimeEntryError, tokenState } from "@/lib/einsatz/service/time-entries";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   }
   const state = tokenState(sa);
   if (state !== "offen") {
-    const msg = state === "erfasst" ? "Dieser Eintrag wurde bereits unterschrieben." : state === "abgelaufen" ? "Der Link ist abgelaufen. Bitte bei der Dispo melden." : "Diese Einteilung wurde storniert.";
+    const sperre = sperreVon(sa);
+    const msg = sperre ? SPERR_TEXT[sperre] : "Der Link ist abgelaufen. Bitte bei der Dispo melden.";
     return NextResponse.json({ error: msg, state }, { status: 409 });
   }
   let body: unknown;

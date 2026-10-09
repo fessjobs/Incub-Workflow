@@ -1,7 +1,7 @@
 // Gruppenlink: ein Link für alle. Namen korrigieren, Person ergänzen,
 // unterschreiben, Kunde bestätigt, PDF ansehen und teilen.
 import { expect, test, type Page } from "@playwright/test";
-import { tutorialWeg, unterschriftAngekommen } from "./helpers";
+import { naechsteUnterschrift, tutorialWeg, unterschriftAngekommen } from "./helpers";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -122,13 +122,16 @@ test.describe.serial("Gruppenlink", () => {
     await expect(offen.first()).toBeVisible();
     const gesamt = await offen.count();
     for (let rest = gesamt; rest > 0; rest--) {
-      await offen.first().click();
+      await naechsteUnterschrift(page).click();
       await page.getByTestId("unterweisung-check").check();
       await drawSignature(page);
       await page.getByTestId("crew-submit").click();
       await unterschriftAngekommen(page, gesamt - rest + 1, gesamt);
     }
-    await expect(page.locator('[data-testid^="crew-sign-"]')).toHaveCount(0);
+    // Alle haben unterschrieben – zu ist trotzdem noch nichts: bis der Kunde
+    // zeichnet, darf jede Person ihre Zeiten nachbessern.
+    await expect(page.locator('[data-testid^="crew-sign-"]', { hasText: "Unterschreiben" })).toHaveCount(0);
+    await expect(page.locator('[data-testid^="crew-sign-"]', { hasText: "Zeiten ändern" })).toHaveCount(gesamt);
 
     // Solange der Kunde nicht bestätigt hat, gibt es auch keinen Beleg
     await expect(page.getByTestId("crew-pdf")).toHaveCount(0);
@@ -146,6 +149,8 @@ test.describe.serial("Gruppenlink", () => {
     await page.reload();
     const pdf = page.getByTestId("crew-pdf");
     await expect(pdf).toBeVisible({ timeout: 30_000 });
+    // Mit der Unterschrift des Kunden steht der Beleg: kein Ändern mehr
+    await expect(page.locator('[data-testid^="crew-sign-"]')).toHaveCount(0);
     const href = await page.getByTestId("crew-pdf-ansehen").getAttribute("href");
     const res = await page.request.get(href!);
     expect(res.status()).toBe(200);
