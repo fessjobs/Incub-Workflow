@@ -5,6 +5,7 @@ import { defineConfig, devices } from "@playwright/test";
 // Erwartet eine erreichbare Datenbank (DATABASE_URL) mit Seed. Der Server
 // wird aus dem Production-Build gestartet (npm run build vorher).
 const port = Number(process.env.E2E_PORT ?? 3100);
+const previewPort = Number(process.env.E2E_PREVIEW_PORT ?? 3102);
 // Vorinstalliertes Chromium nutzen (z. B. Claude-Code-Web), sonst Playwright-Download
 const chromium = process.env.PW_CHROMIUM ?? (existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined);
 
@@ -26,20 +27,32 @@ export default defineConfig({
   },
   webServer: process.env.E2E_BASE_URL
     ? undefined
-    : {
-        // Der Standalone-Build enthält weder .next/static noch public – das
-        // Dockerfile kopiert beides hinein, hier muss es genauso passieren,
-        // sonst läuft die Oberfläche ohne Client-JavaScript.
-        command:
-          `rm -rf .next/standalone/.next/static .next/standalone/public && ` +
-          `cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public && ` +
-          `PORT=${port} HOSTNAME=0.0.0.0 node .next/standalone/server.js`,
-        url: `http://localhost:${port}/api/health`,
-        reuseExistingServer: true,
-        timeout: 120_000,
-        // Bewusst OHNE APP_BASE_URL, dafür mit der Variable, die Railway selbst
-        // setzt: der Test prüft, dass die Links auch ohne eigene Konfiguration
-        // vollständig und öffentlich erreichbar sind (127.0.0.1 gilt als intern).
-        env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: "", RAILWAY_PUBLIC_DOMAIN: "incub-workflow-production.up.railway.app" },
-      },
+    : [
+        {
+          // Der Standalone-Build enthält weder .next/static noch public – das
+          // Dockerfile kopiert beides hinein, hier muss es genauso passieren,
+          // sonst läuft die Oberfläche ohne Client-JavaScript.
+          command:
+            `rm -rf .next/standalone/.next/static .next/standalone/public && ` +
+            `cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public && ` +
+            `PORT=${port} HOSTNAME=0.0.0.0 node .next/standalone/server.js`,
+          url: `http://localhost:${port}/api/health`,
+          reuseExistingServer: true,
+          timeout: 120_000,
+          // Bewusst OHNE APP_BASE_URL, dafür mit der Variable, die Railway selbst
+          // setzt: der Test prüft, dass die Links auch ohne eigene Konfiguration
+          // vollständig und öffentlich erreichbar sind (127.0.0.1 gilt als intern).
+          env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: "", RAILWAY_PUBLIC_DOMAIN: "incub-workflow-production.up.railway.app" },
+        },
+        {
+          // Zweiter Server nur für den Klick-Prototyp „Testversion“ (/preview):
+          // dort ist das Flag an. Der Hauptserver oben hat es bewusst nicht –
+          // so prüft der Test auch, dass ohne Flag alles beim Alten bleibt.
+          command: `PORT=${previewPort} HOSTNAME=0.0.0.0 node .next/standalone/server.js`,
+          url: `http://localhost:${previewPort}/api/health`,
+          reuseExistingServer: true,
+          timeout: 120_000,
+          env: { ...process.env, PORT: String(previewPort), JOBS_WORKER: "off", PREVIEW_ENABLED: "1", PREVIEW_PASSWORD: process.env.PREVIEW_PASSWORD ?? "preview-test", AUTH_SECRET: process.env.AUTH_SECRET ?? "e2e-preview-secret-0123456789abcdef" },
+        },
+      ],
 });

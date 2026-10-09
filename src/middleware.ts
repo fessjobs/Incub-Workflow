@@ -8,6 +8,9 @@ const PUBLIC_PATHS = ["/login", "/registrieren"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Testversion (Klick-Prototyp): hat ein eigenes Passwort und existiert nur mit
+  // PREVIEW_ENABLED=1 – die Seite selbst prüft beides, hier nur durchlassen
+  if (pathname === "/preview" || pathname.startsWith("/preview/")) return NextResponse.next();
   // Mitarbeiter-Link: komplett öffentlich (Passwort-Gate in der Seite selbst)
   if (pathname.startsWith("/mitarbeiter")) return NextResponse.next();
   // Einsatzmodul: Token-Links für Mitarbeiter/Ansprechpartner (Schutz über
