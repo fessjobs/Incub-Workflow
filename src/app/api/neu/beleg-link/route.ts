@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { neuBenutzer } from "@/lib/neu/auth";
+import { neuBenutzerFuer } from "@/lib/neu/auth";
 import { leseRecord } from "@/lib/neu/store";
 import { inTagen, neuesToken, tokenHash } from "@/lib/neu/token";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 // Beleg-Link je Auftrag: ohne Anmeldung nutzbar, mit Ablauf
 export async function POST(req: Request) {
-  const a = await neuBenutzer();
+  const a = await neuBenutzerFuer("beleg-link");
   if (!a.ok) return a.antwort;
   const body = z.object({ jobId: z.string().min(1).max(80) }).safeParse(await req.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: "Ungültige Anfrage." }, { status: 400 });

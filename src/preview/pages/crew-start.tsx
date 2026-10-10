@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Link, gehe } from "../nav";
 import { usePv, selbst, HEUTE } from "../state/store";
 import { Bar, Btn, Chip, Karte, LinkBtn, Modal, Note, Offen, Seg, ladeTextHerunter } from "../ui/kit";
+import type { FreigabeAnzeige } from "../logic/freigabe";
 import { fortschritt } from "../logic/profil";
 import { levelFuer } from "../logic/xp";
 import { MODULE } from "../data/trainings";
@@ -32,8 +33,24 @@ export function CrewGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+// Hinweis, solange das Team die Aufträge noch nicht freigeschaltet hat
+export function FreigabeHinweis({ status, de, aktualisieren }: { status: FreigabeAnzeige; de: boolean; aktualisieren?: () => Promise<void> }) {
+  if (status === "freigegeben") return null;
+  const text: Record<Exclude<FreigabeAnzeige, "freigegeben">, [string, string]> = {
+    offen: ["Die Aufträge schaltet das Team frei, sobald du den Fragebogen und die Grund-Unterweisung gemacht hast.", "The team unlocks the jobs once you have completed the questionnaire and the basic safety briefing."],
+    wartet: ["Danke! Das Team prüft deine Angaben und schaltet die Aufträge für dich frei. Du bekommst Bescheid.", "Thank you! The team is reviewing your details and will unlock the jobs for you. We will let you know."],
+    abgelehnt: ["Zurzeit können wir dir keine Aufträge freischalten. Bei Fragen melde dich bitte bei FESS.", "We cannot unlock jobs for you at the moment. Please contact FESS if you have questions."],
+  };
+  return (
+    <Note ton={status === "abgelehnt" ? "warn" : undefined}>
+      <span data-testid="freigabe-hinweis" data-status={status}>{text[status][de ? 0 : 1]}</span>
+      {aktualisieren && status !== "abgelehnt" ? <div className="mt1"><Btn v="sec" groesse="sm" onClick={() => void aktualisieren()} data-testid="freigabe-pruefen">{de ? "Status prüfen" : "Check status"}</Btn></div> : null}
+    </Note>
+  );
+}
+
 export function CrewStart() {
-  const { s, set, melde, geladen } = usePv();
+  const { s, set, melde, geladen, aktualisieren } = usePv();
   const de = s.lang === "de";
   const ich = selbst(s);
   const [handy, setHandy] = useState("0151 0000 9001");
@@ -116,12 +133,14 @@ export function CrewStart() {
           </li>
           <li className="mt2">
             <Link href="/crew/jobs" className="row" style={{ textDecoration: "none" }}>
-              <span className="pv-ic">3</span>
-              <span className="grow"><b>{de ? "Job finden und bewerben" : "Find a job and apply"}</b><div className="small muted">{de ? `${s.jobs.filter((j) => j.status === "offen").length} offene Jobs` : `${s.jobs.filter((j) => j.status === "offen").length} open jobs`}</div></span>
+              <span className="pv-ic">{s.meineFreigabe === "freigegeben" ? "3" : "🔒"}</span>
+              <span className="grow"><b>{de ? "Job finden und bewerben" : "Find a job and apply"}</b><div className="small muted">{s.meineFreigabe !== "freigegeben" ? (s.meineFreigabe === "wartet" ? (de ? "wartet auf Freischaltung durch das Team" : "waiting for the team to unlock") : de ? "wird nach Fragebogen und Unterweisung freigeschaltet" : "unlocked after questionnaire and briefing") : de ? `${s.jobs.filter((j) => j.status === "offen").length} offene Jobs` : `${s.jobs.filter((j) => j.status === "offen").length} open jobs`}</div></span>
             </Link>
           </li>
         </ol>
       </Karte>
+
+      {s.meineFreigabe !== "freigegeben" ? <FreigabeHinweis status={s.meineFreigabe} de={de} aktualisieren={aktualisieren} /> : null}
 
       <Karte>
         <div className="row between"><h3>Level</h3><Chip ton="orange">{lv.name}</Chip></div>

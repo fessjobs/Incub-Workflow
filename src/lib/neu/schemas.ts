@@ -2,7 +2,7 @@
 // je Art gespeichert; hier steht, welche Form pro Art erlaubt ist.
 import { z } from "zod";
 
-export const KINDS = ["crew", "job", "bewerbung", "auftrag", "stunde", "zuweisung", "briefing", "beleg", "notiz", "einst"] as const;
+export const KINDS = ["crew", "job", "bewerbung", "auftrag", "stunde", "zuweisung", "briefing", "beleg", "notiz", "einst", "benutzer"] as const;
 export type Kind = (typeof KINDS)[number];
 
 const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -41,6 +41,8 @@ const job = z.object({
   ablauf: z.array(kurz).max(30),
   status: z.enum(["Entwurf", "offen", "voll", "laufend", "abgerechnet"]),
   quelle: z.enum(["Planung Regios", "manuell"]),
+  zusatzModule: z.array(z.string().max(40)).max(10).optional(),
+  importKey: z.string().max(200).optional(),
 });
 
 const vertrag = z.object({
@@ -74,6 +76,13 @@ const crew = z
     unterweisungen: z.record(z.object({ version: z.string().max(60), bestaetigtAm: datum, quizScore: z.number().min(0).max(1) })),
     ratings: z.array(z.record(z.unknown())).max(500),
     notizen: lang,
+    freigabe: z.object({ status: z.enum(["bestaetigt", "abgelehnt"]), am: datum, von: z.string().max(200), notiz: z.string().max(1000) }).optional(),
+    kleidungAusgabe: z
+      .array(z.object({ id: z.string().min(1).max(80), artikel: z.string().max(80), groesse: z.string().max(20), pfandEur: z.number().min(0).max(10000), ausgegebenAm: datum, zurueckAm: datum.nullable(), notiz: z.string().max(500) }))
+      .max(60)
+      .optional(),
+    kontakt: z.object({ vorlage: z.string().max(80), am: datum, von: z.string().max(200) }).optional(),
+    importQuelle: z.object({ quelle: z.literal("zvoove"), am: datum }).optional(),
   })
   .passthrough();
 
@@ -122,8 +131,10 @@ const beleg = z
   .passthrough();
 const notiz = z.object({ id: z.string().min(1).max(80), zeit: z.string().max(40), bereich: z.string().max(100), text: lang });
 const einst = z.record(z.unknown());
+// Zugriff weiterer Konten auf das neue Dashboard (Konten selbst bleiben im bisherigen System)
+const benutzer = z.object({ userId: z.string().min(1).max(80), name: z.string().max(200), email: z.string().max(200), rolle: z.enum(["dispo", "buchhaltung", "lesen"]) });
 
-export const KIND_SCHEMA: Record<Kind, z.ZodTypeAny> = { crew, job, bewerbung, auftrag, stunde, zuweisung, briefing, beleg, notiz, einst };
+export const KIND_SCHEMA: Record<Kind, z.ZodTypeAny> = { crew, job, bewerbung, auftrag, stunde, zuweisung, briefing, beleg, notiz, einst, benutzer };
 
 export const opSchema = z.object({
   kind: z.enum(KINDS),

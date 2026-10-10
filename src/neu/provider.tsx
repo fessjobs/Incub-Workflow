@@ -9,6 +9,7 @@ import { heuteBerlin } from "@/preview/logic/zeit";
 import { SELF_ID } from "@/preview/data/demo";
 import { setzeBearbeiter } from "@/preview/pages/stunden-aktionen";
 import { aenderungen, revsAnwenden, zustandAusServer, type Revs, type ServerStand, type SyncOp } from "./state";
+import type { NeuRolle } from "@/lib/neu/rollen";
 
 // Der heutige Tag in Deutschland gilt ab dem ersten Rendern
 setzeHeute(heuteBerlin());
@@ -28,6 +29,7 @@ export function NeuProvider({ children }: { children: ReactNode }) {
   const [speicher, setSpeicher] = useState<"ok" | "laeuft" | "fehler">("ok");
   const [basis, setBasis] = useState<string | null>(null);
   const [benutzer, setBenutzer] = useState("");
+  const [rolle, setRolle] = useState<NeuRolle>("lesen");
   const [ladefehler, setLadefehler] = useState<string | null>(null);
 
   const sRef = useRef(s);
@@ -50,9 +52,9 @@ export function NeuProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const laden = useCallback(async () => {
-    const r = await holeJson<ServerStand & { basis: string | null; benutzer: string }>("/api/neu/state");
+    const r = await holeJson<ServerStand & { basis: string | null; benutzer: string; rolle: NeuRolle }>("/api/neu/state");
     if (!r.ok || !r.json) {
-      setLadefehler(r.status === 403 ? "Für dieses Konto ist das neue Dashboard nicht freigegeben." : "Das neue Dashboard konnte nicht geladen werden.");
+      setLadefehler(r.status === 403 ? "Für dieses Konto ist das neue Dashboard nicht freigegeben. Ein Administrator kann es unter „Benutzer“ freischalten." : "Das neue Dashboard konnte nicht geladen werden.");
       return;
     }
     const { s: neu, revs: neueRevs } = zustandAusServer(r.json);
@@ -61,6 +63,7 @@ export function NeuProvider({ children }: { children: ReactNode }) {
     stand.current = r.json.version;
     setBasis(r.json.basis);
     setBenutzer(r.json.benutzer);
+    setRolle(r.json.rolle);
     setzeBearbeiter(r.json.benutzer);
     setLadefehler(null);
     // Einstellungen der Oberfläche (Sprache) bleiben, Daten kommen vom Server
@@ -89,6 +92,13 @@ export function NeuProvider({ children }: { children: ReactNode }) {
         const r = await holeJson<{ revs?: Record<string, number>; error?: string }>("/api/neu/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ops: stueck, audit: i === 0 ? audit : [] }) });
         if (r.status === 409) {
           melde("Die Daten wurden zwischenzeitlich woanders geändert – neu geladen. Bitte die letzte Änderung wiederholen.");
+          await laden();
+          setSpeicher("ok");
+          return;
+        }
+        if (r.status === 403) {
+          // Keine Berechtigung: nicht endlos wiederholen, sondern die Änderung verwerfen und den gespeicherten Stand zeigen
+          melde(r.json?.error ? `${r.json.error} Die Änderung wurde nicht gespeichert.` : "Dafür fehlt die Berechtigung. Die Änderung wurde nicht gespeichert.");
           await laden();
           setSpeicher("ok");
           return;
@@ -177,8 +187,8 @@ export function NeuProvider({ children }: { children: ReactNode }) {
   }, [laden, melde]);
 
   const wert = useMemo<Ctx>(
-    () => ({ s, modus: "echt", basis, set, reset: () => void laden(), toast, melde, geladen, speicher, echt: { benutzer, neuLaden: laden, beispieldatenLaden, beispieldatenEntfernen } }),
-    [s, basis, set, laden, toast, melde, geladen, speicher, benutzer, beispieldatenLaden, beispieldatenEntfernen]
+    () => ({ s, modus: "echt", basis, set, reset: () => void laden(), toast, melde, geladen, speicher, echt: { benutzer, rolle, neuLaden: laden, beispieldatenLaden, beispieldatenEntfernen } }),
+    [s, basis, set, laden, toast, melde, geladen, speicher, benutzer, rolle, beispieldatenLaden, beispieldatenEntfernen]
   );
 
   if (ladefehler) {

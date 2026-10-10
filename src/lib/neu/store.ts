@@ -3,6 +3,7 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { KIND_SCHEMA, KINDS, type Kind, type Op } from "./schemas";
+import { darfLesen, darfSchreiben, type NeuRolle } from "./rollen";
 
 export interface Datensatz {
   id: string;
@@ -24,11 +25,11 @@ export interface AuditZeile {
   grund: string | null;
 }
 
-export async function ladeAlles(organizationId: string): Promise<{ records: Alle; audit: AuditZeile[]; version: string }> {
+export async function ladeAlles(organizationId: string, rolle: NeuRolle = "admin"): Promise<{ records: Alle; audit: AuditZeile[]; version: string }> {
   const zeilen = await db.v2Record.findMany({ where: { organizationId }, select: { kind: true, id: true, rev: true, data: true }, orderBy: [{ kind: "asc" }, { createdAt: "asc" }] });
   const records = Object.fromEntries(KINDS.map((k) => [k, [] as Datensatz[]])) as Alle;
   for (const z of zeilen) {
-    if ((KINDS as readonly string[]).includes(z.kind)) records[z.kind as Kind].push({ id: z.id, rev: z.rev, data: z.data });
+    if ((KINDS as readonly string[]).includes(z.kind) && darfLesen(rolle, z.kind as Kind)) records[z.kind as Kind].push({ id: z.id, rev: z.rev, data: z.data });
   }
   const audit = await db.v2Audit.findMany({ where: { organizationId }, orderBy: { zeitpunkt: "desc" }, take: 300 });
   return {
@@ -47,13 +48,15 @@ export async function version(organizationId: string): Promise<string> {
   return `${r._count}:${r._max.updatedAt?.getTime() ?? 0}:${a._count}`;
 }
 
-export type SchreibErgebnis = { ok: true; revs: Record<string, number> } | { ok: false; konflikte: string[] } | { ok: false; ungueltig: string };
+export type SchreibErgebnis = { ok: true; revs: Record<string, number> } | { ok: false; konflikte: string[] } | { ok: false; ungueltig: string } | { ok: false; verboten: string };
 
 // Schreibt Änderungen in EINER Transaktion. Beruht eine Änderung auf einem
 // veralteten Stand (rev passt nicht), wird nichts geschrieben und der Konflikt
 // gemeldet – der Bildschirm lädt dann neu.
-export async function schreibeOps(organizationId: string, benutzer: string, ops: Op[]): Promise<SchreibErgebnis> {
+export async function schreibeOps(organizationId: string, benutzer: string, ops: Op[], rolle: NeuRolle = "admin"): Promise<SchreibErgebnis> {
   if (ops.length === 0) return { ok: true, revs: {} };
+  // Rolle: nur Datensätze, die diese Rolle ändern darf
+  for (const op of ops) if (!darfSchreiben(rolle, op.kind)) return { ok: false, verboten: `${op.kind}: Dafür fehlt die Berechtigung.` };
   // Form je Art prüfen, bevor etwas geschrieben wird
   for (const op of ops) {
     if (op.data === null) continue;
@@ -76,10 +79,18 @@ export async function schreibeOps(organizationId: string, benutzer: string, ops:
       }
       if (konflikte.length > 0) return { ok: false as const, konflikte };
 
+      // Verträge und Lohn ändert nur die Administration: andere Rollen speichern Personen mit dem gespeicherten Vertrag
+      let geschuetzt: Map<string, unknown> | null = null;
+      if (rolle !== "admin" && ops.some((o) => o.kind === "crew" && o.data !== null)) {
+        const alt = await tx.v2Record.findMany({ where: { organizationId, kind: "crew", id: { in: ops.filter((o) => o.kind === "crew").map((o) => o.id) } }, select: { id: true, data: true } });
+        geschuetzt = new Map(alt.map((a) => [a.id, (a.data as { contract?: unknown } | null)?.contract ?? null]));
+      }
+
       const revs: Record<string, number> = {};
       for (const op of ops) {
         const key = `${op.kind}:${op.id}`;
         const aktuell = stand.get(key);
+        if (geschuetzt && op.kind === "crew" && op.data !== null) op.data = { ...(op.data as Record<string, unknown>), contract: geschuetzt.get(op.id) ?? null };
         if (op.data === null) {
           if (aktuell !== undefined) await tx.v2Record.delete({ where: { organizationId_kind_id: { organizationId, kind: op.kind, id: op.id } } });
           continue;

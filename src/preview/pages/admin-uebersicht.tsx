@@ -9,6 +9,7 @@ import { pruefeZeilen, zaehleWarnungen } from "../logic/stunden";
 import { ampelVertrag } from "../logic/grenzen";
 import { formatDatumDE } from "../logic/zeit";
 import { besetzt, unterweisungsStand } from "./helfer";
+import { freigabeStand } from "../logic/freigabe";
 
 export function AdminUebersicht() {
   const { s, modus, echt } = usePv();
@@ -26,10 +27,12 @@ export function AdminUebersicht() {
   const vertraegeKnapp = aktive.filter((c) => c.contract && ampelVertrag(c.contract.gueltigBis, HEUTE) !== "gruen").length;
   const unterweisungAb = aktive.filter((c) => unterweisungsStand(c).abgelaufen > 0 || unterweisungsStand(c).laeuftAb > 0).length;
   const offeneZeilen = s.stunden.filter((r) => r.status === "offen").length;
+  const wartenAufFreigabe = s.crew.filter((c) => c.status !== "ausgeschieden" && freigabeStand(c, s.einst.schulung, HEUTE) === "wartet").length;
   const luecken = s.jobs.reduce((n, j) => n + Math.max(0, besetzt(s, j).bedarf - besetzt(s, j).besetzt), 0);
 
   const aufgaben: Array<{ href: string; text: string; ton: "err" | "warn" | "info"; n: number }> = [
     { href: "/admin/bewerber", text: "neue Bewerbungen auf Jobs", ton: "info", n: neueBewerbungen },
+    { href: "/admin/freigaben", text: "Personen warten auf deine Freigabe für die Aufträge", ton: "warn", n: wartenAufFreigabe },
     { href: "/admin/bewerber", text: "Fragebögen warten auf Durchsicht", ton: "info", n: fragebogenNeu },
     { href: "/admin/stunden", text: "Stundenzeilen mit Fehlern (Pflichtfeld, Doppelt, Vertrag)", ton: "err", n: warn.zeilenMitFehler },
     { href: "/admin/stunden", text: "Stundenzeilen noch nicht geprüft", ton: "warn", n: offeneZeilen },
@@ -45,8 +48,8 @@ export function AdminUebersicht() {
           <Karte titel="Willkommen im neuen Dashboard">
             <p>Dieses Dashboard läuft <b>parallel</b> zum bisherigen System und hat <b>eigene Daten</b>. Das bisherige System (Belege, Einsätze, Stunden, Dokumente) wird weder gelesen noch verändert. Es ist noch leer – so geht es los:</p>
             <ol className="small mt2" style={{ paddingLeft: "1.2rem" }}>
-              <li><b>Personen</b> anlegen (mit Vertrag) und per Einladungslink zum Fragebogen schicken.</li>
-              <li><b>Aufträge</b> anlegen, im Job-Board veröffentlichen und in der Disposition besetzen.</li>
+              <li><b>Personen</b> anlegen (mit Vertrag) oder unter <Link href="/admin/import">Import</Link> den Personalstamm aus zvoove einlesen, dann unter <Link href="/admin/nachrichten">Nachrichten</Link> die Links mit vorgefertigtem Text verschicken.</li>
+              <li><b>Aufträge</b> anlegen oder aus der Regio-Tabelle importieren, im Job-Board veröffentlichen und in der Disposition besetzen. Wer den Fragebogen erledigt hat, sieht Aufträge erst nach deiner Bestätigung unter <Link href="/admin/freigaben">Freigaben</Link>.</li>
               <li><b>Stunden</b> in die Stundentabelle eintragen oder aus Excel einfügen, prüfen und exportieren.</li>
             </ol>
             <div className="row wrap mt3">

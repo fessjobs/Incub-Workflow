@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Link, gehe } from "../nav";
 import { usePv, selbst, HEUTE, type BewerbungEntwurf } from "../state/store";
 import { Btn, Chip, Feld, JaNein, Karte, LinkBtn, Note, Offen } from "../ui/kit";
-import { CrewGate, SpracheSchalter, statusText } from "./crew-start";
+import { CrewGate, FreigabeHinweis, SpracheSchalter, statusText } from "./crew-start";
 import { fahrminuten, geocodePlz } from "../logic/geo";
 import { formatDatumDE } from "../logic/zeit";
 import { MODULE, t } from "../data/trainings";
@@ -25,7 +25,7 @@ export function CrewJobs() {
 }
 
 function JobsInhalt() {
-  const { s } = usePv();
+  const { s, aktualisieren } = usePv();
   const de = s.lang === "de";
   const ich = selbst(s);
   const [nah, setNah] = useState(false);
@@ -33,7 +33,8 @@ function JobsInhalt() {
   return (
     <div className="col gap2">
       <div className="row between"><h1>Jobs</h1><SpracheSchalter /></div>
-      {!s.fragebogenFertig ? <Note ton="warn">{de ? "Fülle zuerst den Fragebogen aus – ohne ihn kannst du dich nicht bewerben." : "Fill in the questionnaire first – you cannot apply without it."} <Link href="/crew/fragebogen"><b>{de ? "Jetzt ausfüllen" : "Fill in now"}</b></Link></Note> : null}
+      {s.meineFreigabe !== "freigegeben" ? <FreigabeHinweis status={s.meineFreigabe} de={de} aktualisieren={aktualisieren} /> : null}
+      {s.meineFreigabe === "freigegeben" && !s.fragebogenFertig ? <Note ton="warn">{de ? "Fülle zuerst den Fragebogen aus – ohne ihn kannst du dich nicht bewerben." : "Fill in the questionnaire first – you cannot apply without it."} <Link href="/crew/fragebogen"><b>{de ? "Jetzt ausfüllen" : "Fill in now"}</b></Link></Note> : null}
       <label className="pv-check small"><input type="checkbox" checked={nah} onChange={(e) => setNah(e.target.checked)} />{de ? "nur bis 60 Minuten Anfahrt" : "up to 60 minutes travel"}</label>
       {jobs.length === 0 ? <Note>{de ? "Zurzeit keine passenden Jobs." : "No matching jobs right now."}</Note> : null}
       {jobs.map((j) => {
@@ -72,7 +73,7 @@ function DetailInhalt({ id }: { id: string }) {
   if (!job) return <Note ton="err">{de ? "Job nicht gefunden." : "Job not found."}</Note>;
   const meine = s.bewerbungen.find((a) => a.jobId === job.id && a.pnr === ich.pnr);
   const min = fahrzeit(ich.plz, job.plz);
-  const pflicht = pflichtModule(job.schichten.map((x) => x.taetigkeit), { hoehe: job.hoehe });
+  const pflicht = pflichtModule(job.schichten.map((x) => x.taetigkeit), { hoehe: job.hoehe, kunde: job.kunde, zusatz: job.zusatzModule }, s.einst.schulung);
   const bestaetigt = meine?.status === "bestätigt";
   return (
     <div className="col gap2">
@@ -153,7 +154,7 @@ function BewerbenInhalt({ id }: { id: string }) {
   if (!s.fragebogenFertig) return <Karte><h2>{de ? "Erst der Fragebogen" : "Questionnaire first"}</h2><p className="mt1 muted">{de ? "Damit wir dich passend einplanen können, brauchen wir deine Angaben (ca. 8 Minuten)." : "We need your details to match you properly (about 8 minutes)."}</p><div className="mt2"><LinkBtn href="/crew/fragebogen" block>{de ? "Zum Fragebogen" : "To the questionnaire"}</LinkBtn></div></Karte>;
 
   const gewaehlt = job.schichten.filter((x) => e.schichtIds.includes(x.id));
-  const pflicht = pflichtModule(gewaehlt.map((x) => x.taetigkeit), { hoehe: job.hoehe });
+  const pflicht = pflichtModule(gewaehlt.map((x) => x.taetigkeit), { hoehe: job.hoehe, kunde: job.kunde, zusatz: job.zusatzModule }, s.einst.schulung);
   const fehlend = pflicht.filter((m) => !["gueltig", "laeuftBaldAb"].includes(statusFuer(ich.unterweisungen[m], HEUTE)));
 
   const weiter = () => {

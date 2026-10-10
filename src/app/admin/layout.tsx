@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import "@/preview/ui/preview.css";
 import { requireUser } from "@/lib/auth";
-import { darfNeu } from "@/lib/neu/auth";
+import { neuRolleFuer } from "@/lib/neu/auth";
 
-// Neues Dashboard (parallel zum bisherigen System). Nur angemeldete Administratoren;
+// Neues Dashboard (parallel zum bisherigen System). Nur angemeldete Konten mit Rolle im neuen Dashboard (Administratoren immer);
 // nicht für Suchmaschinen.
 export const metadata: Metadata = { title: "Neu – Crew und Stunden", robots: { index: false, follow: false } };
 export const viewport: Viewport = { themeColor: "#0A1A2F", width: "device-width", initialScale: 1 };
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NeuLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  if (!darfNeu(user.role)) notFound();
+  if (!(await neuRolleFuer(user.id, user.organizationId, user.role))) notFound();
   return (
     <>
       {/* Schriften des fess.jobs-Designs. DSGVO: vor dem produktiven Einsatz selbst hosten. */}

@@ -6,7 +6,9 @@ import { Link } from "../nav";
 import { usePv, selbst } from "../state/store";
 import { Bar, Btn, Chip, Feld, JaNein, Karte, LinkBtn, Note } from "../ui/kit";
 import { ETAPPEN, SITUATIONSFRAGEN, fragenDerEtappe, type Frage } from "../logic/fragen";
-import { antwortenZuProfil, fortschritt, handyGueltig, plzGueltig, situationVollstaendig, type Antworten } from "../logic/profil";
+import { antwortenZuProfil, fortschritt, handyGueltig, kleidungFehler, plzGueltig, situationVollstaendig, type Antworten } from "../logic/profil";
+import { HOSEN_GROESSEN } from "../logic/fragen";
+import { formatEuro } from "../logic/zeit";
 import { TAETIGKEITEN, type NachweisStatus, type Taetigkeit } from "../logic/types";
 import { geocodePlz, naechsterPool, POOLS } from "../logic/geo";
 import { SpracheSchalter, CrewGate } from "./crew-start";
@@ -44,6 +46,11 @@ function Inhalt() {
   const gehZu = (n: number) => set((st) => ({ ...st, etappe: n }));
 
   const fehlerFuer = (f: Frage): string | null => {
+    if (f.typ === "kleidung") {
+      if (!s.einst.kleidung.aktiv) return null;
+      const k = kleidungFehler(a, s.einst.kleidung.artikel);
+      return k ? (de ? k : "Please complete your clothing choice (items and sizes).") : null;
+    }
     const wert = (a as unknown as Record<string, unknown>)[f.id];
     if (f.pflicht && (wert === null || wert === undefined || wert === "")) return de ? "Bitte ausfüllen." : "Please fill in.";
     if (f.typ === "plz" && wert && !plzGueltig(String(wert))) return de ? "Bitte eine 5-stellige Postleitzahl." : "Please enter a 5-digit postcode.";
@@ -137,6 +144,7 @@ function Inhalt() {
 }
 
 function FrageFeld({ f, a, setA, lang, fehler }: { f: Frage; a: Antworten; setA: (p: Partial<Antworten>) => void; lang: "de" | "en"; fehler: string | null }) {
+  const { s } = usePv();
   const de = lang === "de";
   const rec = a as unknown as Record<string, unknown>;
   const wert = rec[f.id];
@@ -205,6 +213,40 @@ function FrageFeld({ f, a, setA, lang, fehler }: { f: Frage; a: Antworten; setA:
           ))}
         </div>
       );
+    case "kleidung": {
+      const k = s.einst.kleidung;
+      if (!k.aktiv) return null;
+      const gewaehlt = k.artikel.filter((x) => a.kleidungArtikel.includes(x.id));
+      return (
+        <Feld label={label} hint={k.pfandHinweis} fehler={fehler}>
+          <div data-testid="kleidung">
+            <JaNein lang={lang} wert={a.kleidungWunsch} onChange={(v) => setA({ kleidungWunsch: v })} />
+            {a.kleidungWunsch === true ? (
+              <div className="col gap1 mt2">
+                <div className="small muted">{de ? "Was möchtest du haben?" : "What would you like?"}</div>
+                {k.artikel.map((x) => {
+                  const an = a.kleidungArtikel.includes(x.id);
+                  return (
+                    <label key={x.id} className="pv-check">
+                      <input type="checkbox" checked={an} onChange={() => setA({ kleidungArtikel: an ? a.kleidungArtikel.filter((y) => y !== x.id) : [...a.kleidungArtikel, x.id] })} aria-label={x.label} />
+                      <span>{x.label}{x.pfandEur ? ` · ${de ? "Pfand" : "deposit"} ${formatEuro(x.pfandEur)}` : ""}</span>
+                    </label>
+                  );
+                })}
+                {gewaehlt.some((x) => x.groessen === "hose") ? (
+                  <select className="pv-select" aria-label={de ? "Hosengröße" : "Trouser size"} value={a.hosengroesse} onChange={(e) => setA({ hosengroesse: e.target.value })}>
+                    <option value="">{de ? "Hosengröße wählen" : "Choose trouser size"}</option>
+                    {HOSEN_GROESSEN.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                ) : null}
+                {gewaehlt.some((x) => x.groessen === "shirt") && !a.shirt ? <div className="tiny muted">{de ? "Bitte oben die Shirtgröße angeben." : "Please enter your shirt size above."}</div> : null}
+                {gewaehlt.some((x) => x.groessen === "schuh") && !a.schuhgroesse ? <div className="tiny muted">{de ? "Bitte oben die Schuhgröße angeben." : "Please enter your shoe size above."}</div> : null}
+              </div>
+            ) : null}
+          </div>
+        </Feld>
+      );
+    }
     case "nachweis": {
       const status = (wert as NachweisStatus) ?? "keiner";
       return feld(

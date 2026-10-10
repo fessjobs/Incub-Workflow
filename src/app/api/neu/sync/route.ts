@@ -10,11 +10,12 @@ export async function POST(req: Request) {
   if (!a.ok) return a.antwort;
   const body = syncSchema.safeParse(await req.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: "Ungültige Anfrage.", details: body.error.issues.slice(0, 3) }, { status: 400 });
-  const r = await schreibeOps(a.user.organizationId, a.user.label, body.data.ops);
+  const r = await schreibeOps(a.user.organizationId, a.user.label, body.data.ops, a.user.rolle);
   if (!r.ok) {
     if ("konflikte" in r) return NextResponse.json({ error: "Zwischenzeitlich geändert.", konflikte: r.konflikte }, { status: 409 });
+    if ("verboten" in r) return NextResponse.json({ error: r.verboten }, { status: 403 });
     return NextResponse.json({ error: r.ungueltig }, { status: 400 });
   }
-  await schreibeAudit(a.user.organizationId, body.data.audit);
+  if (a.user.rolle !== "lesen") await schreibeAudit(a.user.organizationId, body.data.audit);
   return NextResponse.json({ ok: true, revs: r.revs });
 }

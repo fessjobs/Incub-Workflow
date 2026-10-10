@@ -4,8 +4,10 @@
 import type { Application, AuditEintrag, Crew, Job, StundenRow } from "@/preview/logic/types";
 import { leererZustand, standardEinstellungen, type BelegEintrag, type Einstellungen, type Notiz, type PvState, type Zuweisung } from "@/preview/state/store";
 import type { VergangenerAuftrag } from "@/preview/data/demo";
+import { bereinigeSchulung } from "@/preview/logic/unterweisung";
+import { bereinigeKleidung } from "@/preview/logic/einstellungen-neu";
 
-export type Kind = "crew" | "job" | "bewerbung" | "auftrag" | "stunde" | "zuweisung" | "briefing" | "beleg" | "notiz" | "einst";
+export type Kind = "crew" | "job" | "bewerbung" | "auftrag" | "stunde" | "zuweisung" | "briefing" | "beleg" | "notiz" | "einst" | "benutzer";
 
 export interface ServerStand {
   records: Record<Kind, Array<{ id: string; rev: number; data: unknown }>>;
@@ -59,7 +61,17 @@ export function zustandAusServer(stand: ServerStand): { s: PvState; revs: Revs }
   const e = (stand.records.einst ?? []).find((x) => x.id === "main");
   if (e) {
     // Neue Standardwerte (spätere Versionen) bleiben erhalten, gespeicherte gewinnen
-    s.einst = { ...standardEinstellungen(), ...(e.data as Partial<Einstellungen>) };
+    const roh = e.data as Partial<Einstellungen>;
+    const std = standardEinstellungen();
+    s.einst = {
+      ...std,
+      ...roh,
+      // Neue Bereiche der Einstellungen: gespeicherte Werte gelten, Fehlendes kommt aus dem Standard
+      schulung: bereinigeSchulung(roh.schulung),
+      kleidung: bereinigeKleidung(roh.kleidung),
+      nachrichten: Array.isArray(roh.nachrichten) ? roh.nachrichten : std.nachrichten,
+      schnittstelle: { ...std.schnittstelle, ...(roh.schnittstelle ?? {}) },
+    };
     revs.set(revKey("einst", "main"), e.rev);
   }
   s.audit = stand.audit;

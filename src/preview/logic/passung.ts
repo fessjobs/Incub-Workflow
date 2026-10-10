@@ -4,7 +4,7 @@
 import type { Crew, Job, Schicht } from "./types";
 import { scoreProfile, effektiverScore, kategorieFuer, DEFAULT_SCORING, type ScoringSettings } from "./scoring";
 import { fahrminuten, geocodePlz } from "./geo";
-import { fehlendeModule, pflichtModule } from "./unterweisung";
+import { fehlendeModule, pflichtModule, type SchulungRegeln } from "./unterweisung";
 import { vertragAm } from "./stunden";
 import { absEnde, absStart, bruttoMinuten, formatDatumDE } from "./zeit";
 
@@ -17,6 +17,8 @@ export interface BestehenderEinsatz {
 
 export interface PassungKontext {
   heute: string;
+  // Eingestellte Schulungs-Pflicht (fehlt: Standard)
+  schulung?: SchulungRegeln;
   scoring?: ScoringSettings;
   bestehende: BestehenderEinsatz[];
   // bereits gearbeitete oder fest eingeplante Stunden im Monat der Schicht
@@ -88,7 +90,7 @@ export function passung(c: Crew, job: Job, s: Schicht, ctx: PassungKontext): Pas
   }
 
   // Unterweisung (0..10)
-  const pflicht = pflichtModule([s.taetigkeit], { hoehe: job.hoehe });
+  const pflicht = pflichtModule([s.taetigkeit], { hoehe: job.hoehe, kunde: job.kunde, zusatz: job.zusatzModule }, ctx.schulung);
   const fehlend = fehlendeModule(pflicht, c.unterweisungen, ctx.heute);
   score += 10 * (1 - fehlend.length / Math.max(1, pflicht.length));
   if (fehlend.length === 0) chips.push({ text: "Unterweisung gültig", ton: "gut" });

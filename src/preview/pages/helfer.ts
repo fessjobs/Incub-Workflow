@@ -7,7 +7,7 @@ import { verdienstZeile } from "../logic/stunden";
 import { passung, type PassungErgebnis } from "../logic/passung";
 import type { PvState, Einstellungen } from "../state/store";
 import { HEUTE } from "../state/store";
-import { pflichtModule, fehlendeModule, statusFuer } from "../logic/unterweisung";
+import { pflichtModule, fehlendeModule, statusFuer, type SchulungRegeln } from "../logic/unterweisung";
 import { MODULE } from "../data/trainings";
 
 export const vollName = (c: Pick<Crew, "vorname" | "nachname">) => `${c.vorname} ${c.nachname}`;
@@ -101,15 +101,15 @@ export function passungFuer(s: PvState, c: Crew, job: Job, schicht: Schicht): Pa
     if (treffer) bestehende.push({ datum: treffer.schicht.datum, start: treffer.schicht.start, ende: treffer.schicht.ende, auftrag: treffer.job.titel });
   }
   const monat = schicht.datum.slice(0, 7);
-  return passung(c, job, schicht, { heute: HEUTE, scoring: s.einst.scoring, bestehende, monatsStunden: stundenImMonat(s.stunden, c.pnr, monat) });
+  return passung(c, job, schicht, { heute: HEUTE, scoring: s.einst.scoring, bestehende, monatsStunden: stundenImMonat(s.stunden, c.pnr, monat), schulung: s.einst.schulung });
 }
 
-export function pflichtFuerJob(job: Job): ReturnType<typeof pflichtModule> {
-  return pflichtModule(job.schichten.map((x) => x.taetigkeit), { hoehe: job.hoehe });
+export function pflichtFuerJob(job: Job, regeln?: SchulungRegeln): ReturnType<typeof pflichtModule> {
+  return pflichtModule(job.schichten.map((x) => x.taetigkeit), { hoehe: job.hoehe, kunde: job.kunde, zusatz: job.zusatzModule }, regeln);
 }
 
-export function fehlendFuerJob(c: Crew, job: Job) {
-  return fehlendeModule(pflichtFuerJob(job), c.unterweisungen, HEUTE);
+export function fehlendFuerJob(c: Crew, job: Job, regeln?: SchulungRegeln) {
+  return fehlendeModule(pflichtFuerJob(job, regeln), c.unterweisungen, HEUTE);
 }
 
 export function besetzt(s: PvState, job: Job): { bedarf: number; besetzt: number } {

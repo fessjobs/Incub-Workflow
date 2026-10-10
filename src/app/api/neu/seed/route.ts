@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { neuBenutzer } from "@/lib/neu/auth";
+import { neuBenutzerFuer } from "@/lib/neu/auth";
 import { KINDS } from "@/lib/neu/schemas";
 import { entferneBeispieldaten, ladeBeispieldaten } from "@/lib/neu/store";
 
@@ -10,7 +10,7 @@ const seedSchema = z.object({ ops: z.array(z.object({ kind: z.enum(KINDS), id: z
 
 // Beispieldaten laden (ersetzt frühere Beispieldaten, echte Datensätze bleiben)
 export async function POST(req: Request) {
-  const a = await neuBenutzer();
+  const a = await neuBenutzerFuer("beispieldaten");
   if (!a.ok) return a.antwort;
   const body = seedSchema.safeParse(await req.json().catch(() => null));
   if (!body.success) return NextResponse.json({ error: "Ungültige Anfrage." }, { status: 400 });
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
 // Beispieldaten wieder entfernen – echte Datensätze bleiben
 export async function DELETE() {
-  const a = await neuBenutzer();
+  const a = await neuBenutzerFuer("beispieldaten");
   if (!a.ok) return a.antwort;
   return NextResponse.json({ ok: true, entfernt: await entferneBeispieldaten(a.user.organizationId) });
 }

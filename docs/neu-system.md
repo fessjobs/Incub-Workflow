@@ -5,6 +5,12 @@ Läuft **neben** dem bisherigen System, mit **eigenen Daten**. Das bisherige Sys
 (Belege, Auslagen, Einsätze, Stunden, Dokumente, Unterschriften) wird weder gelesen
 noch verändert.
 
+> Erweiterung vom 10.10.2026 (Kleidung/Schuhgröße, Importe, Nachrichten, Freigabe, Schulungs-Pflicht
+> und Videos, Benutzer/Rollen, vorbereitete Schnittstelle): siehe **`docs/neu-erweiterung.md`**.
+> Die Aussagen unten zu „nur Administratoren“, „kein Import“ und „keine Verbindung zum bisherigen
+> System“ sind dort fortgeschrieben (Importe und Rollen gibt es jetzt; die Schnittstelle ist
+> vorbereitet, aber aus).
+
 ## Wo finde ich es?
 
 In der linken Navigation steht für Administratoren ein neuer Eintrag

@@ -43,6 +43,9 @@ export interface ProfileAnswers {
   // 5 Ausrüstung
   ausruestung: { s3Schuhe: boolean; handschuhe: boolean; helm: boolean; warnweste: boolean; schwarzeKleidung: boolean; werkzeug: boolean };
   shirtgroesse: string;
+  // Schuhgröße (EU) und Wunsch nach Arbeitskleidung gegen Pfand (neues System)
+  schuhgroesse?: string;
+  kleidung?: KleidungWunsch;
   // 6 Verfügbarkeit
   wunschVertrag: Vertragsart;
   wochentage: number[]; // 0 = So
@@ -52,6 +55,40 @@ export interface ProfileAnswers {
   andereArbeitgeber: boolean;
   // Situationsfragen: gewählter Optionsindex je Frage
   situation: number[];
+}
+
+// Wunsch nach Arbeitskleidung von FESS; wird gegen Pfand ausgegeben
+export interface KleidungWunsch {
+  wunsch: boolean;
+  artikel: string[];
+  hosengroesse: string;
+}
+
+// Eine ausgegebene Kleidung (Pfand-Verfolgung im Dashboard)
+export interface KleidungAusgabe {
+  id: string;
+  artikel: string;
+  groesse: string;
+  pfandEur: number;
+  ausgegebenAm: string; // JJJJ-MM-TT
+  zurueckAm: string | null;
+  notiz: string;
+}
+
+// Entscheidung des Teams: darf die Person die Aufträge sehen und sich bewerben?
+export type FreigabeStatus = "bestaetigt" | "abgelehnt";
+export interface Freigabe {
+  status: FreigabeStatus;
+  am: string; // JJJJ-MM-TT
+  von: string;
+  notiz: string;
+}
+
+// Wann wurde der Person zuletzt eine Nachricht (Einladung, Erinnerung …) bereitgestellt?
+export interface Kontakt {
+  vorlage: string;
+  am: string; // JJJJ-MM-TT
+  von: string;
 }
 
 export interface Rating {
@@ -88,6 +125,11 @@ export interface Crew {
   unterweisungen: Record<string, UnterweisungAck>;
   ratings: Rating[];
   notizen: string;
+  // Neues System (alle optional, damit bestehende Datensätze gültig bleiben)
+  freigabe?: Freigabe;
+  kleidungAusgabe?: KleidungAusgabe[];
+  kontakt?: Kontakt;
+  importQuelle?: { quelle: "zvoove"; am: string };
 }
 
 export interface Schicht {
@@ -122,6 +164,10 @@ export interface Job {
   ablauf: string[];
   status: JobStatus;
   quelle: "Planung Regios" | "manuell";
+  // Zusätzliche Pflicht-Schulungen nur für diesen Auftrag (IDs der Module)
+  zusatzModule?: string[];
+  // Schlüssel aus dem Tabellenimport, damit ein erneuter Import denselben Auftrag aktualisiert
+  importKey?: string;
 }
 
 export type BewerbungStatus = "neu" | "passt" | "Warteliste" | "abgelehnt" | "bestätigt";

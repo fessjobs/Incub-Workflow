@@ -6,9 +6,11 @@ import { db } from "@/lib/db";
 import { inTagen, neuesToken, tokenHash } from "./token";
 import { leseRecord, listeRecords, loescheRecord, setzeRecord } from "./store";
 import type { Application, Crew, Job } from "@/preview/logic/types";
-import { antwortenZuProfil, handyGueltig, offenePflicht, plzGueltig, situationVollstaendig, type Antworten } from "@/preview/logic/profil";
+import { antwortenZuProfil, handyGueltig, kleidungFehler, leereAntworten, offenePflicht, plzGueltig, situationVollstaendig, type Antworten } from "@/preview/logic/profil";
 import { geocodePlz, naechsterPool } from "@/preview/logic/geo";
-import { fehlendeModule, pflichtModule, quizBestanden } from "@/preview/logic/unterweisung";
+import { bereinigeSchulung, fehlendeModule, pflichtModule, quizBestanden } from "@/preview/logic/unterweisung";
+import { bereinigeKleidung } from "@/preview/logic/einstellungen-neu";
+import { freigabeStand } from "@/preview/logic/freigabe";
 import { AKTUELLE_VERSION, modulById } from "@/preview/data/trainings";
 import { heuteBerlin } from "@/preview/logic/zeit";
 import { ETAPPEN } from "@/preview/logic/fragen";
@@ -46,29 +48,47 @@ export async function loeseEinladungEin(token: string): Promise<{ sitzung: strin
 
 function fuerCrew(c: CrewRecord): Crew {
   // Intern bleibt intern: Notizen und Bewertungen verlassen den Server nicht
-  const { fragebogenEntwurf: _e, fragebogenAbgeschicktAm: _a, ...rest } = c;
+  const { fragebogenEntwurf: _e, fragebogenAbgeschicktAm: _a, kontakt: _k, importQuelle: _i, freigabe: _f, ...rest } = c;
   void _e;
   void _a;
+  void _k;
+  void _i;
+  void _f;
   return { ...rest, notizen: "", ratings: [] };
+}
+
+// Einstellungen, die die Crew-Seite braucht (Schulungs-Regeln, Kleidung, XP). Interna bleiben draußen.
+async function crewEinstellungen(organizationId: string) {
+  const einst = await leseRecord<{ xp?: unknown; schulung?: unknown; kleidung?: unknown }>(organizationId, "einst", "main");
+  return { xp: einst?.data.xp ?? null, schulung: bereinigeSchulung(einst?.data.schulung), kleidung: bereinigeKleidung(einst?.data.kleidung) };
 }
 
 export async function crewState(z: CrewZugang) {
   const self = await leseRecord<CrewRecord>(z.organizationId, "crew", z.crewId);
   if (!self) return null;
-  const jobs = (await listeRecords<Job>(z.organizationId, "job")).map((j) => j.data).filter((j) => j.status === "offen" || j.status === "voll");
+  const e = await crewEinstellungen(z.organizationId);
+  const heute = heuteBerlin();
+  // Aufträge sieht nur, wen das Team freigegeben hat
+  const freigabe = freigabeStand(self.data, e.schulung, heute);
+  const jobs = freigabe === "freigegeben" ? (await listeRecords<Job>(z.organizationId, "job")).map((j) => j.data).filter((j) => j.status === "offen" || j.status === "voll") : [];
   const meine = (await listeRecords<Application>(z.organizationId, "bewerbung")).map((b) => b.data).filter((b) => b.pnr === self.data.pnr);
   const bestaetigt = new Set(meine.filter((b) => b.status === "bestätigt").map((b) => b.jobId));
   // Treffpunkt und Ansprechpartner erst nach der Bestätigung
   const jobsFuerCrew = jobs.map((j) => (bestaetigt.has(j.id) ? j : { ...j, treffpunkt: "", ansprechpartner: "" }));
-  const einst = await leseRecord<{ xp?: unknown }>(z.organizationId, "einst", "main");
+  // Kundenregeln nur für Kunden, deren Aufträge die Person ohnehin sieht
+  const sichtbareKunden = new Set(jobs.map((j) => j.kunde.trim().toLowerCase()));
+  const schulung = { ...e.schulung, jeKunde: e.schulung.jeKunde.filter((r) => sichtbareKunden.has(r.kunde.trim().toLowerCase())) };
   return {
     self: fuerCrew(self.data),
     entwurf: self.data.fragebogenEntwurf ?? null,
     fragebogenFertig: Boolean(self.data.fragebogenAbgeschicktAm),
     jobs: jobsFuerCrew,
     bewerbungen: meine,
-    xp: einst?.data.xp ?? null,
-    heute: heuteBerlin(),
+    xp: e.xp,
+    schulung,
+    kleidung: e.kleidung,
+    freigabe,
+    heute,
   };
 }
 
@@ -96,12 +116,19 @@ export async function crewAktion(z: CrewZugang, a: CrewAktion): Promise<AktionsE
   }
 
   if (a.typ === "abschicken") {
-    const antworten = c.fragebogenEntwurf?.antworten as unknown as Antworten | undefined;
-    if (!antworten) return fehler(400, "Noch keine Antworten gespeichert.");
+    const entwurf = c.fragebogenEntwurf?.antworten;
+    if (!entwurf) return fehler(400, "Noch keine Antworten gespeichert.");
+    // Ältere oder vorbelegte Entwürfe können Felder auslassen: mit leeren Antworten auffüllen
+    const antworten: Antworten = { ...leereAntworten(), ...(entwurf as Partial<Antworten>) };
     for (let n = 1; n <= ETAPPEN.length; n++) if (offenePflicht(antworten, n).length > 0) return fehler(400, `Etappe ${n}: Pflichtfragen offen.`);
     if (!plzGueltig(antworten.plz) || !handyGueltig(antworten.handy)) return fehler(400, "PLZ oder Handynummer ungültig.");
     if (antworten.volljaehrig !== true) return fehler(400, "Für Einsätze musst du volljährig sein.");
     if (!situationVollstaendig(antworten)) return fehler(400, "Bitte alle vier Fragen beantworten.");
+    const einstK = await crewEinstellungen(z.organizationId);
+    if (einstK.kleidung.aktiv) {
+      const kf = kleidungFehler(antworten, einstK.kleidung.artikel);
+      if (kf) return fehler(400, `Arbeitskleidung: ${kf}`);
+    }
     const ort = geocodePlz(antworten.plz);
     const pool = ort ? naechsterPool(ort).pool : c.pool;
     await speichern({
@@ -122,13 +149,15 @@ export async function crewAktion(z: CrewZugang, a: CrewAktion): Promise<AktionsE
 
   if (a.typ === "bewerbung") {
     if (!c.fragebogenAbgeschicktAm || !c.profile) return fehler(409, "Erst den Fragebogen abschicken.");
+    const e = await crewEinstellungen(z.organizationId);
+    if (freigabeStand(c, e.schulung, heuteBerlin()) !== "freigegeben") return fehler(403, "Die Aufträge sind für dich noch nicht freigeschaltet.");
     const job = await leseRecord<Job>(z.organizationId, "job", a.jobId);
     if (!job || job.data.status !== "offen") return fehler(404, "Job nicht verfügbar.");
     if (a.schichtIds.length === 0 || !a.schichtIds.every((id) => job.data.schichten.some((s) => s.id === id))) return fehler(400, "Schichten passen nicht zum Job.");
     const vorhanden = (await listeRecords<Application>(z.organizationId, "bewerbung")).some((b) => b.data.jobId === a.jobId && b.data.pnr === c.pnr);
     if (vorhanden) return fehler(409, "Du hast dich schon beworben.");
     const gewaehlt = job.data.schichten.filter((s) => a.schichtIds.includes(s.id));
-    const pflicht = pflichtModule(gewaehlt.map((s) => s.taetigkeit), { hoehe: job.data.hoehe });
+    const pflicht = pflichtModule(gewaehlt.map((s) => s.taetigkeit), { hoehe: job.data.hoehe, kunde: job.data.kunde, zusatz: job.data.zusatzModule }, e.schulung);
     if (fehlendeModule(pflicht, c.unterweisungen, heuteBerlin()).length > 0) return fehler(409, "Pflicht-Unterweisung fehlt oder ist abgelaufen.");
     const bew: Application = {
       id: `a-${z.crewId}-${a.jobId}`.slice(0, 80), jobId: a.jobId, pnr: c.pnr, schichtIds: a.schichtIds, eigeneAnreise: a.eigeneAnreise, abfahrtsort: a.abfahrtsort.slice(0, 200),

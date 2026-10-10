@@ -23,13 +23,82 @@ const PFLICHT_JE_TAETIGKEIT: Record<Taetigkeit, ModulId[]> = {
   Logistik: ["stagehand"],
 };
 
+// Einstellbare Regeln: welche Schulung für was nötig ist. Ohne Angabe gilt der
+// Standard (die Konstanten oben), so verhalten sich alle bisherigen Aufrufe gleich.
+export interface VideoEintrag {
+  url: string;
+  titel: string;
+  // Muss die Person das Video angesehen haben (bestätigt), bevor das Quiz startet?
+  pflicht: boolean;
+}
+
+export interface SchulungRegeln {
+  // Gilt für jeden Auftrag
+  pflichtAlle: ModulId[];
+  // Zusätzlich je Tätigkeit der Schicht
+  pflichtJeTaetigkeit: Record<Taetigkeit, ModulId[]>;
+  // Zusätzlich, wenn im Auftrag „Arbeiten in der Höhe“ steht
+  pflichtHoehe: ModulId[];
+  // Zusätzlich für bestimmte Kunden (Name wie im Auftrag, Groß-/Kleinschreibung egal)
+  jeKunde: Array<{ kunde: string; module: ModulId[] }>;
+  // Vor der Freigabe (Aufträge sehen) müssen diese Module gültig sein
+  freigabeModule: ModulId[];
+  // Video je Modul (leer = Platzhalter)
+  video: Record<string, VideoEintrag>;
+}
+
+export function standardSchulung(): SchulungRegeln {
+  return {
+    pflichtAlle: ["grund", "brandschutz"],
+    pflichtJeTaetigkeit: Object.fromEntries(Object.entries(PFLICHT_JE_TAETIGKEIT).map(([k, v]) => [k, [...v]])) as Record<Taetigkeit, ModulId[]>,
+    pflichtHoehe: ["hoehe"],
+    jeKunde: [],
+    freigabeModule: ["grund", "brandschutz"],
+    video: {},
+  };
+}
+
+export interface PflichtOptionen {
+  hoehe?: boolean;
+  kunde?: string;
+  // Zusätzliche Module, die im Auftrag selbst hinterlegt sind
+  zusatz?: string[];
+}
+
 // Grundunterweisung und Brandschutz gelten für alle; „Höhe und Leitern“ nur,
-// wenn es im Auftrag hinterlegt ist.
-export function pflichtModule(taetigkeiten: Taetigkeit[], optionen: { hoehe?: boolean } = {}): ModulId[] {
-  const set = new Set<ModulId>(["grund", "brandschutz"]);
-  for (const t of taetigkeiten) for (const m of PFLICHT_JE_TAETIGKEIT[t] ?? []) set.add(m);
-  if (optionen.hoehe) set.add("hoehe");
+// wenn es im Auftrag hinterlegt ist. Mit `regeln` gelten die im Dashboard
+// eingestellten Zuordnungen.
+export function pflichtModule(taetigkeiten: Taetigkeit[], optionen: PflichtOptionen = {}, regeln?: SchulungRegeln): ModulId[] {
+  const r = regeln ?? standardSchulung();
+  const set = new Set<ModulId>(r.pflichtAlle);
+  for (const t of taetigkeiten) for (const m of r.pflichtJeTaetigkeit[t] ?? []) set.add(m);
+  if (optionen.hoehe) for (const m of r.pflichtHoehe) set.add(m);
+  if (optionen.kunde) {
+    const k = optionen.kunde.trim().toLowerCase();
+    for (const regel of r.jeKunde) if (regel.kunde.trim().toLowerCase() === k) for (const m of regel.module) set.add(m);
+  }
+  for (const m of optionen.zusatz ?? []) if ((MODUL_IDS as string[]).includes(m)) set.add(m as ModulId);
   return MODUL_IDS.filter((m) => set.has(m));
+}
+
+// Reicht eine gespeicherte Regel-Einstellung (evtl. unvollständig oder aus einer älteren
+// Version) in eine vollständige, gültige Form. Unbekannte Module fallen heraus.
+export function bereinigeSchulung(roh: unknown): SchulungRegeln {
+  const std = standardSchulung();
+  if (!roh || typeof roh !== "object") return std;
+  const r = roh as Partial<SchulungRegeln>;
+  const ids = (x: unknown, fallback: ModulId[]): ModulId[] => (Array.isArray(x) ? MODUL_IDS.filter((m) => x.includes(m)) : fallback);
+  const je = { ...std.pflichtJeTaetigkeit };
+  if (r.pflichtJeTaetigkeit && typeof r.pflichtJeTaetigkeit === "object") for (const t of Object.keys(je) as Taetigkeit[]) je[t] = ids(r.pflichtJeTaetigkeit[t], je[t]);
+  const jeKunde = Array.isArray(r.jeKunde) ? r.jeKunde.filter((x) => x && typeof x.kunde === "string").map((x) => ({ kunde: x.kunde.slice(0, 200), module: ids(x.module, []) })).slice(0, 200) : [];
+  const video: Record<string, VideoEintrag> = {};
+  if (r.video && typeof r.video === "object") {
+    for (const m of MODUL_IDS) {
+      const v = (r.video as Record<string, Partial<VideoEintrag>>)[m];
+      if (v && typeof v.url === "string") video[m] = { url: v.url.slice(0, 500), titel: typeof v.titel === "string" ? v.titel.slice(0, 200) : "", pflicht: v.pflicht === true };
+    }
+  }
+  return { pflichtAlle: ids(r.pflichtAlle, std.pflichtAlle), pflichtJeTaetigkeit: je, pflichtHoehe: ids(r.pflichtHoehe, std.pflichtHoehe), jeKunde, freigabeModule: ids(r.freigabeModule, std.freigabeModule), video };
 }
 
 export function ablaufDatum(bestaetigtAm: string, monate = GUELTIG_MONATE): string {

@@ -8,7 +8,7 @@ import { leererZustand, initialerZustand, neueAudit } from "@/preview/state/stor
 import { benenneNummer, naechsteAuftragsNr, naechsteBewerberNr } from "@/preview/pages/formulare";
 import { heuteBerlin } from "@/preview/logic/zeit";
 
-const leererStand = (): ServerStand => ({ records: { crew: [], job: [], bewerbung: [], auftrag: [], stunde: [], zuweisung: [], briefing: [], beleg: [], notiz: [], einst: [] }, audit: [], version: "0:0:0" });
+const leererStand = (): ServerStand => ({ records: { crew: [], job: [], bewerbung: [], auftrag: [], stunde: [], zuweisung: [], briefing: [], beleg: [], notiz: [], einst: [], benutzer: [] }, audit: [], version: "0:0:0" });
 
 describe("Zugangs-Tokens", () => {
   it("sind zufällig, lang und nur als Hash vergleichbar", () => {

@@ -16,6 +16,12 @@ import { CrewFragebogen } from "./crew-fragebogen";
 import { CrewBewerben, CrewJobDetail, CrewJobs } from "./crew-jobs";
 import { CrewModul, CrewUnterweisungen } from "./crew-unterweisung";
 import { BelegLink } from "./beleg";
+import { AdminFreigaben } from "./admin-freigaben";
+import { AdminKleidung } from "./admin-kleidung";
+import { AdminNachrichten } from "./admin-nachrichten";
+import { AdminImport } from "./admin-import";
+import { AdminBenutzer } from "./admin-benutzer";
+import { AdminSchnittstelle } from "./admin-schnittstelle";
 
 export interface Route {
   muster: string;
@@ -59,4 +65,10 @@ export const ROUTEN: Route[] = [
   { muster: "/b/:token", rahmen: "frei", render: (p) => <BelegLink token={p.token} /> },
   { muster: "/admin/stunden", rahmen: "admin", render: () => <AdminStunden /> },
   { muster: "/admin/einstellungen", rahmen: "admin", render: () => <AdminEinstellungen /> },
+  { muster: "/admin/freigaben", rahmen: "admin", render: () => <AdminFreigaben /> },
+  { muster: "/admin/kleidung", rahmen: "admin", render: () => <AdminKleidung /> },
+  { muster: "/admin/nachrichten", rahmen: "admin", render: () => <AdminNachrichten /> },
+  { muster: "/admin/import", rahmen: "admin", render: () => <AdminImport /> },
+  { muster: "/admin/benutzer", rahmen: "admin", render: () => <AdminBenutzer /> },
+  { muster: "/admin/schnittstelle", rahmen: "admin", render: () => <AdminSchnittstelle /> },
 ];

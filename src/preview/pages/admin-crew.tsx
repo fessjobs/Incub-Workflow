@@ -14,6 +14,9 @@ import { TAETIGKEITEN } from "../logic/types";
 import { SITUATIONSFRAGEN } from "../logic/fragen";
 import { EinladungModal, PersonModal } from "./formulare";
 import { ampelTon, bewertung, grenzenFuer, monateListe, unterweisungsStand, vollName } from "./helfer";
+import { KleidungTab } from "./admin-kleidung";
+import { freigabeStand, freigabeText } from "../logic/freigabe";
+import { artikelLabel } from "../logic/kleidung";
 
 const POOL_LISTE = Object.keys(POOLS) as Pool[];
 
@@ -259,10 +262,12 @@ export function AdminCrewDetail({ id }: { id: string }) {
   const [einladung, setEinladung] = useState(false);
   const [loeschen, setLoeschen] = useState(false);
   const c = s.crew.find((x) => x.id === id);
-  const [tab, setTab] = useState<"ueberblick" | "fragebogen" | "unterweisung" | "stunden" | "bewertung">("ueberblick");
+  const [tab, setTab] = useState<"ueberblick" | "fragebogen" | "unterweisung" | "stunden" | "bewertung" | "kleidung">("ueberblick");
   const [monat, setMonat] = useState(() => monateListe()[0].wert);
   if (!c) return <Note ton="err">Person nicht gefunden.</Note>;
   const b = bewertung(c, s.einst);
+  const frei = freigabeStand(c, s.einst.schulung, HEUTE);
+  const darfFreigeben = modus !== "echt" || echt?.rolle === "admin" || echt?.rolle === "dispo";
   const g = grenzenFuer(s, c, monat);
   const lv = levelFuer(c.xp, s.einst.xp);
   const zeilen = s.stunden.filter((r) => r.pnr === c.pnr).slice(-14).reverse();
@@ -274,6 +279,7 @@ export function AdminCrewDetail({ id }: { id: string }) {
         sub={
           <span className="row wrap">
             <Chip ton={c.status === "aktiv" ? "gut" : c.status === "gesperrt" ? "err" : "info"}>{c.status}</Chip>
+            <Chip ton={frei === "freigegeben" ? "gut" : frei === "abgelehnt" ? "err" : frei === "wartet" ? "warn" : undefined} title="Darf die Person die Aufträge sehen?">Aufträge: {freigabeText(frei)}</Chip>
             <span>{c.plz} {c.wohnort}</span>
             <span className="mono small">{c.telefon}</span>
           </span>
@@ -313,6 +319,7 @@ export function AdminCrewDetail({ id }: { id: string }) {
           { id: "unterweisung", label: "Unterweisungen" },
           { id: "stunden", label: "Stunden", n: zeilen.length },
           { id: "bewertung", label: "Bewertungen", n: c.ratings.length },
+          { id: "kleidung", label: "Kleidung" },
         ]}
       />
       <div className="mt3" />
@@ -374,6 +381,16 @@ export function AdminCrewDetail({ id }: { id: string }) {
           </Karte>
           <Karte titel="Aktionen">
             <div className="row wrap">
+              {darfFreigeben && frei !== "freigegeben" ? <Btn data-testid="person-freigeben" onClick={() => {
+                const wer = echt?.benutzer ?? "Admin";
+                set((st) => ({ ...st, crew: st.crew.map((x) => (x.id === c.id ? { ...x, freigabe: { status: "bestaetigt", am: HEUTE, von: wer, notiz: "" } } : x)), audit: [neueAudit(wer, "crew", c.id, "freigabe", freigabeText(frei), "freigegeben", null), ...st.audit] }));
+                melde(`${vollName(c)} sieht jetzt die Aufträge.`);
+              }}>Für Aufträge freigeben</Btn> : null}
+              {darfFreigeben && frei === "freigegeben" && c.freigabe ? <Btn v="sec" onClick={() => {
+                const wer = echt?.benutzer ?? "Admin";
+                set((st) => ({ ...st, crew: st.crew.map((x) => { if (x.id !== c.id) return x; const { freigabe: _f, ...rest } = x; void _f; return rest; }), audit: [neueAudit(wer, "crew", c.id, "freigabe", "freigegeben", "zurückgenommen", null), ...st.audit] }));
+                melde("Freigabe zurückgenommen.");
+              }}>Freigabe zurücknehmen</Btn> : null}
               <Btn v="sec" data-testid="sperren" onClick={() => {
                 const neu = c.status === "gesperrt" ? "aktiv" : "gesperrt";
                 set((st) => ({ ...st, crew: st.crew.map((x) => (x.id === c.id ? { ...x, status: neu } : x)), audit: [neueAudit(echt?.benutzer ?? "Admin", "crew", c.id, "status", c.status, neu, null), ...st.audit] }));
@@ -416,6 +433,8 @@ export function AdminCrewDetail({ id }: { id: string }) {
                   <tr><td>Erfahrung</td><td>{TAETIGKEITEN.filter((x) => c.profile && (c.profile.erfahrung[x].einsaetze > 0 || c.profile.erfahrung[x].jahre > 0)).map((x) => `${x} (${c.profile?.erfahrung[x].einsaetze}×)`).join(", ") || "keine angegeben"}</td></tr>
                   <tr><td>Nachweise</td><td>{Object.entries(c.profile.nachweise).map(([k, v]) => `${k}: ${v === "geprueft" ? "geprüft" : v === "angegeben" ? "angegeben" : "–"}`).join(" · ")}</td></tr>
                   <tr><td>Wunsch</td><td>{c.profile.wunschVertrag}, ca. {c.profile.wunschStundenMonat} h/Monat</td></tr>
+                  <tr><td>Schuhgröße · Shirt</td><td>{c.profile.schuhgroesse || "–"} · {c.profile.shirtgroesse || "–"}</td></tr>
+                  <tr><td>Arbeitskleidung (Pfand)</td><td>{c.profile.kleidung?.wunsch ? c.profile.kleidung.artikel.map((id) => artikelLabel(s.einst.kleidung.artikel, id)).join(", ") || "ja" : "nein"}</td></tr>
                   <tr><td>Situationsfragen</td><td>{c.profile.situation.map((o, i) => `${SITUATIONSFRAGEN[i].optionen[o]?.punkte ?? 0}/5`).join(" · ")}</td></tr>
                 </tbody>
               </table>
@@ -461,6 +480,7 @@ export function AdminCrewDetail({ id }: { id: string }) {
           </table>
         </Karte>
       ) : null}
+      {tab === "kleidung" ? <KleidungTab c={c} /> : null}
       {tab === "bewertung" ? (
         <Karte>
           {c.ratings.length === 0 ? <div className="muted">Noch keine Bewertungen.</div> : null}

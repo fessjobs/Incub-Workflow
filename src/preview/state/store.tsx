@@ -10,6 +10,11 @@ import { DEFAULT_SCORING, type ScoringSettings } from "../logic/scoring";
 import { DEFAULT_XP, type XpSettings } from "../logic/xp";
 import { DEFAULT_EXPORT, type ExportEinstellungen } from "../logic/export";
 import type { Abweichung, Belegart, BelegAuslesung } from "../logic/beleg";
+import { standardSchulung, type SchulungRegeln } from "../logic/unterweisung";
+import { EINLADUNG_TEXT, standardKleidung, standardNachrichten, standardSchnittstelle, type KleidungEinst, type NachrichtVorlage, type SchnittstelleEinst } from "../logic/einstellungen-neu";
+export type { KleidungArtikel, KleidungEinst, NachrichtVorlage, SchnittstelleEinst } from "../logic/einstellungen-neu";
+import type { NeuRolle } from "@/lib/neu/rollen";
+import type { FreigabeAnzeige } from "../logic/freigabe";
 
 const SCHLUESSEL = "pv.state.v1";
 
@@ -21,6 +26,11 @@ export interface Einstellungen {
   // dem Einsatz zu prüfen – ändert sich mit dem Mindestlohn.
   minijobEur: number;
   fragebogenLinkText: string;
+  // Neues System
+  kleidung: KleidungEinst;
+  schulung: SchulungRegeln;
+  nachrichten: NachrichtVorlage[];
+  schnittstelle: SchnittstelleEinst;
 }
 
 export interface Notiz {
@@ -86,6 +96,8 @@ export interface PvState {
   fragebogenFertig: boolean;
   dsgvo: boolean;
   eingeloggt: boolean;
+  // Crew-Seite im echten System: darf diese Person die Aufträge sehen? (Testversion und Dashboard: immer ja)
+  meineFreigabe: FreigabeAnzeige;
   // Wohin es nach einer Unterweisung zurückgeht (Bewerbung läuft)
   rueck: string | null;
   // Angefangene Bewerbungen je Auftrag (bleiben erhalten, wenn man zwischendurch die Unterweisung macht)
@@ -93,14 +105,17 @@ export interface PvState {
 }
 
 export function standardEinstellungen(): Einstellungen {
-  return { scoring: DEFAULT_SCORING, xp: DEFAULT_XP, exp: DEFAULT_EXPORT, minijobEur: 603, fragebogenLinkText: "Hallo {vorname}, hier ist dein persönlicher Link zum Crew-Fragebogen von fess.jobs: {link} – dauert ca. 8 Minuten, du kannst jederzeit unterbrechen und später weitermachen." };
+  return {
+    scoring: DEFAULT_SCORING, xp: DEFAULT_XP, exp: DEFAULT_EXPORT, minijobEur: 603, fragebogenLinkText: EINLADUNG_TEXT,
+    kleidung: standardKleidung(), schulung: standardSchulung(), nachrichten: standardNachrichten(), schnittstelle: standardSchnittstelle(),
+  };
 }
 
 // Leerer Zustand ohne Beispieldaten (Ausgangspunkt des echten neuen Systems)
 export function leererZustand(): PvState {
   return {
     lang: "de", crew: [], jobs: [], bewerbungen: [], auftraege: [], stunden: [], audit: [], einst: standardEinstellungen(), zuweisung: {}, briefingGesendet: {}, belege: [], notizen: [],
-    antworten: leereAntworten(), etappe: 1, fragebogenFertig: false, dsgvo: false, eingeloggt: false, rueck: null, entwurf: {},
+    antworten: leereAntworten(), etappe: 1, fragebogenFertig: false, dsgvo: false, eingeloggt: false, meineFreigabe: "freigegeben", rueck: null, entwurf: {},
   };
 }
 
@@ -142,8 +157,11 @@ export interface Ctx {
   abmelden?: () => void;
   // Nur im echten System: Speicherstand und Aktionen gegen den Server
   speicher?: "ok" | "laeuft" | "fehler";
+  // Mitarbeiterlink im echten System: Stand vom Server holen (z. B. nach der Freigabe)
+  aktualisieren?: () => Promise<void>;
   echt?: {
     benutzer: string;
+    rolle: NeuRolle;
     neuLaden: () => Promise<void>;
     beispieldatenLaden: () => Promise<void>;
     beispieldatenEntfernen: () => Promise<void>;
@@ -165,7 +183,7 @@ export function PvProvider({ children }: { children: ReactNode }) {
       const roh = window.sessionStorage.getItem(SCHLUESSEL);
       if (roh) {
         const p = JSON.parse(roh) as { v?: number; s?: PvState };
-        if (p.v === 1 && p.s) setS({ ...initialerZustand(), ...p.s });
+        if (p.v === 1 && p.s) setS({ ...initialerZustand(), ...p.s, einst: { ...standardEinstellungen(), ...(p.s.einst ?? {}) } });
       }
     } catch {
       /* ohne sessionStorage läuft der Prototyp nur im Speicher */

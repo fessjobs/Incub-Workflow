@@ -8,6 +8,8 @@ import { Btn, Modal } from "./kit";
 import { MODULE } from "../data/trainings";
 import { statusFuer } from "../logic/unterweisung";
 import { HEUTE } from "../state/store";
+import { freigabeStand } from "../logic/freigabe";
+import { darfSeite } from "@/lib/neu/rollen";
 
 // Schmale Leiste im echten neuen Dashboard: sagt, dass es parallel zum bisherigen System läuft
 function NeuBanner() {
@@ -101,19 +103,27 @@ interface NavEintrag {
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pfad = usePath();
-  const { s, modus } = usePv();
+  const { s, modus, echt } = usePv();
   const offeneBewerber = s.crew.filter((c) => c.status === "Bewerber" && c.profile).length;
   const neueBewerbungen = s.bewerbungen.filter((a) => a.status === "neu").length;
-  const eintraege: NavEintrag[] = [
+  const wartenAufFreigabe = s.crew.filter((c) => c.status !== "ausgeschieden" && freigabeStand(c, s.einst.schulung, HEUTE) === "wartet").length;
+  const echtSystem = modus === "echt";
+  const alle: NavEintrag[] = [
     { href: "/admin", label: "Übersicht", gruppe: "Betrieb" },
     { href: "/admin/dispo", label: "Disposition", badge: s.jobs.length },
     { href: "/admin/bewerber", label: "Bewerber", badge: neueBewerbungen + offeneBewerber },
+    { href: "/admin/freigaben", label: "Freigaben", badge: wartenAufFreigabe },
     { href: "/admin/stunden", label: "Stundentabelle", gruppe: "Abrechnung" },
     { href: "/admin/unterlagen", label: "Unterlagen" },
     { href: "/admin/crew", label: "Crew", gruppe: "Personal" },
+    { href: "/admin/kleidung", label: "Arbeitskleidung" },
     { href: "/admin/unterweisungen", label: "Unterweisungen" },
+    ...(echtSystem ? [{ href: "/admin/nachrichten", label: "Nachrichten" }] : []),
     { href: "/admin/einstellungen", label: "Einstellungen", gruppe: "System" },
+    ...(echtSystem ? [{ href: "/admin/import", label: "Import" }, { href: "/admin/benutzer", label: "Benutzer" }, { href: "/admin/schnittstelle", label: "Schnittstelle" }] : []),
   ];
+  // Menü blendet aus, was die Rolle nicht darf (die Prüfung selbst macht der Server)
+  const eintraege = alle.filter((e) => !echtSystem || !echt || darfSeite(echt.rolle, e.href));
   const aktiv = (h: string) => (h === "/admin" ? pfad === "/admin" : pfad === h || pfad.startsWith(h + "/"));
   return (
     <div className="pva">

@@ -9,6 +9,7 @@ import { CrewGate, SpracheSchalter } from "./crew-start";
 import { AKTUELLE_VERSION, MODULE, NACHWEIS_HINWEIS, modulById, t } from "../data/trainings";
 import { ablaufDatum, mischen, pflichtModule, quizBestanden, statusFuer } from "../logic/unterweisung";
 import { formatDatumDE } from "../logic/zeit";
+import { videoEinbettung } from "../logic/video";
 
 export function CrewUnterweisungen() {
   return <CrewGate><ListeInhalt /></CrewGate>;
@@ -23,7 +24,7 @@ function ListeInhalt() {
     const job = s.jobs.find((j) => j.id === a.jobId);
     if (!job) continue;
     const tn = job.schichten.filter((x) => a.schichtIds.includes(x.id)).map((x) => x.taetigkeit);
-    for (const m of pflichtModule(tn, { hoehe: job.hoehe })) pflichtFuerMich.add(m);
+    for (const m of pflichtModule(tn, { hoehe: job.hoehe, kunde: job.kunde, zusatz: job.zusatzModule }, s.einst.schulung)) pflichtFuerMich.add(m);
   }
   return (
     <div className="col gap2">
@@ -51,6 +52,31 @@ function ListeInhalt() {
 
 type Phase = "karten" | "quiz" | "ergebnis" | "bestaetigung" | "fertig";
 
+// Video des Moduls (Adresse im Dashboard eingestellt); ohne Adresse bleibt der Platzhalter
+function VideoBlock({ url, titel, platzhalter, de }: { url?: string; titel?: string; platzhalter: string; de: boolean }) {
+  const emb = url ? videoEinbettung(url) : null;
+  if (!emb) return <div className="pv-video">▶ {platzhalter}</div>;
+  if (emb.art === "iframe") {
+    return (
+      <div className="pv-video" style={{ padding: 0, aspectRatio: "16 / 9", overflow: "hidden" }} data-testid="video">
+        <iframe src={emb.src} title={titel || (de ? "Unterweisungsvideo" : "Briefing video")} style={{ width: "100%", height: "100%", border: 0 }} loading="lazy" allow="fullscreen; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
+      </div>
+    );
+  }
+  if (emb.art === "video") {
+    return (
+      <div className="pv-video" style={{ padding: 0, overflow: "hidden" }} data-testid="video">
+        <video src={emb.src} controls playsInline preload="metadata" style={{ width: "100%", display: "block" }} aria-label={titel || (de ? "Unterweisungsvideo" : "Briefing video")} />
+      </div>
+    );
+  }
+  return (
+    <div className="pv-video" data-testid="video">
+      <a href={emb.src} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>▶ {titel || (de ? "Video öffnen" : "Open video")}</a>
+    </div>
+  );
+}
+
 export function CrewModul({ id }: { id: string }) {
   return <CrewGate><ModulInhalt id={id} /></CrewGate>;
 }
@@ -67,9 +93,12 @@ function ModulInhalt({ id }: { id: string }) {
   const [richtig, setRichtig] = useState(0);
   const [versuch, setVersuch] = useState(1);
   const [haken, setHaken] = useState(false);
+  const [videoGesehen, setVideoGesehen] = useState(false);
 
   const reihenfolgen = useMemo(() => (mod ? mod.quiz.map((q, i) => mischen(q.optionen.map((_, k) => k), versuch * 31 + i * 7 + 3)) : []), [mod, versuch]);
   if (!mod) return <Note ton="err">{de ? "Modul nicht gefunden." : "Module not found."}</Note>;
+  const video = s.einst.schulung.video[mod.id];
+  const videoPflichtig = Boolean(video?.url && video.pflicht && videoEinbettung(video.url));
   const q = mod.quiz[frage];
   const bestanden = quizBestanden(richtig, mod.quiz.length);
 
@@ -102,7 +131,8 @@ function ModulInhalt({ id }: { id: string }) {
       {phase === "karten" ? (
         <>
           <div className="pv-lesson" data-testid="karte">
-            {karte === 0 ? <div className="pv-video">▶ {t(mod.video, s.lang)}</div> : null}
+            {karte === 0 ? <VideoBlock url={video?.url} titel={video?.titel} platzhalter={t(mod.video, s.lang)} de={de} /> : null}
+            {karte === 0 && videoPflichtig ? <label className="pv-check mt2"><input type="checkbox" checked={videoGesehen} onChange={(e) => setVideoGesehen(e.target.checked)} data-testid="video-gesehen" /><span>{de ? "Ich habe das Video angesehen." : "I have watched the video."}</span></label> : null}
             <div className="big" aria-hidden>{mod.karten[karte].icon}</div>
             <h2>{t(mod.karten[karte].titel, s.lang)}</h2>
             <p>{t(mod.karten[karte].text, s.lang)}</p>
@@ -110,7 +140,7 @@ function ModulInhalt({ id }: { id: string }) {
           <div className="pv-dots">{mod.karten.map((_, i) => <i key={i} className={i === karte ? "on" : ""} />)}</div>
           <div className="row">
             {karte > 0 ? <Btn v="sec" onClick={() => setKarte(karte - 1)}>{de ? "Zurück" : "Back"}</Btn> : null}
-            <Btn className="grow" data-testid="karte-weiter" onClick={() => (karte < mod.karten.length - 1 ? setKarte(karte + 1) : (setPhase("quiz"), setFrage(0), setGewaehlt(null), setRichtig(0)))}>{karte < mod.karten.length - 1 ? (de ? "Weiter" : "Next") : de ? "Zum Quiz" : "To the quiz"}</Btn>
+            <Btn className="grow" data-testid="karte-weiter" disabled={videoPflichtig && !videoGesehen} onClick={() => (karte < mod.karten.length - 1 ? setKarte(karte + 1) : (setPhase("quiz"), setFrage(0), setGewaehlt(null), setRichtig(0)))}>{karte < mod.karten.length - 1 ? (de ? "Weiter" : "Next") : de ? "Zum Quiz" : "To the quiz"}</Btn>
           </div>
           <div className="tiny muted" style={{ textAlign: "center" }}>{karte + 1}/{mod.karten.length}</div>
         </>

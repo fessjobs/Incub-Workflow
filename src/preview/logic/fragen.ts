@@ -6,7 +6,7 @@
 // Fragentexte gegen eine Liste verbotener Themen.
 import type { Lang } from "./types";
 
-export type FrageTyp = "text" | "tel" | "email" | "plz" | "ja-nein" | "zahl" | "auswahl" | "mehrfach" | "erfahrung" | "nachweis" | "sprachen";
+export type FrageTyp = "text" | "tel" | "email" | "plz" | "ja-nein" | "zahl" | "auswahl" | "mehrfach" | "erfahrung" | "nachweis" | "sprachen" | "kleidung";
 
 export interface Frage {
   id: string;
@@ -30,6 +30,10 @@ export const ETAPPEN: Array<{ nr: number; titel: { de: string; en: string }; zwe
 
 const JA = { de: "Ja", en: "Yes" };
 void JA;
+
+export const SHIRT_GROESSEN = ["XS", "S", "M", "L", "XL", "XXL", "3XL"];
+export const HOSEN_GROESSEN = ["XS", "S", "M", "L", "XL", "XXL", "3XL"];
+export const SCHUH_GROESSEN = Array.from({ length: 16 }, (_, i) => String(35 + i));
 
 export const FRAGEN: Frage[] = [
   // 1 Basis
@@ -68,7 +72,21 @@ export const FRAGEN: Frage[] = [
     etappe: 5,
     typ: "auswahl",
     label: { de: "Shirtgröße", en: "T-shirt size" },
-    optionen: ["XS", "S", "M", "L", "XL", "XXL"].map((g) => ({ wert: g, de: g, en: g })),
+    optionen: SHIRT_GROESSEN.map((g) => ({ wert: g, de: g, en: g })),
+  },
+  {
+    id: "schuhgroesse",
+    etappe: 5,
+    typ: "auswahl",
+    label: { de: "Schuhgröße (EU)", en: "Shoe size (EU)" },
+    hilfe: { de: "Für Sicherheitsschuhe und die Planung der Arbeitskleidung.", en: "For safety boots and planning work clothing." },
+    optionen: SCHUH_GROESSEN.map((g) => ({ wert: g, de: g, en: g })),
+  },
+  {
+    id: "kleidung",
+    etappe: 5,
+    typ: "kleidung",
+    label: { de: "Arbeitskleidung von FESS (gegen Pfand)", en: "Work clothing from FESS (against deposit)" },
   },
   // 6 Verfügbarkeit
   {

@@ -8,6 +8,9 @@ import { PvContext, leererZustand, setzeHeute, standardEinstellungen, type Ctx, 
 import { leereAntworten, type Antworten } from "@/preview/logic/profil";
 import type { Application, Crew, Job } from "@/preview/logic/types";
 import { modulById } from "@/preview/data/trainings";
+import { bereinigeSchulung, type SchulungRegeln } from "@/preview/logic/unterweisung";
+import { bereinigeKleidung, type KleidungEinst } from "@/preview/logic/einstellungen-neu";
+import type { FreigabeAnzeige } from "@/preview/logic/freigabe";
 import { heuteBerlin } from "@/preview/logic/zeit";
 
 setzeHeute(heuteBerlin());
@@ -19,6 +22,9 @@ interface CrewServerStand {
   jobs: Job[];
   bewerbungen: Application[];
   xp: unknown;
+  schulung: SchulungRegeln;
+  kleidung: KleidungEinst;
+  freigabe: FreigabeAnzeige;
   heute: string;
 }
 
@@ -40,7 +46,8 @@ function zustandAusServer(srv: CrewServerStand, lokal: Partial<Pick<PvState, "la
   s.lang = lokal.lang ?? "de";
   s.entwurf = lokal.entwurf ?? {};
   s.rueck = lokal.rueck ?? null;
-  if (srv.xp && typeof srv.xp === "object") s.einst = { ...standardEinstellungen(), xp: srv.xp as PvState["einst"]["xp"] };
+  s.einst = { ...standardEinstellungen(), ...(srv.xp && typeof srv.xp === "object" ? { xp: srv.xp as PvState["einst"]["xp"] } : {}), schulung: bereinigeSchulung(srv.schulung), kleidung: bereinigeKleidung(srv.kleidung) };
+  s.meineFreigabe = srv.freigabe ?? "offen";
   // Was gerade getippt wird, gewinnt gegenüber dem Serverstand
   s.antworten = vorher ? vorher.antworten : { ...leereAntworten(), ...((srv.entwurf?.antworten ?? {}) as Partial<Antworten>) };
   s.etappe = vorher ? vorher.etappe : srv.entwurf?.etappe ?? 1;
@@ -144,7 +151,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
           }
           if (r.stand) {
             merkeServer(r.stand, jetzt.antworten, jetzt.etappe);
-            setS((x) => ({ ...x, crew: [r.stand!.self], fragebogenFertig: r.stand!.fragebogenFertig }));
+            setS((x) => ({ ...x, crew: [r.stand!.self], fragebogenFertig: r.stand!.fragebogenFertig, meineFreigabe: r.stand!.freigabe, jobs: r.stand!.jobs }));
           }
           continue;
         }
@@ -166,7 +173,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
           }
           if (r.stand) {
             merkeServer(r.stand, sRef.current.antworten, sRef.current.etappe);
-            setS((x) => ({ ...x, crew: [r.stand!.self] }));
+            setS((x) => ({ ...x, crew: [r.stand!.self], meineFreigabe: r.stand!.freigabe, jobs: r.stand!.jobs }));
           }
           continue;
         }
@@ -222,6 +229,37 @@ export function CrewProvider({ children }: { children: ReactNode }) {
 
   const set = useCallback((fn: (x: PvState) => PvState) => setS((x) => fn(x)), []);
 
+  // Stand vom Server holen, ohne Eingaben zu überschreiben (z. B. nachdem das Team freigegeben hat)
+  const aktualisieren = useCallback(async () => {
+    const r = await aufruf<CrewServerStand>("/api/neu/crew/state");
+    if (r.status === 401) return setAbgemeldet(true);
+    if (!r.ok || !r.json) return;
+    const srv = r.json;
+    // Was der Server weiß, gilt als abgeglichen – sonst würde der Abgleich es gleich noch einmal senden
+    merkeServer(srv, bekannt.current.antworten, bekannt.current.etappe);
+    setS((x) => ({
+      ...x,
+      crew: [srv.self],
+      jobs: srv.jobs,
+      bewerbungen: srv.bewerbungen,
+      meineFreigabe: srv.freigabe,
+      einst: { ...x.einst, schulung: bereinigeSchulung(srv.schulung), kleidung: bereinigeKleidung(srv.kleidung) },
+    }));
+  }, []);
+
+  // Solange die Freigabe aussteht: beim Zurückkehren in den Tab und alle 30 Sekunden nachsehen
+  const freigabeOffen = s.meineFreigabe !== "freigegeben";
+  useEffect(() => {
+    if (!geladen || !freigabeOffen) return;
+    const t = setInterval(() => void aktualisieren(), 30_000);
+    const fokus = () => document.visibilityState === "visible" && void aktualisieren();
+    document.addEventListener("visibilitychange", fokus);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", fokus);
+    };
+  }, [geladen, freigabeOffen, aktualisieren]);
+
   // „Zurücksetzen“ heißt hier: Daten löschen (DSGVO)
   const loeschen = useCallback(async () => {
     await aufruf("/api/neu/crew/konto", { method: "DELETE" });
@@ -233,7 +271,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     window.location.href = "/crew";
   }, []);
 
-  const wert = useMemo<Ctx>(() => ({ s, modus: "crew", set, reset: () => void loeschen(), toast, melde, geladen, abmelden: () => void crewAbmelden() }), [s, set, loeschen, toast, melde, geladen]);
+  const wert = useMemo<Ctx>(() => ({ s, modus: "crew", set, reset: () => void loeschen(), toast, melde, geladen, abmelden: () => void crewAbmelden(), aktualisieren }), [s, set, loeschen, toast, melde, geladen, aktualisieren]);
 
   if (abgemeldet) {
     return (

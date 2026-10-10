@@ -7,6 +7,7 @@ import { ablaufDatum, erinnerungAm, statusFuer, type UnterweisungStatus } from "
 import { formatDatumDE } from "../logic/zeit";
 import type { Lang } from "../logic/types";
 import { vollName } from "./helfer";
+import { PflichtUndVideos } from "./admin-schulung-regeln";
 
 const ZEICHEN: Record<UnterweisungStatus, { text: string; ton?: "gut" | "warn" | "err" }> = {
   gueltig: { text: "✓", ton: "gut" },
@@ -17,7 +18,7 @@ const ZEICHEN: Record<UnterweisungStatus, { text: string; ton?: "gut" | "warn" |
 
 export function AdminUnterweisungen() {
   const { s, melde, modus } = usePv();
-  const [tab, setTab] = useState<"matrix" | "texte" | "erinnerung">("matrix");
+  const [tab, setTab] = useState<"matrix" | "texte" | "erinnerung" | "pflicht">("matrix");
   const [nurProbleme, setNurProbleme] = useState(false);
   const [modulId, setModulId] = useState(MODULE[0].id);
   const [lang, setLang] = useState<Lang>("de");
@@ -52,7 +53,9 @@ export function AdminUnterweisungen() {
         <Stat wert={MODULE.length} label="Module (Deutsch und Englisch)" />
       </div>
       <div className="mt2"><Entwurf>Die Texte sind ein <b>Entwurf</b> und nicht von einer Fachkraft für Arbeitssicherheit freigegeben. {t(NACHWEIS_HINWEIS, "de")}</Entwurf></div>
-      <div className="mt3"><Tabs wert={tab} onChange={setTab} tabs={[{ id: "matrix", label: "Wer ist gültig", n: aktive.length }, { id: "texte", label: "Texte und Quiz" }, { id: "erinnerung", label: "Erinnerungen", n: erinnerungen.length }]} /></div>
+      <div className="mt3"><Tabs wert={tab} onChange={setTab} tabs={[{ id: "matrix", label: "Wer ist gültig", n: aktive.length }, { id: "texte", label: "Texte und Quiz" }, { id: "erinnerung", label: "Erinnerungen", n: erinnerungen.length }, { id: "pflicht", label: "Pflicht & Videos" }]} /></div>
+
+      {tab === "pflicht" ? <div className="mt2"><PflichtUndVideos /></div> : null}
 
       {tab === "matrix" ? (
         <div className="mt2">

@@ -8,6 +8,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const a = await neuBenutzer();
   if (!a.ok) return a.antwort;
-  const alles = await ladeAlles(a.user.organizationId);
-  return NextResponse.json({ ...alles, basis: envBase(), benutzer: a.user.label });
+  const alles = await ladeAlles(a.user.organizationId, a.user.rolle);
+  return NextResponse.json({ ...alles, basis: envBase(), benutzer: a.user.label, rolle: a.user.rolle });
 }

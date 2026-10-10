@@ -24,6 +24,17 @@ const hashNavigation = {
   },
 };
 
+// "@/…" zeigt auf src/ (wie in tsconfig), damit gemeinsame reine Logik auch hier gebündelt wird
+const srcAlias = {
+  name: "src-alias",
+  setup(b) {
+    b.onResolve({ filter: /^@\// }, async (args) => {
+      const r = await b.resolve("./" + args.path.slice(2), { resolveDir: resolve(wurzel, "src"), kind: args.kind });
+      return r.errors.length ? { errors: r.errors } : { path: r.path };
+    });
+  },
+};
+
 const ergebnis = await build({
   entryPoints: [resolve(wurzel, "src/preview/standalone.tsx")],
   bundle: true,
@@ -34,7 +45,7 @@ const ergebnis = await build({
   jsx: "automatic",
   platform: "browser",
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [hashNavigation],
+  plugins: [hashNavigation, srcAlias],
   legalComments: "none",
   logLevel: "warning",
 });

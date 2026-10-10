@@ -10,6 +10,7 @@ import { geocodePlz, naechsterPool } from "../logic/geo";
 import { normalizeTime } from "../logic/zeit";
 import { vollName } from "./helfer";
 import { bearbeiter } from "./stunden-aktionen";
+import { MODUL_IDS } from "../logic/unterweisung";
 
 const STANDARD_WOCHENSTUNDEN: Record<Vertragsart, number> = { Minijob: 10, kurzfristig: 30, Werkstudent: 20, TZ: 25, VZ: 40 };
 
@@ -173,6 +174,7 @@ export function AuftragModal({ onClose }: { onClose: () => void }) {
   const [parken, setParken] = useState("");
   const [treffpunkt, setTreffpunkt] = useState("");
   const [veroeffentlichen, setVeroeffentlichen] = useState(false);
+  const [zusatz, setZusatz] = useState<string[]>([]);
   const [schichten, setSchichten] = useState<SchichtEingabe[]>([{ bezeichnung: "Schicht 1", taetigkeit: "Stagehand", datum: HEUTE, start: "08:00", ende: "16:00", bedarf: "5" }]);
   const [fehler, setFehler] = useState<string | null>(null);
   const kunden = [...new Set(s.auftraege.map((a) => a.kunde))].sort();
@@ -199,6 +201,7 @@ export function AuftragModal({ onClose }: { onClose: () => void }) {
       id, kunde: kunde.trim(), titel: titel.trim(), ort: ort.trim(), plz: plz.trim(), datumVon: von, datumBis: bis, schichten: fertige, beschreibung: beschreibung.trim(), dresscode: dresscode.trim(),
       psa: psa.split(",").map((x) => x.trim()).filter(Boolean), hoehe, verpflegung: verpflegung.trim(), parken: parken.trim(), treffpunkt: treffpunkt.trim(), ansprechpartner: "Wird nach der Bestätigung freigeschaltet",
       ablauf: ["Ankommen und Einweisung durch den Teamleiter", "Sicherheitsunterweisung vor Ort durch den Entleiher", "Pausen nach Absprache, Zettel am Ende der Schicht"], status: veroeffentlichen ? "offen" : "Entwurf", quelle: "manuell",
+      ...(zusatz.length > 0 ? { zusatzModule: zusatz } : {}),
     };
     set((st) => ({
       ...st,
@@ -244,6 +247,13 @@ export function AuftragModal({ onClose }: { onClose: () => void }) {
       </div>
       <Feld label="Beschreibung"><textarea className="pv-textarea" aria-label="Beschreibung" value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)} /></Feld>
       <label className="pv-check"><input type="checkbox" checked={hoehe} onChange={(e) => setHoehe(e.target.checked)} />Arbeiten in der Höhe (Pflichtmodul „Höhe und Leitern“)</label>
+      <div className="mt2">
+        <div className="pv-label">Zusätzliche Pflicht-Schulungen nur für diesen Auftrag (optional)</div>
+        <div className="row wrap" data-testid="zusatz-module">
+          {MODUL_IDS.map((m) => <button key={m} type="button" className={`pv-chip ${zusatz.includes(m) ? "navy" : ""}`} style={{ border: 0, cursor: "pointer" }} aria-pressed={zusatz.includes(m)} onClick={() => setZusatz((z) => (z.includes(m) ? z.filter((x) => x !== m) : [...z, m]))}>{m}</button>)}
+        </div>
+        <div className="pv-hint">Die Grundregeln stehen unter Unterweisungen → Pflicht &amp; Videos.</div>
+      </div>
       <label className="pv-check mt1"><input type="checkbox" checked={veroeffentlichen} onChange={(e) => setVeroeffentlichen(e.target.checked)} data-testid="veroeffentlichen" />Sofort im Job-Board für die Crew veröffentlichen</label>
       {fehler ? <div className="pv-error" role="alert">{fehler}</div> : null}
     </Modal>
