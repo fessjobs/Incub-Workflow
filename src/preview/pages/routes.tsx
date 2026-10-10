@@ -22,6 +22,7 @@ import { AdminNachrichten } from "./admin-nachrichten";
 import { AdminImport } from "./admin-import";
 import { AdminBenutzer } from "./admin-benutzer";
 import { AdminSchnittstelle } from "./admin-schnittstelle";
+import { AdminSicherung } from "./admin-sicherung";
 
 export interface Route {
   muster: string;
@@ -71,4 +72,5 @@ export const ROUTEN: Route[] = [
   { muster: "/admin/import", rahmen: "admin", render: () => <AdminImport /> },
   { muster: "/admin/benutzer", rahmen: "admin", render: () => <AdminBenutzer /> },
   { muster: "/admin/schnittstelle", rahmen: "admin", render: () => <AdminSchnittstelle /> },
+  { muster: "/admin/sicherung", rahmen: "admin", render: () => <AdminSicherung /> },
 ];

@@ -1,5 +1,9 @@
 // Neues System (parallel zum bisherigen): Button in der Navigation, eigene Daten,
 // Einladung → Fragebogen → Bewerbung, Beleg-Link mit Upload, Zugriffsschutz.
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { PrismaClient } from "@prisma/client";
+import JSZip from "jszip";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
@@ -622,6 +626,8 @@ test.describe("Neues System: Benutzer und Rollen", () => {
     expect((await ctx.request.post("/api/neu/sync", { data: { ops: [{ kind: "einst", id: "main", data: {} }] } })).status()).toBe(403);
     expect((await ctx.request.get("/api/neu/benutzer")).status()).toBe(403);
     expect((await ctx.request.get("/api/neu/schnittstelle/status")).status()).toBe(403);
+    expect((await ctx.request.get("/api/neu/sicherung?monat=2026-09&bereiche=export")).status()).toBe(403);
+    expect((await ctx.request.get("/api/neu/sicherung/vorschau?monat=2026-09&bereiche=export")).status()).toBe(403);
     const anderer = await ctx.request.post("/api/neu/seed", { data: { ops: [] } });
     expect(anderer.status()).toBe(403);
 
@@ -720,6 +726,170 @@ test.describe("Neues System: Beleg-Link", () => {
   test("Ein anderer Link und eine fremde Datei-ID liefern nichts", async ({ request }) => {
     expect((await request.get("/api/neu/b/falsch")).status()).toBe(404);
     expect((await request.post("/api/neu/b/falsch", { multipart: { art: "Tanken" } })).status()).toBe(404);
+  });
+});
+
+test.describe("Neues System: Sicherung pro Monat", () => {
+  // Letzter voller Monat (die Seite bietet ihn zuerst an)
+  const jetzt = new Date();
+  const MONAT = jetzt.getUTCMonth() === 0 ? `${jetzt.getUTCFullYear() - 1}-12` : `${jetzt.getUTCFullYear()}-${String(jetzt.getUTCMonth()).padStart(2, "0")}`;
+  const ANDERER_MONAT = MONAT === "2026-01" ? "2025-12" : `${MONAT.slice(0, 4)}-${String(Number(MONAT.slice(5)) - 1 || 12).padStart(2, "0")}`;
+  const tag = (monat: string, d: number) => new Date(`${monat}-${String(d).padStart(2, "0")}T10:00:00Z`);
+  const db = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL ?? /DATABASE_URL="?([^"\n]+)"?/.exec(readFileSync(".env", "utf8"))?.[1] });
+  const sha = (t: string) => createHash("sha256").update(t).digest("hex");
+  const dok = (category: string, name: string, monat: string, inhalt: string) =>
+    db.document.create({ data: { organizationId: ORG.id, category, filename: name, mimeType: "application/pdf", bytes: Buffer.from(inhalt), size: inhalt.length, sha256: sha(inhalt), links: { create: [{ datum: new Date(`${monat}-10T00:00:00Z`) }] } } });
+  const ORG = { id: "", adminId: "", zweiterAdminId: "" };
+  const belegErstellen = (userId: string, art: "AUSLAGE" | "FIRMENZAHLUNG", haendler: string, dateien: Array<{ kind: "PDF" | "ORIGINAL"; name: string; inhalt: string }>) =>
+    db.receipt.create({
+      data: {
+        organizationId: ORG.id, userId, kind: art, status: "ABGELEGT", vendor: haendler, grossAmount: "12.50", receiptDate: tag(MONAT, 12),
+        files: { create: dateien.map((d) => ({ kind: d.kind, filename: d.name, mimeType: d.kind === "PDF" ? "application/pdf" : "image/jpeg", bytes: Buffer.from(d.inhalt), size: d.inhalt.length })) },
+      },
+    });
+
+  test.beforeAll(async () => {
+    const admin = await db.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    ORG.id = admin.organizationId;
+    ORG.adminId = admin.id;
+    const zweiter = await db.user.create({ data: { organizationId: ORG.id, email: `admin2-${RUN}@fess.jobs`, passwordHash: "x", name: `Zweiter Admin ${RUN}`, role: "ADMIN" } });
+    ORG.zweiterAdminId = zweiter.id;
+    await dok("konkretisierung", `Konkretisierung_${RUN}.pdf`, MONAT, `%PDF-1.4 konkretisierung ${RUN}`);
+    await dok("stundennachweis", `Stundennachweis_${RUN}.pdf`, MONAT, `%PDF-1.4 stundennachweis ${RUN}`);
+    await dok("stundennachweis", `Stundennachweis_ANDERER_MONAT_${RUN}.pdf`, ANDERER_MONAT, `%PDF-1.4 anderer monat ${RUN}`);
+    await dok("export", `Export_${RUN}.csv`, MONAT, `a;b;c ${RUN}`);
+    await belegErstellen(ORG.adminId, "AUSLAGE", `Tankstelle-${RUN}`, [{ kind: "PDF", name: `AUSLAGE_${RUN}.pdf`, inhalt: `%PDF-1.4 auslage ${RUN}` }, { kind: "ORIGINAL", name: `foto_${RUN}.jpg`, inhalt: `JPEGDATEN ${RUN}` }]);
+    await belegErstellen(ORG.adminId, "FIRMENZAHLUNG", `Baumarkt-${RUN}`, [{ kind: "PDF", name: `FIRMA_${RUN}.pdf`, inhalt: `%PDF-1.4 firma ${RUN}` }]);
+    // Beleg eines anderen Administrators: darf in meiner Sicherung nicht auftauchen
+    await belegErstellen(ORG.zweiterAdminId, "AUSLAGE", `Geheim-${RUN}`, [{ kind: "PDF", name: `FREMD_${RUN}.pdf`, inhalt: `%PDF-1.4 fremd ${RUN}` }]);
+  });
+
+  test.afterAll(async () => {
+    await db.document.deleteMany({ where: { filename: { contains: RUN } } });
+    await db.receipt.deleteMany({ where: { userId: { in: [ORG.adminId, ORG.zweiterAdminId] }, vendor: { contains: RUN } } });
+    await db.user.deleteMany({ where: { id: ORG.zweiterAdminId } });
+    await db.$disconnect();
+  });
+
+  const zipVon = async (page: Page, query: string) => {
+    const r = await page.request.get(`/api/neu/sicherung?${query}`);
+    expect(r.status(), await r.text().catch(() => "")).toBe(200);
+    expect(r.headers()["content-type"]).toBe("application/zip");
+    return JSZip.loadAsync(await r.body());
+  };
+
+  test("Nur die gewählten Bereiche des Monats kommen in die ZIP – mit Inhaltsverzeichnis und Prüfsummen", async ({ browser }) => {
+    const page = await neuerAdmin(browser);
+    const zip = await zipVon(page, `monat=${MONAT}&bereiche=stundennachweis,konkretisierung`);
+    const namen = Object.keys(zip.files);
+    expect(namen).toContain(`Stundennachweise/Stundennachweis_${RUN}.pdf`);
+    expect(namen).toContain(`Konkretisierungen/Konkretisierung_${RUN}.pdf`);
+    // ausgewählt ist nur das, was angehakt war
+    expect(namen.some((n) => n.includes(`Export_${RUN}`))).toBe(false);
+    expect(namen.some((n) => n.startsWith("Auslagen/") || n.startsWith("Firmenbelege/"))).toBe(false);
+    // andere Monate bleiben draußen
+    expect(namen.some((n) => n.includes("ANDERER_MONAT"))).toBe(false);
+    // Der Inhalt ist unverändert, das Verzeichnis nennt den Fingerabdruck
+    expect(await zip.file(`Stundennachweise/Stundennachweis_${RUN}.pdf`)?.async("string")).toBe(`%PDF-1.4 stundennachweis ${RUN}`);
+    const inhalt = (await zip.file("Inhalt.csv")?.async("string")) ?? "";
+    expect(inhalt).toContain(sha(`%PDF-1.4 stundennachweis ${RUN}`));
+    expect(inhalt).toContain("SHA-256");
+    const liesmich = (await zip.file("LIESMICH.txt")?.async("string")) ?? "";
+    expect(liesmich).toContain("KEINE vollständige Datenbanksicherung");
+    await page.close();
+  });
+
+  test("Auslagen und Firmenbelege getrennt wählbar; Belege anderer Administratoren fehlen; Original-Fotos nur auf Wunsch", async ({ browser }) => {
+    const page = await neuerAdmin(browser);
+    const nurAuslagen = await zipVon(page, `monat=${MONAT}&bereiche=auslagen`);
+    const n1 = Object.keys(nurAuslagen.files);
+    expect(n1.some((n) => n.startsWith("Auslagen/") && n.endsWith(`AUSLAGE_${RUN}.pdf`))).toBe(true);
+    expect(n1.some((n) => n.includes(`FIRMA_${RUN}`))).toBe(false);
+    expect(n1.some((n) => n.includes(`FREMD_${RUN}`))).toBe(false);
+    expect(n1.some((n) => n.includes(`foto_${RUN}`))).toBe(false);
+    const uebersicht = (await nurAuslagen.file(`Belege-Übersicht_${MONAT}.csv`)?.async("string")) ?? "";
+    expect(uebersicht).toContain(`Tankstelle-${RUN}`);
+    expect(uebersicht).not.toContain(`Geheim-${RUN}`);
+    expect(uebersicht).not.toContain(`Baumarkt-${RUN}`);
+
+    const alles = await zipVon(page, `monat=${MONAT}&bereiche=auslagen,firmenbelege&originale=1`);
+    const n2 = Object.keys(alles.files);
+    expect(n2.some((n) => n.startsWith("Firmenbelege/") && n.endsWith(`FIRMA_${RUN}.pdf`))).toBe(true);
+    const foto = n2.find((n) => n.includes("/originale/") && n.endsWith(`foto_${RUN}.jpg`));
+    expect(foto).toBeTruthy();
+    expect(await alles.file(foto as string)?.async("string")).toBe(`JPEGDATEN ${RUN}`);
+    expect(n2.some((n) => n.includes(`FREMD_${RUN}`))).toBe(false);
+    await page.close();
+  });
+
+  test("Exporte, Personalstamm (ohne Geburtsdatum) und neues System", async ({ browser }) => {
+    const page = await neuerAdmin(browser);
+    const zip = await zipVon(page, `monat=${MONAT}&bereiche=export,personalstamm,neu-stunden,neu-gesamt`);
+    const namen = Object.keys(zip.files);
+    expect(namen).toContain(`Exporte/Export_${RUN}.csv`);
+    const stamm = namen.find((n) => n.startsWith("Personalstamm_Stand_")) as string;
+    const kopf = ((await zip.file(stamm)?.async("string")) ?? "").split("\r\n")[0];
+    expect(kopf).toContain("Personalnummer");
+    expect(kopf).not.toMatch(/Geburt|IBAN/i);
+    expect(namen).toContain(`Neues-System/Stunden_${MONAT}.csv`);
+    const gesamt = JSON.parse((await zip.file("Neues-System/Gesamtstand.json")?.async("string")) ?? "{}");
+    expect(Array.isArray(gesamt.records.crew)).toBe(true);
+    expect(gesamt.records.benutzer).toEqual([]);
+    await page.close();
+  });
+
+  test("Ungültige Anfragen, ohne Anmeldung und zu große Auswahl", async ({ browser, request }) => {
+    const page = await neuerAdmin(browser);
+    for (const q of ["monat=2026-13&bereiche=export", "monat=2026-09&bereiche=gibtesnicht", "monat=2026-09&bereiche=", "bereiche=export", "monat=../..&bereiche=export"]) {
+      expect((await page.request.get(`/api/neu/sicherung?${q}`)).status(), q).toBe(400);
+      expect((await page.request.get(`/api/neu/sicherung/vorschau?${q}`)).status(), q).toBe(400);
+    }
+    expect((await request.get(`/api/neu/sicherung?monat=${MONAT}&bereiche=export`)).status()).toBe(401);
+    expect((await request.get(`/api/neu/sicherung/vorschau?monat=${MONAT}&bereiche=export`)).status()).toBe(401);
+    const v = await (await page.request.get(`/api/neu/sicherung/vorschau?monat=${MONAT}&bereiche=stundennachweis,konkretisierung`)).json();
+    expect(v.zaehler.stundennachweis.dateien).toBeGreaterThanOrEqual(1);
+    expect(v.zuGross).toBe(false);
+    await page.close();
+  });
+
+  test("Seite: Bereiche wählen, Vorschau, Herunterladen, Verlauf und Erinnerung", async ({ browser }) => {
+    const page = await neuerAdmin(browser);
+    await page.goto("/admin");
+    // Erinnerung auf der Übersicht, solange für den letzten Monat nichts heruntergeladen wurde
+    const vorher = await (await page.request.get("/api/neu/state")).json();
+    const schonGesichert = vorher.audit.some((a: { tabelle: string; datensatz: string }) => a.tabelle === "sicherung" && a.datensatz === MONAT);
+    if (!schonGesichert) await expect(page.getByText(/Sicherung für .* noch nicht heruntergeladen/)).toBeVisible();
+
+    await page.getByRole("link", { name: "Sicherung", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sicherung" })).toBeVisible();
+    await page.getByTestId("sicherung-monat").selectOption(MONAT);
+    // Vorgabe: Stundenzettel, Konkretisierungen, Auslagen
+    await expect(page.getByTestId("bereich-stundennachweis")).toBeChecked();
+    await expect(page.getByTestId("bereich-konkretisierung")).toBeChecked();
+    await expect(page.getByTestId("bereich-auslagen")).toBeChecked();
+    await expect(page.getByTestId("bereich-firmenbelege")).not.toBeChecked();
+    await page.getByTestId("bereich-konkretisierung").uncheck();
+    await expect(page.getByTestId("sicherung-summe")).toContainText(/KB|MB/);
+    await page.getByTestId("bereich-export").check();
+    await page.getByTestId("originale").check();
+
+    const download = page.waitForEvent("download");
+    await page.getByTestId("sicherung-laden").click();
+    const d = await download;
+    expect(d.suggestedFilename()).toBe(`Sicherung_${MONAT}.zip`);
+    const pfad = await d.path();
+    const zip = await JSZip.loadAsync(readFileSync(pfad));
+    const namen = Object.keys(zip.files);
+    expect(namen).toContain(`Stundennachweise/Stundennachweis_${RUN}.pdf`);
+    expect(namen).toContain(`Exporte/Export_${RUN}.csv`);
+    expect(namen.some((n) => n.includes(`Konkretisierung_${RUN}`))).toBe(false);
+    expect(namen.some((n) => n.includes(`foto_${RUN}`))).toBe(true);
+
+    // Verlauf: steht danach in der Liste und im Änderungsprotokoll; Erinnerung verschwindet
+    await expect(page.getByTestId("sicherung-verlauf")).toContainText("Stundennachweise / Stundenzettel", { timeout: 30_000 });
+    await page.goto("/admin");
+    await expect(page.getByText(/Sicherung für .* noch nicht heruntergeladen/)).toHaveCount(0);
+    await page.close();
   });
 });
 

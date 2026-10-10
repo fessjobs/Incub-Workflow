@@ -120,7 +120,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/unterweisungen", label: "Unterweisungen" },
     ...(echtSystem ? [{ href: "/admin/nachrichten", label: "Nachrichten" }] : []),
     { href: "/admin/einstellungen", label: "Einstellungen", gruppe: "System" },
-    ...(echtSystem ? [{ href: "/admin/import", label: "Import" }, { href: "/admin/benutzer", label: "Benutzer" }, { href: "/admin/schnittstelle", label: "Schnittstelle" }] : []),
+    ...(echtSystem ? [{ href: "/admin/import", label: "Import" }, { href: "/admin/benutzer", label: "Benutzer" }, { href: "/admin/sicherung", label: "Sicherung" }, { href: "/admin/schnittstelle", label: "Schnittstelle" }] : []),
   ];
   // Menü blendet aus, was die Rolle nicht darf (die Prüfung selbst macht der Server)
   const eintraege = alle.filter((e) => !echtSystem || !echt || darfSeite(echt.rolle, e.href));

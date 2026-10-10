@@ -17,6 +17,7 @@ vorhandenen `v2_`-Tabellen (neue Datensatz-Arten und zusätzliche Felder).
 | Welche Schulung für was nötig ist, Videos | **Unterweisungen → Pflicht & Videos** |
 | Unterschiedliche Benutzer | **Benutzer** |
 | Anbindung ans bisherige System (vorbereitet, **aus**) | **Schnittstelle** |
+| Monats-Sicherung der Dokumente auf den eigenen Rechner | **Sicherung** |
 
 ## Schuhgröße und Arbeitskleidung gegen Pfand
 
@@ -186,6 +187,41 @@ Noch zu klären, bevor wir es einschalten: Wo liegen die PDFs und wie kommt das 
 Zieht das bisherige System die Aufträge (Pull) oder schickt das neue sie (Push)? Ist die Personalnummer auf dem
 Zettel dieselbe wie im Personalstamm? Wie erkennen wir den Auftrag zur PDF (Auftragsnummer)? Dafür brauchen
 wir ein paar Beispiel-PDFs.
+
+## Sicherung pro Monat
+
+Unter **Sicherung** (nur Administration) lädst du die Dokumente **eines Monats** als ZIP auf deinen Rechner und
+wählst vorher, was hineinkommt:
+
+| Bereich | Inhalt in der ZIP |
+| --- | --- |
+| Konkretisierungen (AÜG) | `Konkretisierungen/…pdf`, nach Einsatzdatum im Monat |
+| Stundennachweise / Stundenzettel | `Stundennachweise/…pdf` (mit Unterschriften), nach Einsatzdatum |
+| Exporte (zvoove, Excel) | `Exporte/…`, im System abgelegte Exportdateien |
+| Auslagen | `Auslagen/<Firma>/…pdf` (Beleg mit Beiblatt), Belegdatum im Monat |
+| Firmenbelege | `Firmenbelege/<Firma>/…pdf` |
+| Private Belege | `Private-Belege/<Firma>/…pdf` |
+| (Option) Original-Fotos | zusätzlich unter `…/originale/` |
+| Personalstamm | `Personalstamm_Stand_<Datum>.csv` (Stand heute; ohne Geburtsdatum und Bankdaten) |
+| Neues System: Belege | Fotos/PDFs der Beleg-Links des Monats + Übersicht |
+| Neues System: Stunden | `Neues-System/Stunden_<Monat>.csv` |
+| Neues System: Gesamtstand | `Neues-System/Gesamtstand.json` (alle Personen, Aufträge, Einstellungen …) |
+
+Immer dabei: **`Inhalt.csv`** (jede Datei mit Größe und SHA-256-Fingerabdruck, damit sich später prüfen lässt, dass nichts
+verändert wurde) und **`LIESMICH.txt`**.
+
+- **Vorschau** vor dem Herunterladen: Anzahl und Größe je Bereich. Obergrenze 150 MB pro ZIP (die Datei entsteht im
+  Arbeitsspeicher); bei mehr bitte Bereiche getrennt laden. Die letzte Auswahl merkt sich der Browser.
+- **Nur lesend.** Das Bisherige System wird nicht verändert; die Sicherung kennt nur Lesezugriffe auf Dokumente, Belege und
+  Personalstamm (ein Test erzwingt das). Belege siehst du so, wie du sie im Belegbereich siehst: **keine Belege anderer
+  Administratoren**, Mitarbeiter-Belege erst nach Freigabe.
+- Jede Sicherung steht im Änderungsprotokoll („Zuletzt heruntergeladen“). Auf der Übersicht erinnert ein Hinweis, wenn der
+  letzte volle Monat noch nicht gesichert wurde.
+- Monatsgrenzen gelten in Berliner Zeit. Dokumente zählen nach dem Einsatzdatum (sonst nach Erstellungsdatum), Belege nach Belegdatum.
+- **Keine komplette Datenbanksicherung.** Für eine vollständige Wiederherstellung bleibt `pg_dump` bzw. das Backup bei Railway
+  (`docs/preview-umgebung.md`). Die ZIP enthält Personen- und Belegdaten: verschlüsselt oder geschützt ablegen.
+- Eine **automatische** Sicherung auf dein Gerät ist das noch nicht – die Seite kann nichts auf deinen Rechner schieben. Dafür
+  gäbe es später eine nächtliche Kopie in einen externen Speicher oder einen Zeitplan-Auftrag auf deinem Rechner.
 
 ## Tests
 

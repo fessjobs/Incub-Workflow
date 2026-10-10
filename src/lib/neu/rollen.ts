@@ -39,7 +39,7 @@ export function darfLesen(rolle: NeuRolle, kind: Kind): boolean {
 }
 
 // Aktionen außerhalb der Datensätze (Importe, Nachrichten, Links …)
-export type Aktion = "import-personal" | "import-auftraege" | "nachrichten" | "einstellungen" | "benutzer" | "schnittstelle" | "beispieldaten" | "beleg-link";
+export type Aktion = "import-personal" | "import-auftraege" | "nachrichten" | "einstellungen" | "benutzer" | "schnittstelle" | "beispieldaten" | "beleg-link" | "sicherung";
 
 const AKTIONEN: Record<NeuRolle, ReadonlyArray<Aktion> | "alle"> = {
   admin: "alle",

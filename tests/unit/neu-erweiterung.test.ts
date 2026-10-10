@@ -17,6 +17,9 @@ import { auftragFeedSchema, baueAuftragFeed, schnittstelleStatus, schnittstelleU
 import { baueDemo } from "@/preview/data/demo";
 import type { Crew, Job } from "@/preview/logic/types";
 import { drehbuch } from "@/preview/pages/admin-schulung-regeln";
+import { BEREICHE, sicherungsAnfrage } from "@/lib/neu/sicherung-bereiche";
+import { eindeutigerPfad, letzterVollerMonat, monatsGrenzen, monatsName, sicherDateiname } from "@/lib/neu/sicherung";
+import { leseAnfrage } from "@/app/api/neu/sicherung/anfrage";
 
 const HEUTE = "2026-10-10";
 const crewBasis = (p: Partial<Crew>): Crew => ({ id: "c-1", pnr: "1001", vorname: "Anna", nachname: "Beispiel", telefon: "", email: "", wohnort: "", plz: "", pool: "Stuttgart", status: "aktiv", xp: 0, einsaetze: 0, arbeitstageJahr: 0, profile: null, contract: null, unterweisungen: {}, ratings: [], notizen: "", ...p });
@@ -597,6 +600,10 @@ describe("Trennung vom bisherigen System", () => {
     });
   const alle = ordner.flatMap((o) => dateien(path.join(wurzel, o)));
   const ERLAUBT = new Set(["@/lib/db", "@/lib/auth", "@/lib/einsatz/rate-limit", "@/lib/einsatz/base-url", "@/lib/claude"]);
+  // Die Sicherung ist die einzige Stelle, die den Bestand LIEST (Dokumente, Belege, Personalstamm) – nur dort erlaubt, nur lesend
+  const SICHERUNG = path.join("lib", "neu", "sicherung.ts");
+  const NUR_SICHERUNG = new Set(["@/lib/receipts", "@/lib/einsatz/tz"]);
+  const LESEND_NUR_SICHERUNG = new Set(["document", "receipt", "receiptFile", "employee"]);
 
   it("nutzt aus dem bisherigen System nur Anmeldung, Datenbank-Zugang, Rate-Limit, Basis-Adresse und die Beleg-Auslesung", () => {
     const verstoesse: string[] = [];
@@ -605,6 +612,7 @@ describe("Trennung vom bisherigen System", () => {
       for (const m of text.matchAll(/from\s+["'](@\/lib\/[^"']+)["']/g)) {
         const mod = m[1];
         if (mod.startsWith("@/lib/neu/") || ERLAUBT.has(mod)) continue;
+        if (NUR_SICHERUNG.has(mod) && f.endsWith(SICHERUNG)) continue;
         verstoesse.push(`${path.relative(wurzel, f)} → ${mod}`);
       }
       for (const m of text.matchAll(/from\s+["'](@\/(?:components|app\/\(app\))[^"']*)["']/g)) verstoesse.push(`${path.relative(wurzel, f)} → ${m[1]}`);
@@ -621,10 +629,22 @@ describe("Trennung vom bisherigen System", () => {
         if (modell.startsWith("v2") || modell === "$transaction") continue;
         if (modell === "user" && f.endsWith(path.join("lib", "neu", "benutzer.ts"))) continue;
         if (modell === "user" && f.endsWith("lib/auth.ts")) continue;
+        if (LESEND_NUR_SICHERUNG.has(modell) && f.endsWith(SICHERUNG)) continue;
         verstoesse.push(`${path.relative(wurzel, f)} → db.${modell}`);
       }
     }
     expect(verstoesse).toEqual([]);
+  });
+
+  it("die Sicherung liest den Bestand nur – kein Anlegen, Ändern oder Löschen", () => {
+    const text = readFileSync(path.join(wurzel, "lib/neu/sicherung.ts"), "utf8");
+    expect(text).toMatch(/db\.document\.findMany/);
+    expect(text).toMatch(/db\.receipt\.findMany/);
+    expect(text).not.toMatch(/db\.(document|receipt|receiptFile|employee|v2File|v2Record)\.(create|createMany|update|updateMany|upsert|delete|deleteMany)/);
+    expect(text).not.toMatch(/\$executeRaw|\$queryRaw|\$transaction/);
+    // Und sonst fasst keine andere Datei diese Tabellen an
+    const andere = alle.filter((f) => !f.endsWith(SICHERUNG)).filter((f) => /\bdb\.(document|receipt|receiptFile|employee)\b/.test(readFileSync(f, "utf8")));
+    expect(andere.map((f) => path.relative(wurzel, f))).toEqual([]);
   });
 
   it("die Konten werden in der Benutzerliste nur gelesen", () => {
@@ -632,5 +652,56 @@ describe("Trennung vom bisherigen System", () => {
     expect(text).toMatch(/db\.user\.findMany/);
     expect(text).toMatch(/db\.user\.findFirst/);
     expect(text).not.toMatch(/db\.user\.(create|update|delete|upsert)/);
+  });
+});
+
+describe("Sicherung: Auswahl und Hilfen", () => {
+  it("Monatsgrenzen in Berliner Zeit (Sommer- und Winterzeit)", () => {
+    const okt = monatsGrenzen("2026-10");
+    expect(okt.zeitVon.toISOString()).toBe("2026-09-30T22:00:00.000Z");
+    expect(okt.zeitBis.toISOString()).toBe("2026-10-31T23:00:00.000Z");
+    expect(okt.datumVon.toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    expect(okt.datumBis.toISOString()).toBe("2026-11-01T00:00:00.000Z");
+    const dez = monatsGrenzen("2026-12");
+    expect(dez.zeitBis.toISOString()).toBe("2026-12-31T23:00:00.000Z");
+    expect(dez.datumBis.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+  });
+  it("letzter voller Monat und Monatsname", () => {
+    expect(letzterVollerMonat(new Date("2026-10-10T10:00:00Z"))).toBe("2026-09");
+    expect(letzterVollerMonat(new Date("2027-01-02T10:00:00Z"))).toBe("2026-12");
+    // Berliner Zeit zählt: 28.02. um 23:30 UTC ist schon der 1. März in Berlin
+    expect(letzterVollerMonat(new Date("2026-02-28T23:30:00Z"))).toBe("2026-02");
+    expect(letzterVollerMonat(new Date("2026-02-28T22:30:00Z"))).toBe("2026-01");
+    expect(monatsName("2026-03")).toBe("März 2026");
+  });
+  it("Dateinamen sind sicher und eindeutig", () => {
+    expect(sicherDateiname("../../etc/passwd")).toBe("..-..-etc-passwd".replace(/^\.+/, ""));
+    expect(sicherDateiname('a/b\\c:d"e?.pdf')).toBe("a-b-cde.pdf");
+    expect(sicherDateiname("   ")).toBe("Datei");
+    expect(sicherDateiname("x".repeat(400)).length).toBe(150);
+    const belegt = new Set<string>();
+    expect(eindeutigerPfad(belegt, "Ordner/Beleg.pdf")).toBe("Ordner/Beleg.pdf");
+    expect(eindeutigerPfad(belegt, "ordner/beleg.pdf")).toBe("ordner/beleg (2).pdf");
+    expect(eindeutigerPfad(belegt, "Ordner/Beleg.pdf")).toBe("Ordner/Beleg (3).pdf");
+    expect(eindeutigerPfad(belegt, "Ordner.v2/Ohne-Endung")).toBe("Ordner.v2/Ohne-Endung");
+    expect(eindeutigerPfad(belegt, "Ordner.v2/Ohne-Endung")).toBe("Ordner.v2/Ohne-Endung (2)");
+  });
+  it("Anfrage: nur gültige Monate und bekannte Bereiche", () => {
+    expect(sicherungsAnfrage.safeParse({ monat: "2026-09", bereiche: ["stundennachweis"] }).success).toBe(true);
+    expect(sicherungsAnfrage.safeParse({ monat: "2026-13", bereiche: ["stundennachweis"] }).success).toBe(false);
+    expect(sicherungsAnfrage.safeParse({ monat: "2026-9", bereiche: ["stundennachweis"] }).success).toBe(false);
+    expect(sicherungsAnfrage.safeParse({ monat: "2026-09", bereiche: [] }).success).toBe(false);
+    expect(sicherungsAnfrage.safeParse({ monat: "2026-09", bereiche: ["alles-moegliche"] }).success).toBe(false);
+    const a = leseAnfrage("https://x.de/api/neu/sicherung?monat=2026-09&bereiche=konkretisierung,auslagen,konkretisierung&originale=1");
+    expect(a.ok && a.anfrage).toMatchObject({ monat: "2026-09", bereiche: ["konkretisierung", "auslagen"], originale: true });
+    expect(leseAnfrage("https://x.de/a?monat=2026-09").ok).toBe(false);
+    expect(leseAnfrage("https://x.de/a?monat=../../&bereiche=export").ok).toBe(false);
+    expect(BEREICHE.map((b) => b.id)).toEqual(expect.arrayContaining(["konkretisierung", "stundennachweis", "auslagen", "firmenbelege", "export", "personalstamm", "neu-gesamt"]));
+  });
+  it("Sicherung nur für die Administration", () => {
+    expect(darfAktion("admin", "sicherung")).toBe(true);
+    for (const r of ["dispo", "buchhaltung", "lesen"] as const) expect(darfAktion(r, "sicherung"), r).toBe(false);
+    expect(darfSeite("dispo", "/admin/sicherung")).toBe(false);
+    expect(darfSeite("buchhaltung", "/admin/sicherung")).toBe(false);
   });
 });

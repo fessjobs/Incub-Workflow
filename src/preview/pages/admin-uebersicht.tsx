@@ -8,7 +8,7 @@ import { AuftragModal, PersonModal } from "./formulare";
 import { pruefeZeilen, zaehleWarnungen } from "../logic/stunden";
 import { ampelVertrag } from "../logic/grenzen";
 import { formatDatumDE } from "../logic/zeit";
-import { besetzt, unterweisungsStand } from "./helfer";
+import { besetzt, monatsName, unterweisungsStand } from "./helfer";
 import { freigabeStand } from "../logic/freigabe";
 
 export function AdminUebersicht() {
@@ -30,7 +30,13 @@ export function AdminUebersicht() {
   const wartenAufFreigabe = s.crew.filter((c) => c.status !== "ausgeschieden" && freigabeStand(c, s.einst.schulung, HEUTE) === "wartet").length;
   const luecken = s.jobs.reduce((n, j) => n + Math.max(0, besetzt(s, j).bedarf - besetzt(s, j).besetzt), 0);
 
+  // Erinnerung an die Monats-Sicherung (nur Administration im echten System)
+  const [hy, hm] = HEUTE.split("-").map(Number);
+  const vormonat = hm === 1 ? `${hy - 1}-12` : `${hy}-${String(hm - 1).padStart(2, "0")}`;
+  const sicherungFehlt = modus === "echt" && echt?.rolle === "admin" && !s.audit.some((a) => a.tabelle === "sicherung" && a.datensatz === vormonat);
+
   const aufgaben: Array<{ href: string; text: string; ton: "err" | "warn" | "info"; n: number }> = [
+    { href: "/admin/sicherung", text: `Sicherung für ${monatsName(vormonat)} noch nicht heruntergeladen`, ton: "warn", n: sicherungFehlt ? 1 : 0 },
     { href: "/admin/bewerber", text: "neue Bewerbungen auf Jobs", ton: "info", n: neueBewerbungen },
     { href: "/admin/freigaben", text: "Personen warten auf deine Freigabe für die Aufträge", ton: "warn", n: wartenAufFreigabe },
     { href: "/admin/bewerber", text: "Fragebögen warten auf Durchsicht", ton: "info", n: fragebogenNeu },
