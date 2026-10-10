@@ -27,7 +27,7 @@ const PFLICHT_JE_TAETIGKEIT: Record<Taetigkeit, ModulId[]> = {
 // Standard (die Konstanten oben), so verhalten sich alle bisherigen Aufrufe gleich.
 export interface VideoEintrag {
   url: string;
-  // Englische Fassung (optional); fehlt sie, läuft auch bei englischer Oberfläche das deutsche Video
+  // Englische Fassung (optional); fehlt sie oder ist sie leer, läuft auch bei englischer Oberfläche das deutsche Video
   urlEn?: string;
   titel: string;
   // Muss die Person das Video angesehen haben (bestätigt), bevor das Quiz startet?
@@ -55,7 +55,7 @@ export interface SchulungRegeln {
 // Die mitgelieferten Unterweisungsvideos (public/videos, ausgeliefert über die geschützte Medienroute)
 export const MEDIEN_PFAD = "/api/neu/crew/video/";
 export function standardVideos(): Record<string, VideoEintrag> {
-  return Object.fromEntries(MODUL_IDS.map((m) => [m, { url: `${MEDIEN_PFAD}${m}.de.mp4`, titel: "", pflicht: true }]));
+  return Object.fromEntries(MODUL_IDS.map((m) => [m, { url: `${MEDIEN_PFAD}${m}.de.mp4`, urlEn: `${MEDIEN_PFAD}${m}.en.mp4`, titel: "", pflicht: true }]));
 }
 
 export function standardSchulung(): SchulungRegeln {
@@ -110,7 +110,11 @@ export function bereinigeSchulung(roh: unknown): SchulungRegeln {
       if (v && typeof v.url === "string" && (v.url.trim() !== "" || v.entfernt === true)) {
         video[m] = { url: v.url.slice(0, 500), titel: typeof v.titel === "string" ? v.titel.slice(0, 200) : "", pflicht: v.pflicht === true };
         if (v.url.trim() === "") video[m].entfernt = true;
-        if (typeof v.urlEn === "string" && v.urlEn.trim() !== "") video[m].urlEn = v.urlEn.slice(0, 500);
+        // Englische Fassung: ausdrücklich gesetzt (auch leer = „nur das deutsche Video“) oder, bei unverändertem
+        // deutschem Standardvideo und älteren Einstellungen ohne diese Angabe, die mitgelieferte englische
+        if (typeof v.urlEn === "string") video[m].urlEn = v.urlEn.trim() === "" ? "" : v.urlEn.slice(0, 500);
+        else if (v.url === std.video[m].url) video[m].urlEn = std.video[m].urlEn;
+        if (video[m].url.trim() === "") delete video[m].urlEn;
       }
     }
   }

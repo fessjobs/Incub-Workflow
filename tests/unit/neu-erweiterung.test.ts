@@ -597,13 +597,15 @@ describe("Schnittstelle zum bisherigen System: vorbereitet, aber aus", () => {
 });
 
 describe("Unterweisungsvideos: mitgeliefert, Pflicht-Wiedergabe, Unterschrift", () => {
-  it("jedes Modul hat ein mitgeliefertes Video, das wirklich in public/videos liegt", () => {
+  it("jedes Modul hat ein mitgeliefertes deutsches und englisches Video, das wirklich in public/videos liegt", () => {
     const v = standardVideos();
     expect(Object.keys(v)).toEqual(MODUL_IDS);
     for (const m of MODUL_IDS) {
-      expect(v[m]).toEqual({ url: `/api/neu/crew/video/${m}.de.mp4`, titel: "", pflicht: true });
-      expect(statSync(path.resolve(__dirname, `../../public/videos/${m}.de.mp4`)).size).toBeGreaterThan(1_000_000);
-      expect(statSync(path.resolve(__dirname, `../../public/videos/${m}.de.jpg`)).size).toBeGreaterThan(1_000);
+      expect(v[m]).toEqual({ url: `/api/neu/crew/video/${m}.de.mp4`, urlEn: `/api/neu/crew/video/${m}.en.mp4`, titel: "", pflicht: true });
+      for (const sprache of ["de", "en"]) {
+        expect(statSync(path.resolve(__dirname, `../../public/videos/${m}.${sprache}.mp4`)).size, `${m}.${sprache}.mp4`).toBeGreaterThan(1_000_000);
+        expect(statSync(path.resolve(__dirname, `../../public/videos/${m}.${sprache}.jpg`)).size, `${m}.${sprache}.jpg`).toBeGreaterThan(1_000);
+      }
     }
     expect(standardSchulung().video).toEqual(v);
   });
@@ -616,12 +618,27 @@ describe("Unterweisungsvideos: mitgeliefert, Pflicht-Wiedergabe, Unterschrift", 
     // und bleibt es nach erneutem Bereinigen
     expect(bereinigeSchulung(entfernt).video.brandschutz.entfernt).toBe(true);
   });
-  it("die englische Fassung wird übernommen, leere Angaben nicht", () => {
-    const s = bereinigeSchulung({ video: { grund: { url: "", titel: "", pflicht: false, entfernt: true }, hoehe: { url: "/api/neu/crew/video/hoehe.de.mp4", urlEn: "/api/neu/crew/video/hoehe.en.mp4", titel: "", pflicht: true }, catering: { url: "/api/neu/crew/video/catering.de.mp4", urlEn: "  ", titel: "", pflicht: true } } });
+  it("die englische Fassung: ausdrücklich gesetzt, ausdrücklich leer (= nur deutsch) oder bei älteren Einstellungen die mitgelieferte", () => {
+    const s = bereinigeSchulung({ video: {
+      grund: { url: "", titel: "", pflicht: false, entfernt: true },
+      hoehe: { url: "/api/neu/crew/video/hoehe.de.mp4", urlEn: "/api/neu/crew/video/hoehe.en.v2.mp4", titel: "", pflicht: true },
+      catering: { url: "/api/neu/crew/video/catering.de.mp4", urlEn: "  ", titel: "", pflicht: true },
+      elektrik: { url: "/api/neu/crew/video/elektrik.de.mp4", titel: "", pflicht: true },
+      einlass: { url: "https://youtu.be/abcDEF12345", titel: "", pflicht: true },
+    } });
+    // entfernt: weder deutsches noch englisches Video
     expect(s.video.grund.url).toBe("");
-    expect(s.video.hoehe.urlEn).toBe("/api/neu/crew/video/hoehe.en.mp4");
-    expect(s.video.catering.urlEn).toBeUndefined();
-    expect(s.video.stapler.url).toBe("/api/neu/crew/video/stapler.de.mp4");
+    expect(s.video.grund.urlEn).toBeUndefined();
+    expect(s.video.hoehe.urlEn).toBe("/api/neu/crew/video/hoehe.en.v2.mp4");
+    // leer gelassen: bleibt leer, es läuft auch auf Englisch das deutsche Video
+    expect(s.video.catering.urlEn).toBe("");
+    // älterer Stand (nur deutsche Standardadresse gespeichert): die englische kommt dazu
+    expect(s.video.elektrik.urlEn).toBe("/api/neu/crew/video/elektrik.en.mp4");
+    // eigenes Video für Deutsch: keine mitgelieferte englische dazu
+    expect(s.video.einlass.urlEn).toBeUndefined();
+    expect(s.video.stapler).toEqual(standardVideos().stapler);
+    // und das Bereinigen ist stabil
+    expect(bereinigeSchulung(s)).toEqual(s);
   });
   it("eigene Videos werden eingebettet – nur aus den zwei erlaubten Pfaden und nur Videodateien", () => {
     expect(videoEinbettung("/api/neu/crew/video/grund.de.mp4")).toEqual({ art: "video", src: "/api/neu/crew/video/grund.de.mp4" });
@@ -684,6 +701,13 @@ describe("Unterweisungsvideos: mitgeliefert, Pflicht-Wiedergabe, Unterschrift", 
     expect(await videoDauerFuerUrl("/api/neu/crew/video/grund.de.mp4")).toBeLessThan(67);
     expect(await videoDauerFuerUrl("/api/neu/crew/video/stapler.de.mp4")).toBeGreaterThan(72);
     expect(await videoDauerFuerUrl("/api/neu/crew/video/stapler.de.mp4")).toBeLessThan(74);
+    for (const m of MODUL_IDS) {
+      const de = await videoDauerFuerUrl(`/api/neu/crew/video/${m}.de.mp4`);
+      const en = await videoDauerFuerUrl(`/api/neu/crew/video/${m}.en.mp4`);
+      expect(de, m).toBeGreaterThan(60);
+      expect(en, m).toBeGreaterThan(60);
+      expect(Math.abs((en as number) - (de as number)), m).toBeLessThan(2);
+    }
     // Fremde Adressen und nicht vorhandene Dateien: unbekannt, nicht „0“
     expect(await videoDauerFuerUrl("https://cdn.example.de/x.mp4")).toBeNull();
     expect(await videoDauerFuerUrl("/api/neu/crew/video/gibtesnicht.mp4")).toBeNull();

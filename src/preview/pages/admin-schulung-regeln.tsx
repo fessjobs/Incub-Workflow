@@ -92,13 +92,13 @@ export function PflichtUndVideos() {
       </Karte>
 
       <Karte titel="Videos zu den Schulungen" aktionen={istAdmin ? <Btn v="ghost" groesse="sm" onClick={() => { aendere((x) => ({ ...x, video: standardVideos() })); melde("Alle Videos auf die mitgelieferten zurückgesetzt."); }} data-testid="videos-standard-alle">Alle auf Standard</Btn> : undefined}>
-        <p className="small">Die acht mitgelieferten Videos (Deutsch) sind schon eingetragen. Wer die Schulung macht, sieht zuerst das Video – es muss bis zum Ende laufen (Vorspulen ist gesperrt), danach folgen Lernkarten, Quiz und die Unterschrift. Du kannst pro Modul eine andere Adresse eintragen (YouTube, Vimeo oder eine Videodatei, immer <b>https</b>) oder das Video entfernen.</p>
+        <p className="small">Die acht mitgelieferten Videos (Deutsch und Englisch) sind schon eingetragen; wer die Oberfläche auf Englisch stellt, sieht die englische Fassung. Wer die Schulung macht, sieht zuerst das Video – es muss bis zum Ende laufen (Vorspulen ist gesperrt), danach folgen Lernkarten, Quiz und die Unterschrift. Du kannst pro Modul eine andere Adresse eintragen (YouTube, Vimeo oder eine Videodatei, immer <b>https</b>) oder das Video entfernen.</p>
         <div className="small muted mt1">Eigene Videos liegen im Ordner <code>public/videos</code> und werden nur an angemeldete Personen ausgeliefert. Der Dateiname entspricht dem Modul (z. B. <code>grund.de.mp4</code>); ein ausgetauschtes Video bekommt einen neuen Dateinamen (z. B. <code>grund.de.v2.mp4</code>), sonst zeigen Handys eventuell noch die alte Version. Bei YouTube/Vimeo kann der Player nicht prüfen, ob bis zum Ende geschaut wurde – dort bestätigt die Person es selbst. YouTube wird ohne Cookies (youtube-nocookie.com) eingebunden, lädt aber trotzdem von Google.</div>
         <div className="col mt2">
           {MODULE.map((m) => {
             const std = standardVideos()[m.id];
             const v: VideoEintrag | undefined = r.video[m.id];
-            const istStandard = !!v && v.url === std.url && !v.urlEn;
+            const istStandard = !!v && v.url === std.url && (v.urlEn ?? "") === (std.urlEn ?? "");
             const emb = v?.url ? videoEinbettung(v.url) : null;
             const setzeVideo = (patch: Partial<VideoEintrag>) => aendere((x) => {
               const neu: VideoEintrag = { ...(x.video[m.id] ?? { url: "", titel: "", pflicht: false }), ...patch };
@@ -116,7 +116,7 @@ export function PflichtUndVideos() {
                   <Feld label="Titel (optional)"><input className="pv-input sm" aria-label={`Video-Titel ${m.id}`} disabled={!istAdmin} value={v?.titel ?? ""} onChange={(e) => setzeVideo({ titel: e.target.value })} /></Feld>
                 </div>
                 <div className="pva-grid c2">
-                  <Feld label="Adresse der englischen Fassung (optional)"><input className="pv-input sm" aria-label={`Video-Adresse Englisch ${m.id}`} disabled={!istAdmin} placeholder={`${std.url.replace(".de.mp4", ".en.mp4")}`} value={v?.urlEn ?? ""} onChange={(e) => setzeVideo({ urlEn: e.target.value })} /></Feld>
+                  <Feld label="Adresse der englischen Fassung (leer = deutsches Video)"><input className="pv-input sm" aria-label={`Video-Adresse Englisch ${m.id}`} disabled={!istAdmin} placeholder={std.urlEn ?? ""} value={v?.urlEn ?? ""} onChange={(e) => setzeVideo({ urlEn: e.target.value })} /></Feld>
                 </div>
                 <div className="row wrap">
                   <label className="pv-check"><input type="checkbox" disabled={!istAdmin || !v?.url} checked={v?.pflicht ?? false} onChange={(e) => setzeVideo({ pflicht: e.target.checked })} aria-label={`Video Pflicht ${m.id}`} />{eigenes ? "Pflicht: Video muss vollständig abgespielt werden" : "Pflicht: Person bestätigt „Video angesehen“"}</label>

@@ -145,15 +145,17 @@ Uhrzeiten (`8`, `8:30`, `0830`, `08:00-16:30`) und Zahlen (`13,90 €`) werden t
 Videodatei.
 
 ### Die Videos
-- **Dateien:** `public/videos/<modul>.de.mp4` und `<modul>.de.jpg` (Vorschaubild) für `grund`, `stagehand`, `catering`,
-  `stapler`, `hoehe`, `elektrik`, `einlass`, `brandschutz` (hochkant 9:16, ca. 65–75 s, Untertitel eingebrannt, zusammen
-  ca. 29 MB). Das Dockerfile kopiert `public` mit, ein Deployment genügt.
+- **Dateien:** `public/videos/<modul>.de.mp4` (Deutsch) und `<modul>.en.mp4` (Englisch), je mit Vorschaubild `.jpg`, für `grund`,
+  `stagehand`, `catering`, `stapler`, `hoehe`, `elektrik`, `einlass`, `brandschutz` (hochkant 9:16, ca. 65–75 s, Untertitel
+  eingebrannt, zusammen ca. 57 MB für beide Sprachen). Das Dockerfile kopiert `public` mit, ein Deployment genügt.
 - **Nicht öffentlich:** Die Videos werden nicht als freie Dateien unter `/videos/…` ausgeliefert (die Anmeldung der App
   gilt dafür), sondern über `GET /api/neu/crew/video/<datei>`. Das geht nur mit Mitarbeiter-Sitzung oder angemeldeter
   Administration, kennt Teilabrufe (`Range`, wichtig für Handys und iPhone) und akzeptiert nur Dateinamen aus dem Ordner
   (`a–z`, Ziffern, `.`, `-`; `.mp4`/`.jpg`).
-- **Eintragen:** Der Standard ist `/api/neu/crew/video/<modul>.de.mp4`. Die englische Fassung
-  (`<modul>.en.mp4`) ist vorbereitet (Feld „Adresse der englischen Fassung“), die Dateien liegen aber noch nicht bei.
+- **Eintragen:** Der Standard ist `/api/neu/crew/video/<modul>.de.mp4`, dazu die englische Fassung
+  `/api/neu/crew/video/<modul>.en.mp4`. **Wer die Oberfläche auf Englisch stellt (DE/EN-Schalter), sieht die englische
+  Fassung**, sonst die deutsche. Im Dashboard steht pro Modul ein Feld „Adresse der englischen Fassung“; bleibt es leer, läuft auch
+  auf Englisch das deutsche Video. Für die Mindestdauer-Prüfung zählt das kürzere der beiden Videos.
 - **Video tauschen:** neuen Dateinamen vergeben (z. B. `grund.de.v2.mp4`) und im Dashboard eintragen, sonst zeigen Handys
   unter Umständen noch die alte Fassung aus dem Zwischenspeicher.
 
@@ -195,7 +197,7 @@ Videodatei.
 - **Fachliche Freigabe:** Die Texte sind Entwürfe nach dem Drehbuch (`docs/video-drehbuecher.md`) und noch nicht von einer
   Fachkraft für Arbeitssicherheit geprüft; die Hinweise zu Flurförderzeugen (Fahrausweis) und Einlass (§ 34a GewO)
   stehen am Ende des jeweiligen Videos im Bild.
-- **Englische Videos** liegen noch nicht im Projekt (bisher nur die deutschen Dateien geliefert).
+- Auch die **englischen Texte** sind eine einfache Übersetzung der deutschen Entwürfe und nicht fachlich geprüft.
 
 ## Benutzer und Rollen
 

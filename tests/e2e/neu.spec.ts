@@ -578,6 +578,7 @@ test.describe("Neues System: Schulungs-Pflicht und Videos einstellen", () => {
       await expect(admin.getByTestId(`video-${m}`)).toContainText("Mitgeliefertes Video");
       await expect(admin.getByLabel(`Video-Adresse ${m}`, { exact: true })).toHaveValue(`/api/neu/crew/video/${m}.de.mp4`);
       await expect(admin.getByLabel(`Video Pflicht ${m}`)).toBeChecked();
+      await expect(admin.getByLabel(`Video-Adresse Englisch ${m}`, { exact: true })).toHaveValue(`/api/neu/crew/video/${m}.en.mp4`);
     }
     // Für die Grundunterweisung stattdessen ein YouTube-Video (der Player kann dort nicht prüfen, die Person bestätigt)
     await admin.getByLabel("Video-Adresse grund", { exact: true }).fill("https://youtu.be/abcDEF12345");
@@ -666,6 +667,13 @@ test.describe("Neues System: Unterweisung mit Video und Unterschrift", () => {
     const poster = await crew.get("/api/neu/crew/video/grund.de.jpg");
     expect(poster.status()).toBe(200);
     expect(poster.headers()["content-type"]).toBe("image/jpeg");
+    // Die englischen Fassungen liegen ebenfalls bereit – für alle acht Module, mit Vorschaubild
+    for (const m of ["grund", "stagehand", "catering", "stapler", "hoehe", "elektrik", "einlass", "brandschutz"]) {
+      const en = await crew.get(`/api/neu/crew/video/${m}.en.mp4`, { headers: { Range: "bytes=0-3" } });
+      expect(en.status(), m).toBe(206);
+      expect(en.headers()["content-type"]).toBe("video/mp4");
+      expect((await crew.get(`/api/neu/crew/video/${m}.en.jpg`)).status(), m).toBe(200);
+    }
     // Nur Dateinamen aus dem Ordner, keine Pfade
     for (const schlecht of ["gibtesnicht.de.mp4", "GRUND.de.mp4", "..%2Fpackage.json", "%2e%2e%2f%2e%2e%2fpackage.json", "grund.de.mp4%00.jpg", "grund.exe"]) {
       expect((await crew.get(`/api/neu/crew/video/${schlecht}`)).status(), schlecht).toBe(404);
@@ -770,6 +778,21 @@ test.describe("Neues System: Unterweisung mit Video und Unterschrift", () => {
     await expect(link).toHaveAttribute("href", "/api/neu/crew/nachweis/einlass");
     const pdf = await page.request.get("/api/neu/crew/nachweis/einlass");
     expect((await pdf.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    await page.close();
+  });
+
+  test("Bei englischer Oberfläche läuft die englische Fassung, bei deutscher die deutsche", async () => {
+    const page = await (crewCtx as BrowserContext).newPage();
+    await page.goto("/crew/unterweisung/hoehe");
+    const video = page.getByTestId("video-player").locator("video");
+    await expect(video).toHaveAttribute("src", "/api/neu/crew/video/hoehe.de.mp4");
+    await expect(video).toHaveAttribute("poster", "/api/neu/crew/video/hoehe.de.jpg");
+    await page.locator(".pv-seg button", { hasText: "EN" }).first().click();
+    await expect(video).toHaveAttribute("src", "/api/neu/crew/video/hoehe.en.mp4");
+    await expect(video).toHaveAttribute("poster", "/api/neu/crew/video/hoehe.en.jpg");
+    await expect(page.getByTestId("video-weiter")).toContainText("Continue");
+    await page.locator(".pv-seg button", { hasText: "DE" }).first().click();
+    await expect(video).toHaveAttribute("src", "/api/neu/crew/video/hoehe.de.mp4");
     await page.close();
   });
 });
