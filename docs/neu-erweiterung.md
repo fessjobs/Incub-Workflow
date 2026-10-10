@@ -15,6 +15,7 @@ vorhandenen `v2_`-Tabellen (neue Datensatz-Arten und zusätzliche Felder).
 | Vorgefertigte Nachricht je Person mit Link | **Nachrichten** |
 | Aufträge erst nach deiner Bestätigung sichtbar | **Freigaben** |
 | Welche Schulung für was nötig ist, Videos | **Unterweisungen → Pflicht & Videos** |
+| Vorstellungsvideo (Deutsch/Englisch) für neue Helfer | Startseite der Mitarbeiter, ganz oben in „So geht es los“ |
 | Video muss abgespielt werden, Unterschrift am Ende | Unterweisung am Handy, Nachweis in **Crew → Person → Unterweisungen** |
 | Unterschiedliche Benutzer | **Benutzer** |
 | Anbindung ans bisherige System (vorbereitet, **aus**) | **Schnittstelle** |
@@ -198,6 +199,24 @@ Videodatei.
   Freigabe-Hinweis mehr; die Prüfung durch eine Fachkraft für Arbeitssicherheit liegt bei euch. Die Hinweise zu
   Flurförderzeugen (Fahrausweis) und Einlass (§ 34a GewO) stehen am Ende des jeweiligen Videos im Bild.
 - Die **englischen Texte** sind eine einfache Übersetzung der deutschen.
+
+## Vorstellungsvideo
+
+Wer sich über den Einladungs-/Fragebogen-Link anmeldet, sieht auf der Startseite ganz oben in der Liste „So geht es los“
+(vor Fragebogen und Unterweisung) den Eintrag **Vorstellungsvideo** (`/crew/vorstellung`). Dort wählt die Person **Deutsch
+oder English**; danach erscheint das Video und startet (wo der Browser es erlaubt, sonst auf Play tippen). Die Sprache lässt sich
+jederzeit umschalten. Das Video ist unabhängig von der Sprache der Oberfläche.
+
+- **Dateien:** `public/videos/vorstellung.de.mp4` / `.en.mp4` mit Vorschaubild `.jpg` (hochkant 9:16, ca. 61 s, Untertitel
+  eingebrannt, KI-Stimme, leise Musik). Sie liegen im selben Ordner wie die Unterweisungsvideos und werden ebenfalls nur an
+  angemeldete Personen ausgeliefert (`/api/neu/crew/video/vorstellung.<sprache>.mp4`, mit Teilabrufen).
+- **Normale Bedienung:** Anders als bei der Unterweisung gibt es die üblichen Bedienelemente (auch Vor- und Zurückspulen); es
+  wird nichts gespeichert oder geprüft.
+- **Testversion (`/preview`):** zeigt die Seite mit Sprachwahl, aber statt des Videos nur einen Hinweis.
+- **Ändern:** Die Adressen stehen im Code (`src/preview/logic/vorstellung.ts`); ein neues Video bekommt einen neuen Dateinamen
+  (z. B. `vorstellung.de.v2.mp4`), damit Handys nicht die alte Fassung aus dem Zwischenspeicher zeigen. Die Telefonnummern der
+  Ansprechpartner sind im Video als Text zu sehen: ändern sie sich, muss das Video neu erstellt werden.
+- **KI-Stimme:** Ob ein Hinweis nötig ist, ist wie bei den Unterweisungsvideos noch zu entscheiden; die App zeigt keinen.
 
 ## Benutzer und Rollen
 

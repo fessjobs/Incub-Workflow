@@ -12,6 +12,7 @@ import { kleidungFehler, leereAntworten, antwortenZuProfil } from "@/preview/log
 import { begrenzeSprung, videoEinbettung, videoPoster, videoZeitErfuellt } from "@/preview/logic/video";
 import { medienName, mindestAnteil, mp4Dauer, videoDauerFuerUrl } from "@/lib/neu/video";
 import { pruefeUnterschrift } from "@/lib/neu/unterschrift";
+import { VORSTELLUNG_SPRACHEN, vorstellungVideo } from "@/preview/logic/vorstellung";
 import { renderUnterweisungsNachweis } from "@/lib/neu/nachweis-pdf";
 import { unterschriftDataUrl, unterschriftPng } from "../fixtures/unterschrift";
 import { brauchtLink, fuelleVorlage, waLink, waNummer } from "@/preview/logic/nachricht";
@@ -674,6 +675,21 @@ describe("Unterweisungsvideos: mitgeliefert, Pflicht-Wiedergabe, Unterschrift", 
     expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "7" })).toBe(1);
     expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "-1" })).toBe(0);
     expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "abc" })).toBe(0.85);
+  });
+  it("Vorstellungsvideo: je Sprache eine Datei samt Vorschaubild, ca. eine Minute, über die geschützte Route", async () => {
+    expect(VORSTELLUNG_SPRACHEN).toEqual(["de", "en"]);
+    for (const l of VORSTELLUNG_SPRACHEN) {
+      const q = vorstellungVideo(l);
+      expect(q.video).toBe(`/api/neu/crew/video/vorstellung.${l}.mp4`);
+      expect(q.poster).toBe(`/api/neu/crew/video/vorstellung.${l}.jpg`);
+      expect(videoEinbettung(q.video)?.art).toBe("video");
+      expect(medienName(`vorstellung.${l}.mp4`)).toBe(`vorstellung.${l}.mp4`);
+      expect(statSync(path.resolve(__dirname, `../../public/videos/vorstellung.${l}.mp4`)).size).toBeGreaterThan(1_000_000);
+      expect(statSync(path.resolve(__dirname, `../../public/videos/vorstellung.${l}.jpg`)).size).toBeGreaterThan(1_000);
+      const dauer = await videoDauerFuerUrl(q.video);
+      expect(dauer).toBeGreaterThan(55);
+      expect(dauer).toBeLessThan(70);
+    }
   });
   it("Dateinamen der Medienroute: nur Kleinbuchstaben, Ziffern, Punkt, Bindestrich, mp4/jpg", () => {
     expect(medienName("grund.de.mp4")).toBe("grund.de.mp4");

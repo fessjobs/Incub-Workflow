@@ -251,6 +251,15 @@ test.describe("Testversion: Mitarbeiterlink", () => {
     await page.getByTestId("anmelden").click();
     await expect(page.getByRole("heading", { name: "Hallo Mara" })).toBeVisible();
 
+    // Vorstellungsvideo: Sprache wählen (in der Testversion nur ein Hinweis statt des Videos)
+    await page.getByTestId("start-vorstellung").getByRole("link").click();
+    await expect(page.getByTestId("vorstellung")).toBeVisible();
+    await expect(page.getByTestId("vorstellung-video")).toHaveCount(0);
+    await page.getByTestId("vorstellung-en").click();
+    await expect(page.getByText("In der Testversion gibt es das Video nicht")).toBeVisible();
+    await page.getByRole("link", { name: /Zurück zum Start/ }).click();
+    await expect(page.getByRole("heading", { name: "Hallo Mara" })).toBeVisible();
+
     // Bewerben ohne Fragebogen geht nicht
     await page.locator(".pvc-main").getByRole("link", { name: /Job finden/ }).click();
     await expect(page.getByText("Fülle zuerst den Fragebogen aus")).toBeVisible();

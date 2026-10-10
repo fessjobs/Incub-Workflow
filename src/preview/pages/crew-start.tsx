@@ -119,7 +119,13 @@ export function CrewStart() {
       <Karte>
         <div className="row between"><h3>{de ? "So geht es los" : "Getting started"}</h3><SpracheSchalter /></div>
         <ol className="col mt2" style={{ listStyle: "none", padding: 0, margin: 0 }}>
-          <li>
+          <li data-testid="start-vorstellung">
+            <Link href="/crew/vorstellung" className="row" style={{ textDecoration: "none" }}>
+              <span className="pv-ic">▶</span>
+              <span className="grow"><b>{de ? "Vorstellungsvideo" : "Introduction video"}</b><div className="small muted">{de ? "Wer wir sind · ca. 1 Minute · Deutsch oder Englisch" : "Who we are · about 1 minute · German or English"}</div></span>
+            </Link>
+          </li>
+          <li className="mt2">
             <Link href="/crew/fragebogen" className="row" style={{ textDecoration: "none" }}>
               <span className="pv-ic">{s.fragebogenFertig ? "✓" : "1"}</span>
               <span className="grow"><b>{de ? "Fragebogen" : "Questionnaire"}</b><div className="small muted">{s.fragebogenFertig ? (de ? "abgeschickt – danke!" : "sent – thank you!") : de ? `${fb.beantwortet} von ${fb.gesamt} Fragen · ca. 8 Minuten` : `${fb.beantwortet} of ${fb.gesamt} questions · about 8 minutes`}</div><Bar anteil={anteil} ton={s.fragebogenFertig ? "gut" : undefined} /></span>

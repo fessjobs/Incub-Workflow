@@ -15,6 +15,7 @@ import { CrewProfil, CrewStart } from "./crew-start";
 import { CrewFragebogen } from "./crew-fragebogen";
 import { CrewBewerben, CrewJobDetail, CrewJobs } from "./crew-jobs";
 import { CrewModul, CrewUnterweisungen } from "./crew-unterweisung";
+import { CrewVorstellung } from "./crew-vorstellung";
 import { BelegLink } from "./beleg";
 import { AdminFreigaben } from "./admin-freigaben";
 import { AdminKleidung } from "./admin-kleidung";
@@ -62,6 +63,7 @@ export const ROUTEN: Route[] = [
   { muster: "/crew/jobs/:id/bewerben", rahmen: "crew", render: (p) => <CrewBewerben id={p.id} /> },
   { muster: "/crew/unterweisung", rahmen: "crew", render: () => <CrewUnterweisungen /> },
   { muster: "/crew/unterweisung/:modul", rahmen: "crew", render: (p) => <CrewModul id={p.modul} /> },
+  { muster: "/crew/vorstellung", rahmen: "crew", render: () => <CrewVorstellung /> },
   { muster: "/crew/profil", rahmen: "crew", render: () => <CrewProfil /> },
   { muster: "/b/:token", rahmen: "frei", render: (p) => <BelegLink token={p.token} /> },
   { muster: "/admin/stunden", rahmen: "admin", render: () => <AdminStunden /> },

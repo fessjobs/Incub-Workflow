@@ -802,6 +802,49 @@ test.describe("Neues System: Unterweisung mit Video und Unterschrift", () => {
   });
 });
 
+test.describe("Neues System: Vorstellungsvideo", () => {
+  test("Die Videodateien liegen hinter der Anmeldung bereit", async ({ request }) => {
+    for (const l of ["de", "en"]) {
+      expect((await request.get(`/api/neu/crew/video/vorstellung.${l}.mp4`)).status()).toBe(401);
+      const crew = (crewCtx as BrowserContext).request;
+      const teil = await crew.get(`/api/neu/crew/video/vorstellung.${l}.mp4`, { headers: { Range: "bytes=0-99" } });
+      expect(teil.status(), l).toBe(206);
+      expect(teil.headers()["content-type"]).toBe("video/mp4");
+      expect((await teil.body()).length).toBe(100);
+      const poster = await crew.get(`/api/neu/crew/video/vorstellung.${l}.jpg`);
+      expect(poster.status(), l).toBe(200);
+      expect(poster.headers()["content-type"]).toBe("image/jpeg");
+    }
+  });
+
+  test("Auf der Startseite steht der Knopf in der Liste; man wählt Deutsch oder Englisch, dann läuft das Video", async () => {
+    const page = await (crewCtx as BrowserContext).newPage();
+    await page.goto("/crew");
+    // ganz oben in „So geht es los“, vor dem Fragebogen
+    const liste = page.locator("ol").first();
+    await expect(liste.locator("li").first()).toHaveAttribute("data-testid", "start-vorstellung");
+    await expect(liste.locator("li").first()).toContainText("Vorstellungsvideo");
+    await page.getByTestId("start-vorstellung").getByRole("link").click();
+    await expect(page).toHaveURL(/\/crew\/vorstellung$/);
+    // erst nach der Wahl erscheint das Video
+    await expect(page.getByTestId("vorstellung-video")).toHaveCount(0);
+    await page.getByTestId("vorstellung-de").click();
+    const video = page.getByTestId("vorstellung-video");
+    await expect(video).toHaveAttribute("src", "/api/neu/crew/video/vorstellung.de.mp4");
+    await expect(video).toHaveAttribute("poster", "/api/neu/crew/video/vorstellung.de.jpg");
+    await expect(video).toHaveAttribute("controls", "");
+    await expect(page.getByTestId("vorstellung-de")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("vorstellung-en").click();
+    await expect(video).toHaveAttribute("src", "/api/neu/crew/video/vorstellung.en.mp4");
+    await expect(video).toHaveAttribute("poster", "/api/neu/crew/video/vorstellung.en.jpg");
+    await expect(page.getByTestId("vorstellung-en")).toHaveAttribute("aria-pressed", "true");
+    // zurück zum Start
+    await page.getByRole("link", { name: /Zurück zum Start/ }).click();
+    await expect(page.getByTestId("start-vorstellung")).toBeVisible();
+    await page.close();
+  });
+});
+
 test.describe("Neues System: Benutzer und Rollen", () => {
   const MEMBER_EMAIL = `rolle-${RUN}@fess.jobs`;
   const MEMBER_NAME = `Rolle ${RUN}`;

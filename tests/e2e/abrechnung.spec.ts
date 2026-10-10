@@ -149,6 +149,8 @@ test.describe.serial("Abrechnung: Stunden, Angaben, Rechnung", () => {
     await page.goto(`/einsaetze/abrechnung?stand=BEREIT&q=${einsatznummer}`);
     await page.getByTestId(`rechnungsnummer-${einsatznummer}`).fill(RECHNUNG);
     await page.getByTestId(`rechnung-setzen-${einsatznummer}`).click();
+    // Erst weitergehen, wenn die Eintragung durch ist (die Zeile verschwindet aus dem Korb) – sonst läuft der Test dem Server davon
+    await expect(page.getByTestId(`rechnung-${einsatznummer}`)).toHaveCount(0);
 
     await page.goto(`/einsaetze/abrechnung?stand=BERECHNET&q=${einsatznummer}`);
     await expect(page.getByTestId(`abrechnung-zeile-${einsatznummer}`)).toContainText(RECHNUNG);
