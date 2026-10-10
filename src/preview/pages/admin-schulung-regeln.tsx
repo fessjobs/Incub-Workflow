@@ -137,7 +137,7 @@ export function PflichtUndVideos() {
             );
           })}
         </div>
-        <div className="mt2"><Note>Die Texte der Videos und die Drehbücher sind Entwürfe nach den Lernkarten – sie sind nicht von einer Fachkraft für Arbeitssicherheit freigegeben. Die Sprecherstimme der mitgelieferten Videos ist eine KI-Stimme; bitte vor dem Livegang prüfen, ob sie gekennzeichnet werden muss.</Note></div>
+        <div className="mt2"><Note>Die Sprecherstimme der mitgelieferten Videos ist eine KI-Stimme; bitte vor dem Livegang prüfen, ob sie gekennzeichnet werden muss.</Note></div>
       </Karte>
     </div>
   );

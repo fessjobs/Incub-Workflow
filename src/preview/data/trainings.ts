@@ -35,7 +35,7 @@ export interface Modul {
   hinweis?: L;
 }
 
-export const AKTUELLE_VERSION = "2026.1-entwurf";
+export const AKTUELLE_VERSION = "2026.1";
 
 export const NACHWEIS_HINWEIS: L = {
   de: "Dieser Nachweis ersetzt nicht die Unterweisung vor Ort durch den Entleiher. Für Flurförderzeuge ersetzt er nicht den Fahrausweis und die schriftliche Beauftragung.",

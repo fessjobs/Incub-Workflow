@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, gehe } from "../nav";
 import { usePv, selbst, HEUTE } from "../state/store";
-import { Btn, Chip, Entwurf, Karte, LinkBtn, Note, ladeTextHerunter } from "../ui/kit";
+import { Btn, Chip, Karte, LinkBtn, Note, ladeTextHerunter } from "../ui/kit";
 import { CrewGate, SpracheSchalter } from "./crew-start";
 import { AKTUELLE_VERSION, MODULE, NACHWEIS_HINWEIS, modulById, t } from "../data/trainings";
 import { ablaufDatum, mischen, pflichtModule, quizBestanden, statusFuer } from "../logic/unterweisung";
@@ -32,7 +32,6 @@ function ListeInhalt() {
     <div className="col gap2">
       <div className="row between"><h1>{de ? "Unterweisung" : "Safety briefing"}</h1><SpracheSchalter /></div>
       <p className="muted small">{de ? "Kurze Lernkarten und ein Quiz am Handy, je ca. 3 Minuten. 12 Monate gültig." : "Short cards and a quiz on your phone, about 3 minutes each. Valid for 12 months."}</p>
-      <Entwurf>{de ? "Entwurf: Die Inhalte sind noch nicht von einer Fachkraft für Arbeitssicherheit freigegeben." : "Draft: the content has not yet been approved by a safety specialist."}</Entwurf>
       {MODULE.map((m) => {
         const ack = ich.unterweisungen[m.id];
         const st = statusFuer(ack, HEUTE);
@@ -150,15 +149,12 @@ function ModulInhalt({ id }: { id: string }) {
     `Quiz: ${Math.round((richtig / mod.quiz.length) * 100)} %`,
     "",
     NACHWEIS_HINWEIS.de,
-    "",
-    "ENTWURF – Inhalte nicht von einer Fachkraft für Arbeitssicherheit freigegeben.",
   ].join("\n");
 
   return (
     <div className="col gap2">
       <div className="row between"><Link href="/crew/unterweisung" className="small">← {de ? "Alle Module" : "All modules"}</Link><SpracheSchalter /></div>
       <div><div className="eyebrow">{de ? "Unterweisung" : "Briefing"}</div><h1>{t(mod.titel, s.lang)}</h1></div>
-      <Entwurf>{de ? "Entwurf – Inhalt noch nicht von einer Fachkraft freigegeben." : "Draft – content not yet approved by a safety specialist."}</Entwurf>
 
       {phase === "video" && emb ? (
         <>

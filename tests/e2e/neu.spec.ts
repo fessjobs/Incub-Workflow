@@ -765,8 +765,13 @@ test.describe("Neues System: Unterweisung mit Video und Unterschrift", () => {
 
   test("Am Handy: das Video lässt sich nicht überspringen, die Unterschrift ist Pflicht, am Ende liegt der Nachweis bereit", async () => {
     const page = await (crewCtx as BrowserContext).newPage();
+    // Kein „Entwurf“-/Freigabe-Hinweis in den Unterweisungen (Liste und Modul)
+    await page.goto("/crew/unterweisung");
+    await expect(page.getByTestId("modul-einlass")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/Entwurf|Fachkraft/);
     await page.goto("/crew/unterweisung/einlass");
     await expect(page.getByTestId("video-player")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/Entwurf|Fachkraft/);
     // Vorher kein Weiterklicken
     await expect(page.getByTestId("video-weiter")).toBeDisabled();
     await expect(page.getByTestId("karte")).toHaveCount(0);

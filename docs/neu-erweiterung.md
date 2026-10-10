@@ -134,8 +134,7 @@ Uhrzeiten (`8`, `8:30`, `0830`, `08:00-16:30`) und Zahlen (`13,90 €`) werden t
   „Standard wiederherstellen“ trägt das mitgelieferte Video wieder ein. YouTube wird ohne Cookies
   (`youtube-nocookie.com`) eingebunden; wer jede Verbindung zu Google vermeiden will, nimmt die mitgelieferten Dateien.
 - Zu jedem Modul gibt es einen **Drehbuch-Entwurf** (Szenen, Sprechertext, Bildidee, Einblendung) auf
-  Deutsch und Englisch zum Kopieren – abgeleitet aus den Lernkarten, **nicht** von einer Fachkraft für
-  Arbeitssicherheit freigegeben. Alle acht Entwürfe auch als Dokument: `docs/video-drehbuecher.md`.
+  Deutsch und Englisch zum Kopieren – abgeleitet aus den Lernkarten. Alle acht Entwürfe auch als Dokument: `docs/video-drehbuecher.md`.
 
 ## Unterweisung mit Video und Unterschrift
 
@@ -177,7 +176,8 @@ Videodatei.
 - Die Unterschrift wird auf dem Gerät gezeichnet (PNG) und **nur zum Erzeugen des Nachweises** an den Server geschickt. Dort
   wird sie geprüft (echtes PNG, Größe, nicht leer) und in ein **Nachweis-PDF** gesetzt: Person, Personalnummer, Modul,
   Datum und Uhrzeit (Berlin), Gültigkeit, Version der Inhalte, Quiz-Ergebnis, Video (abgespielt/bestätigt), Erklärung und
-  Hinweis „Entwurf, nicht von einer Fachkraft für Arbeitssicherheit freigegeben“.
+  Hinweis, dass der Nachweis die Unterweisung vor Ort (und beim Stapler den Fahrausweis) nicht ersetzt. Ein „Entwurf“-Hinweis
+  steht weder im PDF noch in der App (auf Wunsch entfernt); die Version der Inhalte heißt `2026.1`.
 - Das PDF liegt unveränderlich in `v2_files` (Art `unterweisung-nachweis`, mit SHA-256). Im Profil der Person stehen nur
   Zeitpunkt der Unterschrift und die Nachweis-Nummer – **das Unterschriftsbild steht nie in den Personendaten** (das
   Schema lehnt es ab, ein Test prüft es).
@@ -194,10 +194,10 @@ Videodatei.
 
 ### Offene Punkte
 - **KI-Stimme:** Der Sprecher der Videos ist eine KI-Stimme. Bitte prüfen, ob sie gekennzeichnet werden soll/muss.
-- **Fachliche Freigabe:** Die Texte sind Entwürfe nach dem Drehbuch (`docs/video-drehbuecher.md`) und noch nicht von einer
-  Fachkraft für Arbeitssicherheit geprüft; die Hinweise zu Flurförderzeugen (Fahrausweis) und Einlass (§ 34a GewO)
-  stehen am Ende des jeweiligen Videos im Bild.
-- Auch die **englischen Texte** sind eine einfache Übersetzung der deutschen Entwürfe und nicht fachlich geprüft.
+- **Fachliche Prüfung:** Die Texte folgen dem Drehbuch (`docs/video-drehbuecher.md`). Die App zeigt keinen Entwurfs- oder
+  Freigabe-Hinweis mehr; die Prüfung durch eine Fachkraft für Arbeitssicherheit liegt bei euch. Die Hinweise zu
+  Flurförderzeugen (Fahrausweis) und Einlass (§ 34a GewO) stehen am Ende des jeweiligen Videos im Bild.
+- Die **englischen Texte** sind eine einfache Übersetzung der deutschen.
 
 ## Benutzer und Rollen
 

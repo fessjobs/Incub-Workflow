@@ -14,7 +14,6 @@ export interface NachweisDaten {
   quizProzent: number;
   video: "player" | "manuell" | "keins";
   hinweis: string;
-  entwurf: boolean;
   unterschrift: Buffer;
 }
 
@@ -29,7 +28,6 @@ const st = StyleSheet.create({
   wert: { flex: 1, fontFamily: "Helvetica-Bold" },
   absatz: { marginTop: 18, lineHeight: 1.45 },
   klein: { fontSize: 9, color: farbe.grau, lineHeight: 1.4 },
-  entwurf: { marginTop: 14, padding: 8, borderWidth: 1, borderColor: farbe.orange, color: farbe.orange, fontSize: 9 },
   feld: { marginTop: 26, width: 300 },
   bild: { height: 90, objectFit: "contain", borderBottomWidth: 1, borderBottomColor: farbe.tinte },
   fuss: { position: "absolute", bottom: 28, left: 44, right: 44, fontSize: 8, color: farbe.grau, flexDirection: "row", justifyContent: "space-between" },
@@ -74,7 +72,6 @@ function Nachweis({ d }: { d: NachweisDaten }) {
           </Text>
         </View>
         <Text style={[st.klein, { marginTop: 22 }]}>{d.hinweis}</Text>
-        {d.entwurf ? <Text style={st.entwurf}>ENTWURF – die Inhalte der Unterweisung sind noch nicht von einer Fachkraft für Arbeitssicherheit freigegeben.</Text> : null}
         <View style={st.fuss} fixed>
           <Text>Erzeugt automatisch beim Abschluss der Unterweisung. Nicht nachträglich änderbar.</Text>
           <Text render={({ pageNumber, totalPages }) => `Seite ${pageNumber} von ${totalPages}`} />

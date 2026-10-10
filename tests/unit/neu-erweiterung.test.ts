@@ -741,7 +741,7 @@ describe("Unterweisungsvideos: mitgeliefert, Pflicht-Wiedergabe, Unterschrift", 
   it("das Nachweis-PDF entsteht mit der Unterschrift und ist ein echtes PDF", async () => {
     const pruef = pruefeUnterschrift(unterschriftDataUrl());
     expect(pruef.ok).toBe(true);
-    const pdf = await renderUnterweisungsNachweis({ person: "Anna Beispiel", pnr: "1001", modul: "Grundunterweisung", version: "2026-10", abgeschlossenAm: "10.10.2026", uhrzeit: "09:15", gueltigBis: "10.10.2027", quizProzent: 100, video: "player", hinweis: "Hinweis", entwurf: true, unterschrift: unterschriftPng() });
+    const pdf = await renderUnterweisungsNachweis({ person: "Anna Beispiel", pnr: "1001", modul: "Grundunterweisung", version: "2026-10", abgeschlossenAm: "10.10.2026", uhrzeit: "09:15", gueltigBis: "10.10.2027", quizProzent: 100, video: "player", hinweis: "Hinweis", unterschrift: unterschriftPng() });
     expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     // Mit Bild ist das PDF deutlich größer als ohne die Unterschrift
     expect(pdf.length).toBeGreaterThan(8_000);

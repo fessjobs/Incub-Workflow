@@ -108,7 +108,7 @@ function acksFuer(arch: "neu" | "mittel" | "profi"): Record<string, Unterweisung
   // Datumsmix: gültig, läuft in <14 Tagen ab, abgelaufen
   const daten = ["2026-03-12", "2026-05-20", "2025-10-20", "2025-09-15", "2026-07-01"];
   const anzahl = arch === "neu" ? 0 : arch === "mittel" ? int(2, 4) : int(4, 7);
-  for (const m of alle.slice(0, anzahl)) acks[m] = { version: "2026.1-entwurf", bestaetigtAm: pick(daten), quizScore: pick([0.8, 0.9, 1]) };
+  for (const m of alle.slice(0, anzahl)) acks[m] = { version: "2026.1", bestaetigtAm: pick(daten), quizScore: pick([0.8, 0.9, 1]) };
   return acks;
 }
 
@@ -242,7 +242,7 @@ export function baueBewerbungen(crew: Crew[], jobs: Job[]): Application[] {
       // bis auf einzelne Ausnahmen, damit die Disposition einen Konflikt zeigen kann
       if (k % 8 !== 5) {
         for (const m of pflichtModule(job.schichten.map((x) => x.taetigkeit), { hoehe: job.hoehe })) {
-          c.unterweisungen[m] ??= { version: "2026.1-entwurf", bestaetigtAm: "2026-07-01", quizScore: 0.9 };
+          c.unterweisungen[m] ??= { version: "2026.1", bestaetigtAm: "2026-07-01", quizScore: 0.9 };
         }
       }
       const s = job.schichten[(k + ji) % job.schichten.length];

@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { usePv, HEUTE } from "../state/store";
-import { Btn, Chip, Entwurf, Karte, Kopf, Offen, Seg, Stat, Tabs } from "../ui/kit";
+import { Btn, Chip, Karte, Kopf, Note, Offen, Seg, Stat, Tabs } from "../ui/kit";
 import { AKTUELLE_VERSION, MODULE, NACHWEIS_HINWEIS, t } from "../data/trainings";
 import { ablaufDatum, erinnerungAm, statusFuer, type UnterweisungStatus } from "../logic/unterweisung";
 import { formatDatumDE } from "../logic/zeit";
@@ -52,7 +52,7 @@ export function AdminUnterweisungen() {
         <Stat wert={zaehler.abgelaufen} label="abgelaufen" ton="err" />
         <Stat wert={MODULE.length} label="Module (Deutsch und Englisch)" />
       </div>
-      <div className="mt2"><Entwurf>Die Texte sind ein <b>Entwurf</b> und nicht von einer Fachkraft für Arbeitssicherheit freigegeben. {t(NACHWEIS_HINWEIS, "de")}</Entwurf></div>
+      <div className="mt2"><Note>{t(NACHWEIS_HINWEIS, "de")}</Note></div>
       <div className="mt3"><Tabs wert={tab} onChange={setTab} tabs={[{ id: "matrix", label: "Wer ist gültig", n: aktive.length }, { id: "texte", label: "Texte und Quiz" }, { id: "erinnerung", label: "Erinnerungen", n: erinnerungen.length }, { id: "pflicht", label: "Pflicht & Videos" }]} /></div>
 
       {tab === "pflicht" ? <div className="mt2"><PflichtUndVideos /></div> : null}

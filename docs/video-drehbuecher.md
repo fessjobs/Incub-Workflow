@@ -1,7 +1,6 @@
 # Drehbuch-Entwürfe für die Unterweisungs-Videos
 
-Stand: 10.10.2026. **Entwurf** – abgeleitet aus den Lernkarten, nicht von einer Fachkraft für
-Arbeitssicherheit freigegeben. Die gleichen Texte stehen im Dashboard unter
+Stand: 10.10.2026. Drehbuch-Entwürfe, abgeleitet aus den Lernkarten. Die gleichen Texte stehen im Dashboard unter
 *Unterweisungen → Pflicht & Videos → Drehbuch-Entwurf* (zum Kopieren, Deutsch und Englisch).
 
 **Die acht Videos nach diesen Drehbüchern (Deutsch und Englisch) liegen bereits in `public/videos/` und sind in der App

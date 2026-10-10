@@ -12,7 +12,7 @@ const RUNDGANG: Array<{ bereich: string; titel: string; wo: string; href: string
   { bereich: "F", titel: "Crew-Übersicht und Grenzen", wo: "Dashboard", href: "/admin/crew", probier: "Ampeln für Minijob, 70 Tage, Vertragsende; Karte; Profil einer Person." },
   { bereich: "B", titel: "Unterlagen-Archiv", wo: "Dashboard", href: "/admin/unterlagen", probier: "Alle Dokumente je Person und Auftrag, Suche, Filter." },
   { bereich: "A", titel: "Beleg-Link", wo: "Handy-Link", href: "/b/demo-token", probier: "Foto wählen, Betrag und Datum eintragen, Beiblatt prüfen, absenden – gelb markierte Abweichungen sehen." },
-  { bereich: "C", titel: "Unterweisungen verwalten", wo: "Dashboard", href: "/admin/unterweisungen", probier: "Wer ist gültig, wer läuft ab, Texte (Entwurf) in Deutsch und Englisch." },
+  { bereich: "C", titel: "Unterweisungen verwalten", wo: "Dashboard", href: "/admin/unterweisungen", probier: "Wer ist gültig, wer läuft ab, Texte in Deutsch und Englisch." },
 ];
 
 const OFFENE_PUNKTE: Array<{ nr: number; titel: string; annahme: string }> = [
@@ -86,7 +86,7 @@ export function Start() {
 
       <div className="pva-grid c2 mt3">
         <Note ton="warn">
-          <b>Unterweisungstexte sind Entwürfe.</b> Sie sind nicht von einer Fachkraft für Arbeitssicherheit freigegeben und ersetzen weder die Unterweisung vor Ort noch beim Stapler den Fahrausweis.
+          <b>Die Unterweisung am Handy ersetzt nicht die Einweisung vor Ort</b> und beim Stapler nicht den Fahrausweis.
         </Note>
         <Note>
           <b>Zu prüfen:</b> Minijob-Verdienstgrenze (hier 603 € als einstellbarer Wert), Lohnart für Bonus und Abzug (mit Daniel abstimmen), Level-Schwellen der XP.

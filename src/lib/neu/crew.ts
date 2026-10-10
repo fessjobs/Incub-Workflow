@@ -184,7 +184,7 @@ export async function crewAktion(z: CrewZugang, a: CrewAktion): Promise<AktionsE
     const videoFeld = emb ? a.video : "keins";
     const pdf = await renderUnterweisungsNachweis({
       person: `${c.vorname} ${c.nachname}`.trim(), pnr: c.pnr, modul: t(mod.titel, "de"), version: AKTUELLE_VERSION, abgeschlossenAm: formatDatumDE(heute), uhrzeit, gueltigBis: formatDatumDE(ablaufDatum(heute)),
-      quizProzent: Math.round((a.richtig / a.gesamt) * 100), video: videoFeld, hinweis: NACHWEIS_HINWEIS.de, entwurf: AKTUELLE_VERSION.includes("entwurf"), unterschrift: u.unterschrift.bytes,
+      quizProzent: Math.round((a.richtig / a.gesamt) * 100), video: videoFeld, hinweis: NACHWEIS_HINWEIS.de, unterschrift: u.unterschrift.bytes,
     });
     const datei = await db.v2File.create({
       data: {
