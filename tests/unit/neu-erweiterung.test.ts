@@ -5,11 +5,15 @@ import { bereinigeNummer, dekodiere, erkenneTrenner, findeKopfzeile, parseDatum,
 import { erkennePersonalSpalten, erkenneVertragsart, kopfPersonal, planePersonalImport, sensibleSpalten, uebernehmePersonal, type PersonalOptionen } from "@/lib/neu/import/personal";
 import { erkenneAuftragSpalten, erkenneTaetigkeit, kopfAuftraege, planeAuftragImport, uebernehmeAuftraege } from "@/lib/neu/import/auftraege";
 import { freigabeStand } from "@/preview/logic/freigabe";
-import { bereinigeSchulung, fehlendeModule, pflichtModule, standardSchulung } from "@/preview/logic/unterweisung";
+import { MODUL_IDS, bereinigeSchulung, fehlendeModule, pflichtModule, standardSchulung, standardVideos } from "@/preview/logic/unterweisung";
 import { bedarf, csv, groesseFuer, offenesPfand, sortiereGroessen } from "@/preview/logic/kleidung";
 import { bereinigeKleidung, standardKleidung } from "@/preview/logic/einstellungen-neu";
 import { kleidungFehler, leereAntworten, antwortenZuProfil } from "@/preview/logic/profil";
-import { videoEinbettung } from "@/preview/logic/video";
+import { begrenzeSprung, videoEinbettung, videoPoster, videoZeitErfuellt } from "@/preview/logic/video";
+import { medienName, mindestAnteil, mp4Dauer, videoDauerFuerUrl } from "@/lib/neu/video";
+import { pruefeUnterschrift } from "@/lib/neu/unterschrift";
+import { renderUnterweisungsNachweis } from "@/lib/neu/nachweis-pdf";
+import { unterschriftDataUrl, unterschriftPng } from "../fixtures/unterschrift";
 import { brauchtLink, fuelleVorlage, waLink, waNummer } from "@/preview/logic/nachricht";
 import { darfAktion, darfLesen, darfSchreiben, darfSeite } from "@/lib/neu/rollen";
 import { KIND_SCHEMA } from "@/lib/neu/schemas";
@@ -406,7 +410,10 @@ describe("Schulungs-Pflicht einstellbar", () => {
     const s = bereinigeSchulung({ pflichtAlle: ["grund", "unbekannt"], jeKunde: [{ kunde: "X", module: ["hoehe", "quatsch"] }, { kein: "kunde" }], video: { grund: { url: "https://youtu.be/abcdefghijk", titel: "T", pflicht: true }, quatsch: { url: "x" } }, freigabeModule: "kaputt" });
     expect(s.pflichtAlle).toEqual(["grund"]);
     expect(s.jeKunde).toEqual([{ kunde: "X", module: ["hoehe"] }]);
-    expect(Object.keys(s.video)).toEqual(["grund"]);
+    // Alle acht mitgelieferten Videos bleiben eingetragen; das gespeicherte Video für „grund“ überschreibt den Standard
+    expect(Object.keys(s.video)).toEqual(MODUL_IDS);
+    expect(s.video.grund).toEqual({ url: "https://youtu.be/abcdefghijk", titel: "T", pflicht: true });
+    expect(s.video.stagehand).toEqual(standardVideos().stagehand);
     expect(s.freigabeModule).toEqual(["grund", "brandschutz"]);
     expect(bereinigeSchulung(null)).toEqual(standardSchulung());
   });
@@ -586,6 +593,149 @@ describe("Schnittstelle zum bisherigen System: vorbereitet, aber aus", () => {
     expect(e.zeilen[0]).toMatchObject({ status: "offen", quelle: "Zettel", sourceRef: "zettel/2026/10/abc.pdf", auftrag: d.jobs[0].id });
     expect(KIND_SCHEMA.stunde.safeParse(e.zeilen[0]).success).toBe(true);
     expect(stundenRueckmeldungSchema.safeParse({ ...r, dateiHash: "zu kurz" }).success).toBe(false);
+  });
+});
+
+describe("Unterweisungsvideos: mitgeliefert, Pflicht-Wiedergabe, Unterschrift", () => {
+  it("jedes Modul hat ein mitgeliefertes Video, das wirklich in public/videos liegt", () => {
+    const v = standardVideos();
+    expect(Object.keys(v)).toEqual(MODUL_IDS);
+    for (const m of MODUL_IDS) {
+      expect(v[m]).toEqual({ url: `/api/neu/crew/video/${m}.de.mp4`, titel: "", pflicht: true });
+      expect(statSync(path.resolve(__dirname, `../../public/videos/${m}.de.mp4`)).size).toBeGreaterThan(1_000_000);
+      expect(statSync(path.resolve(__dirname, `../../public/videos/${m}.de.jpg`)).size).toBeGreaterThan(1_000);
+    }
+    expect(standardSchulung().video).toEqual(v);
+  });
+  it("„kein Video“ gilt nur, wenn es ausdrücklich entfernt wurde – eine leere Adresse aus älteren Einstellungen lässt das mitgelieferte stehen", () => {
+    const alt = bereinigeSchulung({ video: { brandschutz: { url: "", titel: "", pflicht: false }, grund: { url: "  ", titel: "x", pflicht: true } } });
+    expect(alt.video.brandschutz).toEqual(standardVideos().brandschutz);
+    expect(alt.video.grund).toEqual(standardVideos().grund);
+    const entfernt = bereinigeSchulung({ video: { brandschutz: { url: "", titel: "", pflicht: false, entfernt: true } } });
+    expect(entfernt.video.brandschutz).toEqual({ url: "", titel: "", pflicht: false, entfernt: true });
+    // und bleibt es nach erneutem Bereinigen
+    expect(bereinigeSchulung(entfernt).video.brandschutz.entfernt).toBe(true);
+  });
+  it("die englische Fassung wird übernommen, leere Angaben nicht", () => {
+    const s = bereinigeSchulung({ video: { grund: { url: "", titel: "", pflicht: false, entfernt: true }, hoehe: { url: "/api/neu/crew/video/hoehe.de.mp4", urlEn: "/api/neu/crew/video/hoehe.en.mp4", titel: "", pflicht: true }, catering: { url: "/api/neu/crew/video/catering.de.mp4", urlEn: "  ", titel: "", pflicht: true } } });
+    expect(s.video.grund.url).toBe("");
+    expect(s.video.hoehe.urlEn).toBe("/api/neu/crew/video/hoehe.en.mp4");
+    expect(s.video.catering.urlEn).toBeUndefined();
+    expect(s.video.stapler.url).toBe("/api/neu/crew/video/stapler.de.mp4");
+  });
+  it("eigene Videos werden eingebettet – nur aus den zwei erlaubten Pfaden und nur Videodateien", () => {
+    expect(videoEinbettung("/api/neu/crew/video/grund.de.mp4")).toEqual({ art: "video", src: "/api/neu/crew/video/grund.de.mp4" });
+    expect(videoEinbettung("/videos/grund.de.mp4")?.art).toBe("video");
+    for (const schlecht of ["/api/neu/crew/video/../../admin.mp4", "//evil.example/x.mp4", "/andere/pfad/x.mp4", "/api/neu/crew/video/x.mp4?a=1", "/api/neu/crew/video/x.mp4#t", "/api/neu/crew/video/x.html", "/api/neu/crew/video/a\\b.mp4", "/"]) expect(videoEinbettung(schlecht), schlecht).toBeNull();
+  });
+  it("Vorschaubild gibt es nur zu eigenen mp4-Videos", () => {
+    expect(videoPoster("/api/neu/crew/video/grund.de.mp4")).toBe("/api/neu/crew/video/grund.de.jpg");
+    expect(videoPoster("https://cdn.example.de/uw/grund.mp4")).toBeUndefined();
+    expect(videoPoster("/api/neu/crew/video/grund.de.webm")).toBeUndefined();
+  });
+  it("Vorspulen ist gesperrt, Zurückspulen erlaubt", () => {
+    expect(begrenzeSprung(30, 10)).toBe(10);
+    expect(begrenzeSprung(10.5, 10)).toBe(10.5);
+    expect(begrenzeSprung(2, 10)).toBe(2);
+    expect(begrenzeSprung(0, 0)).toBe(0);
+  });
+  it("Zeitprüfung: erst nach 85 % der Länge, ohne Start nie, mit Anteil 0 aus", () => {
+    const start = 1_000_000;
+    expect(videoZeitErfuellt(start, start + 30_000, 65.5, 0.85)).toBe(false);
+    expect(videoZeitErfuellt(start, start + 55_000, 65.5, 0.85)).toBe(false);
+    expect(videoZeitErfuellt(start, start + 56_000, 65.5, 0.85)).toBe(true);
+    expect(videoZeitErfuellt(null, start, 65.5, 0.85)).toBe(false);
+    expect(videoZeitErfuellt(null, start, 65.5, 0)).toBe(true);
+    // Unbekannte Länge (fremdes Video): nichts zu prüfen
+    expect(videoZeitErfuellt(start, start, null, 0.85)).toBe(true);
+  });
+  it("Mindestanteil aus der Umgebung: Standard 0,85, Komma erlaubt, auf 0..1 begrenzt", () => {
+    expect(mindestAnteil({})).toBe(0.85);
+    expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "" })).toBe(0.85);
+    expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "0,5" })).toBe(0.5);
+    expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "0" })).toBe(0);
+    expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "7" })).toBe(1);
+    expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "-1" })).toBe(0);
+    expect(mindestAnteil({ NEU_VIDEO_MINDESTANTEIL: "abc" })).toBe(0.85);
+  });
+  it("Dateinamen der Medienroute: nur Kleinbuchstaben, Ziffern, Punkt, Bindestrich, mp4/jpg", () => {
+    expect(medienName("grund.de.mp4")).toBe("grund.de.mp4");
+    expect(medienName("grund.de.v2.jpg")).toBe("grund.de.v2.jpg");
+    for (const schlecht of ["../etc/passwd", "grund.de.mp4/../x.mp4", "Grund.mp4", "grund.exe", "a b.mp4", "", ".mp4", "x..y.mp4", "grund.de.mp4%00.jpg"]) expect(medienName(schlecht), schlecht).toBeNull();
+  });
+  it("liest die Länge aus einer MP4 (synthetisch, Version 0 und 1) und aus den mitgelieferten Videos", async () => {
+    const kasten = (typ: string, inhalt: Buffer) => Buffer.concat([Buffer.from([0, 0, 0, 0].map((_, i) => ((inhalt.length + 8) >>> (24 - 8 * i)) & 255)), Buffer.from(typ, "latin1"), inhalt]);
+    const mvhd0 = Buffer.alloc(100);
+    mvhd0.writeUInt32BE(1000, 12);
+    mvhd0.writeUInt32BE(65_500, 16);
+    const mp4v0 = Buffer.concat([kasten("ftyp", Buffer.from("isom0000", "latin1")), kasten("moov", kasten("mvhd", mvhd0)), kasten("mdat", Buffer.alloc(50))]);
+    expect(mp4Dauer(mp4v0)).toBeCloseTo(65.5, 5);
+    const mvhd1 = Buffer.alloc(112);
+    mvhd1[0] = 1;
+    mvhd1.writeUInt32BE(600, 20);
+    mvhd1.writeBigUInt64BE(BigInt(600 * 73), 24);
+    expect(mp4Dauer(Buffer.concat([kasten("ftyp", Buffer.from("isom0000", "latin1")), kasten("moov", kasten("mvhd", mvhd1))]))).toBeCloseTo(73, 5);
+    // Kaputtes und Fremdes
+    expect(mp4Dauer(Buffer.alloc(0))).toBeNull();
+    expect(mp4Dauer(Buffer.from("das ist keine mp4 datei, nur text"))).toBeNull();
+    expect(mp4Dauer(kasten("ftyp", Buffer.from("isom0000", "latin1")))).toBeNull();
+    // Die echten Videos: 65,5 s bzw. 73 s
+    expect(await videoDauerFuerUrl("/api/neu/crew/video/grund.de.mp4")).toBeGreaterThan(64);
+    expect(await videoDauerFuerUrl("/api/neu/crew/video/grund.de.mp4")).toBeLessThan(67);
+    expect(await videoDauerFuerUrl("/api/neu/crew/video/stapler.de.mp4")).toBeGreaterThan(72);
+    expect(await videoDauerFuerUrl("/api/neu/crew/video/stapler.de.mp4")).toBeLessThan(74);
+    // Fremde Adressen und nicht vorhandene Dateien: unbekannt, nicht „0“
+    expect(await videoDauerFuerUrl("https://cdn.example.de/x.mp4")).toBeNull();
+    expect(await videoDauerFuerUrl("/api/neu/crew/video/gibtesnicht.mp4")).toBeNull();
+    expect(await videoDauerFuerUrl("/api/neu/crew/video/../../package.json")).toBeNull();
+    expect(await videoDauerFuerUrl(undefined)).toBeNull();
+  });
+  it("Unterschrift: nur ein echtes PNG in sinnvoller Größe mit Inhalt", () => {
+    const png = (breite: number, hoehe: number, bytes: number) => {
+      const b = Buffer.alloc(bytes, 7);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+      b.writeUInt32BE(13, 8);
+      b.write("IHDR", 12, "latin1");
+      b.writeUInt32BE(breite, 16);
+      b.writeUInt32BE(hoehe, 20);
+      return `data:image/png;base64,${b.toString("base64")}`;
+    };
+    expect(pruefeUnterschrift(unterschriftDataUrl()).ok).toBe(true);
+    const ok = pruefeUnterschrift(png(600, 200, 4_000));
+    expect(ok.ok && ok.unterschrift).toMatchObject({ breite: 600, hoehe: 200 });
+    expect(pruefeUnterschrift(png(600, 200, 300))).toEqual({ ok: false, fehler: "Bitte unterschreiben." });
+    expect(pruefeUnterschrift(png(50, 200, 4_000)).ok).toBe(false);
+    expect(pruefeUnterschrift(png(600, 20, 4_000)).ok).toBe(false);
+    expect(pruefeUnterschrift(png(5000, 200, 4_000)).ok).toBe(false);
+    expect(pruefeUnterschrift(png(600, 200, 400_000)).ok).toBe(false);
+    expect(pruefeUnterschrift("").ok).toBe(false);
+    expect(pruefeUnterschrift("data:image/jpeg;base64,AAAA").ok).toBe(false);
+    expect(pruefeUnterschrift("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=").ok).toBe(false);
+    expect(pruefeUnterschrift(`data:image/png;base64,${Buffer.from("kein png, nur text ".repeat(80)).toString("base64")}`).ok).toBe(false);
+    expect(pruefeUnterschrift("<script>alert(1)</script>").ok).toBe(false);
+  });
+  it("das Nachweis-PDF entsteht mit der Unterschrift und ist ein echtes PDF", async () => {
+    const pruef = pruefeUnterschrift(unterschriftDataUrl());
+    expect(pruef.ok).toBe(true);
+    const pdf = await renderUnterweisungsNachweis({ person: "Anna Beispiel", pnr: "1001", modul: "Grundunterweisung", version: "2026-10", abgeschlossenAm: "10.10.2026", uhrzeit: "09:15", gueltigBis: "10.10.2027", quizProzent: 100, video: "player", hinweis: "Hinweis", entwurf: true, unterschrift: unterschriftPng() });
+    expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    // Mit Bild ist das PDF deutlich größer als ohne die Unterschrift
+    expect(pdf.length).toBeGreaterThan(8_000);
+  });
+  it("gespeichert wird nur das Ergebnis (Zeitpunkt, Nachweis-Nummer), nie das Unterschriftsbild", () => {
+    const basis = { id: "c-1", pnr: "1001", vorname: "A", nachname: "B", status: "aktiv" };
+    const ack = { version: "2026-10", bestaetigtAm: "2026-10-10", quizScore: 1, video: "player", unterschriftAm: "2026-10-10T08:00:00.000Z", nachweisId: "abc123" };
+    const mit = (a: Record<string, unknown>) => KIND_SCHEMA.crew.safeParse({ ...crewBasis({}), ...basis, unterweisungen: { grund: a } });
+    expect(mit(ack).success).toBe(true);
+    expect(mit({ ...ack, video: "irgendwas" }).success).toBe(false);
+    expect(mit({ ...ack, unterschrift: "data:image/png;base64,AAAA" }).success).toBe(false);
+    // Ältere Bestätigungen ohne Unterschrift bleiben gültig lesbar
+    expect(mit({ version: "2026-10", bestaetigtAm: "2026-09-01", quizScore: 0.9 }).success).toBe(true);
+  });
+  it("Sicherung: Bereich für die Unterweisungsnachweise ist wählbar", () => {
+    expect(BEREICHE.find((b) => b.id === "neu-unterweisungen")?.gruppe).toBe("neu");
+    const a = leseAnfrage("https://x.de/api/neu/sicherung?monat=2026-10&bereiche=neu-unterweisungen");
+    expect(a.ok && a.anfrage.bereiche).toEqual(["neu-unterweisungen"]);
   });
 });
 

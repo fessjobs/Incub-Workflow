@@ -73,7 +73,19 @@ const crew = z
     arbeitstageJahr: z.number().int().min(0),
     profile: z.record(z.unknown()).nullable(),
     contract: vertrag.nullable(),
-    unterweisungen: z.record(z.object({ version: z.string().max(60), bestaetigtAm: datum, quizScore: z.number().min(0).max(1) })),
+    unterweisungen: z.record(
+      z.object({
+        version: z.string().max(60),
+        bestaetigtAm: datum,
+        quizScore: z.number().min(0).max(1),
+        video: z.enum(["player", "manuell", "keins"]).optional(),
+        unterschriftAm: z.string().max(40).optional(),
+        nachweisId: z.string().max(80).optional(),
+        // Die Unterschrift selbst gehört nur ins Nachweis-PDF, nie in den Datensatz
+        unterschrift: z.undefined().optional(),
+      })
+    ),
+    unterweisungStart: z.object({ modul: z.string().max(40), am: z.string().max(40) }).optional(),
     ratings: z.array(z.record(z.unknown())).max(500),
     notizen: lang,
     freigabe: z.object({ status: z.enum(["bestaetigt", "abgelehnt"]), am: datum, von: z.string().max(200), notiz: z.string().max(1000) }).optional(),

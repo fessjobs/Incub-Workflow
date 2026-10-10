@@ -448,7 +448,7 @@ export function AdminCrewDetail({ id }: { id: string }) {
       {tab === "unterweisung" ? (
         <Karte>
           <table className="pv-table">
-            <thead><tr><th>Modul</th><th>Status</th><th>Bestätigt am</th><th>Gültig bis</th><th>Quiz</th></tr></thead>
+            <thead><tr><th>Modul</th><th>Status</th><th>Bestätigt am</th><th>Gültig bis</th><th>Quiz</th><th>Video</th><th>Unterschrift</th><th>Nachweis</th></tr></thead>
             <tbody>
               {MODULE.map((m) => {
                 const ack = c.unterweisungen[m.id];
@@ -460,6 +460,9 @@ export function AdminCrewDetail({ id }: { id: string }) {
                     <td>{ack ? formatDatumDE(ack.bestaetigtAm) : "–"}</td>
                     <td>{ack ? formatDatumDE(ablaufDatum(ack.bestaetigtAm)) : "–"}</td>
                     <td className="mono">{ack ? `${Math.round(ack.quizScore * 100)} %` : "–"}</td>
+                    <td data-testid={`uw-video-${m.id}`}>{ack?.video === "player" ? "abgespielt" : ack?.video === "manuell" ? "bestätigt" : "–"}</td>
+                    <td data-testid={`uw-unterschrift-${m.id}`}>{ack?.unterschriftAm ? `✓ ${new Date(ack.unterschriftAm).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ack ? <span className="muted" title="Vor Einführung der Unterschrift bestätigt">ohne</span> : "–"}</td>
+                    <td>{ack?.nachweisId ? <a className="pv-btn sec sm" href={`/api/neu/files/${ack.nachweisId}`} target="_blank" rel="noreferrer" data-testid={`uw-nachweis-${m.id}`}>PDF</a> : "–"}</td>
                   </tr>
                 );
               })}

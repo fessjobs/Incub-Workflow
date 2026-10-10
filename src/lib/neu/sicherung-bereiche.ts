@@ -11,6 +11,7 @@ export const BEREICHE = [
   { id: "personalstamm", gruppe: "alt", label: "Personalstamm (Stand heute)", text: "Nummer, Name, E-Mail, Handy, Status – ohne Geburtsdatum" },
   { id: "neu-belege", gruppe: "neu", label: "Belege aus dem neuen System", text: "Fotos und PDFs der Beleg-Links des Monats" },
   { id: "neu-stunden", gruppe: "neu", label: "Stundenzeilen aus dem neuen System", text: "Tabelle (CSV) mit den Zeilen des Monats" },
+  { id: "neu-unterweisungen", gruppe: "neu", label: "Unterweisungsnachweise aus dem neuen System", text: "PDFs mit der Unterschrift der Person und Übersicht (CSV) der Unterweisungen des Monats" },
   { id: "neu-gesamt", gruppe: "neu", label: "Gesamtstand des neuen Systems", text: "alle Personen, Aufträge, Bewerbungen, Einstellungen (JSON, enthält Personen- und Vertragsdaten)" },
 ] as const;
 

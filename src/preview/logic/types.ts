@@ -104,6 +104,13 @@ export interface UnterweisungAck {
   version: string;
   bestaetigtAm: string; // JJJJ-MM-TT
   quizScore: number; // 0..1
+  // Video: im Player vollständig abgespielt, ersatzweise bestätigt (Wiedergabe nicht möglich) oder keins vorhanden
+  video?: "player" | "manuell" | "keins";
+  // Unterschrift am Ende: Zeitpunkt (ISO) und das gespeicherte Nachweis-PDF
+  unterschriftAm?: string;
+  nachweisId?: string;
+  // Nur auf dem Gerät, bis der Server sie übernommen hat – wird nie gespeichert
+  unterschrift?: string;
 }
 
 export interface Crew {

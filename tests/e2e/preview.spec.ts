@@ -306,7 +306,19 @@ test.describe("Testversion: Mitarbeiterlink", () => {
         await quizRichtig(page);
       }
       await page.getByTestId("zur-bestaetigung").click();
+      // Ohne Haken keine Unterschrift, ohne Unterschrift kein Abschluss
+      await expect(page.getByTestId("zur-unterschrift")).toBeDisabled();
       await page.getByTestId("haken").check();
+      await page.getByTestId("zur-unterschrift").click();
+      await expect(page.getByTestId("bestaetigen-uw")).toBeDisabled();
+      const feld = page.getByTestId("signatur");
+      await feld.scrollIntoViewIfNeeded();
+      const box = await feld.boundingBox();
+      if (!box) throw new Error("Unterschriftenfeld nicht sichtbar");
+      await page.mouse.move(box.x + 30, box.y + box.height / 2);
+      await page.mouse.down();
+      for (let i = 1; i <= 14; i++) await page.mouse.move(box.x + 30 + i * 12, box.y + box.height / 2 + Math.sin(i) * 26);
+      await page.mouse.up();
       await page.getByTestId("bestaetigen-uw").click();
       await page.getByTestId("zurueck-bewerbung").click();
     }

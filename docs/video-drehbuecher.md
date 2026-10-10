@@ -4,9 +4,14 @@ Stand: 10.10.2026. **Entwurf** – abgeleitet aus den Lernkarten, nicht von eine
 Arbeitssicherheit freigegeben. Die gleichen Texte stehen im Dashboard unter
 *Unterweisungen → Pflicht & Videos → Drehbuch-Entwurf* (zum Kopieren, Deutsch und Englisch).
 
-So kommt ein fertiges Video in die App: Video hochladen (YouTube „nicht gelistet“, Vimeo oder eine
-`.mp4` auf eigenem Speicher), die Adresse im Dashboard beim Modul eintragen – fertig. Es erscheint
-auf der ersten Lernkarte; auf Wunsch muss die Person vor dem Quiz bestätigen, es gesehen zu haben.
+**Die acht Videos nach diesen Drehbüchern (Deutsch) liegen bereits in `public/videos/` und sind in der App
+eingetragen** – sie laufen als erster Schritt der Unterweisung und müssen bis zum Ende angesehen werden, danach
+folgen Lernkarten, Quiz und die Unterschrift (Details: `docs/neu-erweiterung.md`, Abschnitt „Unterweisung mit Video und
+Unterschrift“). Die englischen Fassungen fehlen noch.
+
+Ein anderes oder neues Video einbinden: Datei auf eigenen Speicher, YouTube („nicht gelistet“) oder Vimeo laden und die
+Adresse im Dashboard beim Modul eintragen. Eine Datei im Ordner `public/videos` braucht den Namen `<modul>.de.mp4`
+(bzw. mit neuem Namen wie `grund.de.v2.mp4`, wenn ein Video ausgetauscht wird, damit Handys nicht die alte Fassung zeigen).
 
 Empfehlung: 8 Videos à 60–120 Sekunden, hochkant (9:16), Untertitel immer an, kein Fachjargon.
 

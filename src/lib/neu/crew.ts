@@ -8,10 +8,16 @@ import { leseRecord, listeRecords, loescheRecord, setzeRecord } from "./store";
 import type { Application, Crew, Job } from "@/preview/logic/types";
 import { antwortenZuProfil, handyGueltig, kleidungFehler, leereAntworten, offenePflicht, plzGueltig, situationVollstaendig, type Antworten } from "@/preview/logic/profil";
 import { geocodePlz, naechsterPool } from "@/preview/logic/geo";
-import { bereinigeSchulung, fehlendeModule, pflichtModule, quizBestanden } from "@/preview/logic/unterweisung";
+import { ablaufDatum, bereinigeSchulung, fehlendeModule, pflichtModule, quizBestanden } from "@/preview/logic/unterweisung";
+import { videoEinbettung, videoZeitErfuellt } from "@/preview/logic/video";
+import { mindestAnteil, videoDauerFuerUrl } from "./video";
+import { pruefeUnterschrift } from "./unterschrift";
+import { renderUnterweisungsNachweis } from "./nachweis-pdf";
+import { dateiHash } from "./token";
+import { formatDatumDE } from "@/preview/logic/zeit";
 import { bereinigeKleidung } from "@/preview/logic/einstellungen-neu";
 import { freigabeStand } from "@/preview/logic/freigabe";
-import { AKTUELLE_VERSION, modulById } from "@/preview/data/trainings";
+import { AKTUELLE_VERSION, NACHWEIS_HINWEIS, modulById, t } from "@/preview/data/trainings";
 import { heuteBerlin } from "@/preview/logic/zeit";
 import { ETAPPEN } from "@/preview/logic/fragen";
 
@@ -23,7 +29,7 @@ export interface CrewZugang {
   crewId: string;
 }
 
-export type CrewRecord = Crew & { fragebogenEntwurf?: { antworten: Record<string, unknown>; etappe: number } | null; fragebogenAbgeschicktAm?: string | null };
+export type CrewRecord = Crew & { fragebogenEntwurf?: { antworten: Record<string, unknown>; etappe: number } | null; fragebogenAbgeschicktAm?: string | null; unterweisungStart?: { modul: string; am: string } };
 
 export async function crewSitzung(): Promise<CrewZugang | null> {
   const roh = (await cookies()).get(CREW_COOKIE)?.value;
@@ -48,12 +54,13 @@ export async function loeseEinladungEin(token: string): Promise<{ sitzung: strin
 
 function fuerCrew(c: CrewRecord): Crew {
   // Intern bleibt intern: Notizen und Bewertungen verlassen den Server nicht
-  const { fragebogenEntwurf: _e, fragebogenAbgeschicktAm: _a, kontakt: _k, importQuelle: _i, freigabe: _f, ...rest } = c;
+  const { fragebogenEntwurf: _e, fragebogenAbgeschicktAm: _a, kontakt: _k, importQuelle: _i, freigabe: _f, unterweisungStart: _u, ...rest } = c;
   void _e;
   void _a;
   void _k;
   void _i;
   void _f;
+  void _u;
   return { ...rest, notizen: "", ratings: [] };
 }
 
@@ -95,7 +102,8 @@ export async function crewState(z: CrewZugang) {
 export type CrewAktion =
   | { typ: "entwurf"; antworten: Record<string, unknown>; etappe: number }
   | { typ: "abschicken" }
-  | { typ: "unterweisung"; modul: string; richtig: number; gesamt: number }
+  | { typ: "unterweisung"; modul: string; richtig: number; gesamt: number; unterschrift: string; video: "player" | "manuell" | "keins" }
+  | { typ: "unterweisung-start"; modul: string }
   | { typ: "bewerbung"; jobId: string; schichtIds: string[]; eigeneAnreise: boolean; hatVertrag: boolean; abfahrtsort: string; plaetze: number; kommentar: string };
 
 export type AktionsErgebnis = { ok: true } | { ok: false; status: number; error: string };
@@ -138,12 +146,59 @@ export async function crewAktion(z: CrewZugang, a: CrewAktion): Promise<AktionsE
     return { ok: true };
   }
 
+  if (a.typ === "unterweisung-start") {
+    const mod = modulById(a.modul);
+    if (!mod) return fehler(400, "Modul unbekannt.");
+    // Ein früherer Start desselben Moduls binnen drei Stunden bleibt stehen (Neuladen der Seite setzt die Uhr nicht zurück)
+    const alt = c.unterweisungStart;
+    if (alt && alt.modul === mod.id && Date.now() - Date.parse(alt.am) < 3 * 3600_000) return { ok: true };
+    await speichern({ ...c, unterweisungStart: { modul: mod.id, am: new Date().toISOString() } });
+    return { ok: true };
+  }
+
   if (a.typ === "unterweisung") {
     const mod = modulById(a.modul);
     if (!mod) return fehler(400, "Modul unbekannt.");
     if (a.gesamt !== mod.quiz.length || a.richtig < 0 || a.richtig > a.gesamt) return fehler(400, "Ungültiges Ergebnis.");
     if (!quizBestanden(a.richtig, a.gesamt)) return fehler(400, "Quiz nicht bestanden.");
-    await speichern({ ...c, unterweisungen: { ...c.unterweisungen, [mod.id]: { version: AKTUELLE_VERSION, bestaetigtAm: heuteBerlin(), quizScore: a.richtig / a.gesamt } } });
+
+    // Video: ist eines vorgeschrieben, muss es abgespielt sein – und seit dem Start muss genug Zeit vergangen sein
+    const e = await crewEinstellungen(z.organizationId);
+    const v = e.schulung.video[mod.id];
+    const emb = v?.url ? videoEinbettung(v.url) : null;
+    const pflicht = Boolean(emb && v?.pflicht);
+    if (pflicht && a.video === "keins") return fehler(409, "Bitte zuerst das Video ansehen.");
+    if (pflicht && a.video === "player") {
+      const dauern = (await Promise.all([videoDauerFuerUrl(v?.url), videoDauerFuerUrl(v?.urlEn)])).filter((x): x is number => x !== null);
+      const start = c.unterweisungStart && c.unterweisungStart.modul === mod.id ? Date.parse(c.unterweisungStart.am) : null;
+      if (!videoZeitErfuellt(Number.isFinite(start) ? start : null, Date.now(), dauern.length > 0 ? Math.min(...dauern) : null, mindestAnteil())) return fehler(409, "Das Video wurde noch nicht vollständig abgespielt.");
+    }
+
+    // Unterschrift am Ende
+    const u = pruefeUnterschrift(a.unterschrift);
+    if (!u.ok) return fehler(400, u.fehler);
+
+    const jetzt = new Date();
+    const heute = heuteBerlin();
+    const uhrzeit = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" }).format(jetzt);
+    const videoFeld = emb ? a.video : "keins";
+    const pdf = await renderUnterweisungsNachweis({
+      person: `${c.vorname} ${c.nachname}`.trim(), pnr: c.pnr, modul: t(mod.titel, "de"), version: AKTUELLE_VERSION, abgeschlossenAm: formatDatumDE(heute), uhrzeit, gueltigBis: formatDatumDE(ablaufDatum(heute)),
+      quizProzent: Math.round((a.richtig / a.gesamt) * 100), video: videoFeld, hinweis: NACHWEIS_HINWEIS.de, entwurf: AKTUELLE_VERSION.includes("entwurf"), unterschrift: u.unterschrift.bytes,
+    });
+    const datei = await db.v2File.create({
+      data: {
+        organizationId: z.organizationId, kind: "unterweisung-nachweis", name: `Unterweisung_${mod.id}_${c.pnr}_${heute}.pdf`.replace(/[^\w.-]/g, "_"), mime: "application/pdf", size: pdf.length, sha256: dateiHash(pdf), data: new Uint8Array(pdf),
+        meta: { crewId: z.crewId, pnr: c.pnr, modul: mod.id, bestaetigtAm: heute },
+      },
+      select: { id: true },
+    });
+    const { unterweisungStart: _s, ...ohneStart } = c;
+    void _s;
+    await speichern({
+      ...ohneStart,
+      unterweisungen: { ...c.unterweisungen, [mod.id]: { version: AKTUELLE_VERSION, bestaetigtAm: heute, quizScore: a.richtig / a.gesamt, video: videoFeld, unterschriftAm: jetzt.toISOString(), nachweisId: datei.id } },
+    });
     return { ok: true };
   }
 

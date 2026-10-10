@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import JSZip from "jszip";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { unterschriftDataUrl } from "../fixtures/unterschrift";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@incub.live";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "incub2026!";
@@ -38,13 +39,45 @@ async function gespeichert(page: Page) {
   await expect(page.getByTestId("speicherstand")).toHaveText("Gespeichert ✓");
 }
 
-// Eine Unterweisung am Handy durcharbeiten (richtige Antworten) und bestätigen; wartet auf die Antwort des Servers
-async function unterweisungMachen(page: Page, modul: string) {
-  await page.goto("/crew/unterweisung");
-  await page.getByTestId(`modul-${modul}`).click();
+// Schritt 1 der Unterweisung: das Video. Das Test-Chromium spielt H.264 nicht ab, darum stellen wir die Ereignisse des
+// Players nach (Start, Ende). Die Wartezeit deckt die Mindestdauer ab, die der Server prüft (Testserver: 3 % der Länge).
+async function videoAnsehen(page: Page) {
+  const warte = page.locator('[data-testid="video-weiter"], [data-testid="karte"]').first();
+  await warte.waitFor();
+  if (!(await page.getByTestId("video-weiter").count())) return; // kein Video bei diesem Modul
+  const player = page.getByTestId("video-player");
+  if (await player.count()) {
+    // Weiter ist gesperrt, solange das Video nicht zu Ende gelaufen ist
+    await expect(page.getByTestId("video-weiter")).toBeDisabled();
+    const start = page.waitForResponse((r) => r.url().includes("/api/neu/crew/aktion") && (r.request().postData() ?? "").includes('"unterweisung-start"'));
+    await player.locator("video").evaluate((v) => v.dispatchEvent(new Event("play")));
+    expect((await start).status()).toBe(200);
+    await page.waitForTimeout(2600);
+    await player.locator("video").evaluate((v) => v.dispatchEvent(new Event("ended")));
+    await expect(page.getByTestId("video-fertig-hinweis")).toBeVisible();
+  } else if (await page.getByTestId("video-gesehen").count()) {
+    await page.getByTestId("video-gesehen").check();
+  }
+  await page.getByTestId("video-weiter").click();
+}
+
+// Mit Maus/Finger im Unterschriftenfeld ein paar Striche ziehen
+async function unterschreiben(page: Page) {
+  const feld = page.getByTestId("signatur");
+  await feld.scrollIntoViewIfNeeded();
+  const box = await feld.boundingBox();
+  if (!box) throw new Error("Unterschriftenfeld nicht sichtbar");
+  for (const versatz of [0, 22]) {
+    await page.mouse.move(box.x + 30, box.y + box.height / 2 + versatz);
+    await page.mouse.down();
+    for (let i = 1; i <= 14; i++) await page.mouse.move(box.x + 30 + i * 12, box.y + box.height / 2 + versatz + Math.sin(i) * 26);
+    await page.mouse.up();
+  }
+}
+
+// Lernkarten, Quiz (richtige Antworten) und Bestätigung bis zum Unterschriftenfeld
+async function karteQuizBestaetigung(page: Page) {
   await page.getByTestId("karte").waitFor();
-  // Falls ein Video als Pflicht eingestellt ist: bestätigen
-  if (await page.getByTestId("video-gesehen").count()) await page.getByTestId("video-gesehen").check();
   while (await page.getByTestId("karte-weiter").isVisible()) await page.getByTestId("karte-weiter").click();
   await page.getByTestId("quiz").waitFor();
   for (let i = 0; i < 12; i++) {
@@ -56,10 +89,31 @@ async function unterweisungMachen(page: Page, modul: string) {
     }
   }
   await page.getByTestId("zur-bestaetigung").click();
+  // Ohne Haken geht es nicht zur Unterschrift
+  await expect(page.getByTestId("zur-unterschrift")).toBeDisabled();
   await page.getByTestId("haken").check();
-  const antwort = page.waitForResponse((r) => r.url().includes("/api/neu/crew/aktion") && (r.request().postData() ?? "").includes('"unterweisung"'));
+  await page.getByTestId("zur-unterschrift").click();
+}
+
+// Eine ganze Unterweisung am Handy: Video, Karten, Quiz, Bestätigung, Unterschrift; wartet auf die Antwort des Servers
+async function unterweisungDurcharbeiten(page: Page) {
+  await videoAnsehen(page);
+  await karteQuizBestaetigung(page);
+  // Ohne Unterschrift ist der Abschluss gesperrt
+  await expect(page.getByTestId("bestaetigen-uw")).toBeDisabled();
+  await unterschreiben(page);
+  await expect(page.getByTestId("bestaetigen-uw")).toBeEnabled();
+  const antwort = page.waitForResponse((r) => r.url().includes("/api/neu/crew/aktion") && (r.request().postData() ?? "").includes('"unterweisung"') && !(r.request().postData() ?? "").includes("unterweisung-start"));
   await page.getByTestId("bestaetigen-uw").click();
   expect((await antwort).status()).toBe(200);
+  // Erst wenn der Server das Nachweis-PDF angelegt hat, gilt es als abgeschlossen
+  await expect(page.getByTestId("nachweis-gespeichert")).toBeVisible();
+}
+
+async function unterweisungMachen(page: Page, modul: string) {
+  await page.goto("/crew/unterweisung");
+  await page.getByTestId(`modul-${modul}`).click();
+  await unterweisungDurcharbeiten(page);
 }
 
 test.describe.configure({ mode: "serial" });
@@ -311,20 +365,7 @@ test.describe("Neues System: Einladung, Crew, Freigabe, Bewerbung", () => {
       const knopf = page.locator('button[data-testid^="uw-"]').first();
       if ((await knopf.count()) === 0) break;
       await knopf.click();
-      await page.getByTestId("karte").waitFor();
-      while (await page.getByTestId("karte-weiter").isVisible()) await page.getByTestId("karte-weiter").click();
-      await page.getByTestId("quiz").waitFor();
-      for (let i = 0; i < 12; i++) {
-        if (await page.getByTestId("zur-bestaetigung").count()) break;
-        const richtig = page.locator('[data-testid="quiz"] button[data-richtig="1"]:not([disabled])').first();
-        if (await richtig.count()) {
-          await richtig.click();
-          await page.getByTestId("quiz-weiter").click();
-        }
-      }
-      await page.getByTestId("zur-bestaetigung").click();
-      await page.getByTestId("haken").check();
-      await page.getByTestId("bestaetigen-uw").click();
+      await unterweisungDurcharbeiten(page);
       await page.getByTestId("zurueck-bewerbung").click();
     }
     await expect(page.getByText("Alles gültig – du kannst weiter.")).toBeVisible();
@@ -528,17 +569,25 @@ test.describe("Neues System: Nachrichten mit persönlichem Link", () => {
 });
 
 test.describe("Neues System: Schulungs-Pflicht und Videos einstellen", () => {
-  test("Video auf der Lernkarte, Pflicht-Haken vor dem Quiz, Kundenregel – danach alles zurück", async ({ browser }) => {
+  test("Mitgelieferte Videos, fremdes Video mit Bestätigung, Video entfernen, Kundenregel – danach alles zurück", async ({ browser }) => {
     const admin = await neuerAdmin(browser);
     await admin.goto("/admin/unterweisungen");
     await admin.getByRole("tab", { name: "Pflicht & Videos" }).click();
-    // Video für die Grundunterweisung, vor dem Quiz bestätigen
-    await admin.getByLabel("Video-Adresse grund").fill("https://youtu.be/abcDEF12345");
+    // Alle acht mitgelieferten Videos sind schon eingetragen und Pflicht
+    for (const m of ["grund", "stagehand", "catering", "stapler", "hoehe", "elektrik", "einlass", "brandschutz"]) {
+      await expect(admin.getByTestId(`video-${m}`)).toContainText("Mitgeliefertes Video");
+      await expect(admin.getByLabel(`Video-Adresse ${m}`, { exact: true })).toHaveValue(`/api/neu/crew/video/${m}.de.mp4`);
+      await expect(admin.getByLabel(`Video Pflicht ${m}`)).toBeChecked();
+    }
+    // Für die Grundunterweisung stattdessen ein YouTube-Video (der Player kann dort nicht prüfen, die Person bestätigt)
+    await admin.getByLabel("Video-Adresse grund", { exact: true }).fill("https://youtu.be/abcDEF12345");
     await expect(admin.getByTestId("video-grund")).toContainText("YouTube/Vimeo erkannt");
-    await admin.getByLabel("Video Pflicht grund").check();
-    await admin.getByLabel("Video-Adresse brandschutz").fill("http://unsicher.example/video");
+    await expect(admin.getByTestId("video-standard-grund")).toBeVisible();
+    // Eine unsichere Adresse wird abgelehnt, „Video entfernen“ lässt das Modul ohne Video
+    await admin.getByLabel("Video-Adresse brandschutz", { exact: true }).fill("http://unsicher.example/video");
     await expect(admin.getByTestId("video-brandschutz")).toContainText("Adresse ungültig");
-    await admin.getByLabel("Video-Adresse brandschutz").fill("");
+    await admin.getByTestId("video-entfernen-brandschutz").click();
+    await expect(admin.getByTestId("video-brandschutz")).toContainText("Kein Video");
     // Kundenregel: Testkunde braucht zusätzlich „Einlass“
     await admin.getByTestId("kundenregel-neu").click();
     await admin.getByLabel("Kunde 1").fill("Testkunde GmbH");
@@ -546,29 +595,182 @@ test.describe("Neues System: Schulungs-Pflicht und Videos einstellen", () => {
     await gespeichert(admin);
 
     const crew = await (crewCtx as BrowserContext).newPage();
+    // Kein echter Abruf bei YouTube im Test
+    await crew.route("https://www.youtube-nocookie.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Video</title>" }));
     await crew.goto("/crew/unterweisung/grund");
     await expect(crew.getByTestId("video").locator("iframe")).toHaveAttribute("src", "https://www.youtube-nocookie.com/embed/abcDEF12345");
     // Ohne „Video angesehen“ geht es nicht weiter
-    await expect(crew.getByTestId("karte-weiter")).toBeDisabled();
+    await expect(crew.getByTestId("video-weiter")).toBeDisabled();
     await crew.getByTestId("video-gesehen").check();
-    await expect(crew.getByTestId("karte-weiter")).toBeEnabled();
+    await expect(crew.getByTestId("video-weiter")).toBeEnabled();
+    await crew.getByTestId("video-weiter").click();
+    await expect(crew.getByTestId("karte")).toBeVisible();
+    // Ohne Video geht es gleich mit den Lernkarten los
+    await crew.goto("/crew/unterweisung/brandschutz");
+    await expect(crew.getByTestId("karte")).toBeVisible();
+    await expect(crew.getByTestId("video-weiter")).toHaveCount(0);
     // Die Kundenregel zeigt sich am Auftrag des Testkunden
     await crew.goto("/crew/jobs");
     await crew.getByTestId("crew-job").filter({ hasText: AUFTRAG }).click();
     await expect(crew.locator(".pv-chip", { hasText: "Einlass" })).toBeVisible();
     await crew.close();
 
-    // Aufräumen: Standard wiederherstellen
+    // Aufräumen: mitgelieferte Videos wiederherstellen
     await admin.getByLabel("Kunde 1").fill("");
     await admin.getByRole("button", { name: "Regel entfernen" }).click();
-    await admin.getByLabel("Video Pflicht grund").uncheck();
-    await admin.getByRole("button", { name: "Video entfernen" }).click();
+    await admin.getByTestId("video-standard-grund").click();
+    await admin.getByTestId("video-standard-brandschutz").click();
     await gespeichert(admin);
     await admin.reload();
     await admin.getByRole("tab", { name: "Pflicht & Videos" }).click();
-    await expect(admin.getByTestId("video-grund")).toContainText("Platzhalter");
+    await expect(admin.getByTestId("video-grund")).toContainText("Mitgeliefertes Video");
+    await expect(admin.getByTestId("video-brandschutz")).toContainText("Mitgeliefertes Video");
+    await expect(admin.getByLabel("Video Pflicht brandschutz")).toBeChecked();
     await expect(admin.getByLabel("Kunde 1")).toHaveCount(0);
     await admin.close();
+  });
+});
+
+// Unterweisung am Handy: Video (mit Mindestdauer geprüft), Unterschrift, Nachweis-PDF
+test.describe("Neues System: Unterweisung mit Video und Unterschrift", () => {
+  const MODUL = "stapler";
+  let nachweisId = "";
+  const aktion = (daten: Record<string, unknown>) => (crewCtx as BrowserContext).request.post("/api/neu/crew/aktion", { data: daten });
+  const ergebnis = { typ: "unterweisung", modul: MODUL, richtig: 5, gesamt: 5 };
+
+  test("Die Videodateien liegen hinter der Anmeldung und lassen sich in Teilen laden", async ({ browser, request }) => {
+    const url = "/api/neu/crew/video/grund.de.mp4";
+    expect((await request.get(url)).status()).toBe(401);
+    expect((await request.get("/api/neu/crew/video/grund.de.jpg")).status()).toBe(401);
+    // Auch der rohe Ordner ist nicht öffentlich
+    const roh = await request.get("/videos/grund.de.mp4", { maxRedirects: 0 });
+    expect(roh.status()).not.toBe(200);
+
+    const crew = (crewCtx as BrowserContext).request;
+    const voll = await crew.get(url);
+    expect(voll.status()).toBe(200);
+    expect(voll.headers()["content-type"]).toBe("video/mp4");
+    expect(voll.headers()["accept-ranges"]).toBe("bytes");
+    expect(voll.headers()["x-content-type-options"]).toBe("nosniff");
+    const groesse = (await voll.body()).length;
+    expect(groesse).toBeGreaterThan(1_000_000);
+    // Handys laden Videos stückweise
+    const teil = await crew.get(url, { headers: { Range: "bytes=0-99" } });
+    expect(teil.status()).toBe(206);
+    expect(teil.headers()["content-range"]).toBe(`bytes 0-99/${groesse}`);
+    expect((await teil.body()).length).toBe(100);
+    const rest = await crew.get(url, { headers: { Range: `bytes=${groesse - 10}-` } });
+    expect(rest.status()).toBe(206);
+    expect((await rest.body()).length).toBe(10);
+    expect((await crew.get(url, { headers: { Range: `bytes=${groesse + 5}-` } })).status()).toBe(416);
+    const poster = await crew.get("/api/neu/crew/video/grund.de.jpg");
+    expect(poster.status()).toBe(200);
+    expect(poster.headers()["content-type"]).toBe("image/jpeg");
+    // Nur Dateinamen aus dem Ordner, keine Pfade
+    for (const schlecht of ["gibtesnicht.de.mp4", "GRUND.de.mp4", "..%2Fpackage.json", "%2e%2e%2f%2e%2e%2fpackage.json", "grund.de.mp4%00.jpg", "grund.exe"]) {
+      expect((await crew.get(`/api/neu/crew/video/${schlecht}`)).status(), schlecht).toBe(404);
+    }
+    // Angemeldete Administration darf die Videos ebenfalls laden (Vorschau im Dashboard)
+    const admin = await neuerAdmin(browser);
+    expect((await admin.request.get(url, { headers: { Range: "bytes=0-9" } })).status()).toBe(206);
+    await admin.close();
+  });
+
+  test("Der Server verlangt Video, Mindestdauer und Unterschrift", async () => {
+    const gut = unterschriftDataUrl();
+    // Video ist Pflicht, aber nicht angesehen
+    let r = await aktion({ ...ergebnis, unterschrift: gut, video: "keins" });
+    expect(r.status()).toBe(409);
+    expect((await r.json()).error).toContain("Video");
+    // „Abgespielt“ behauptet, aber nie gestartet
+    r = await aktion({ ...ergebnis, unterschrift: gut, video: "player" });
+    expect(r.status()).toBe(409);
+    // Gerade erst gestartet: die Mindestdauer ist noch nicht um
+    expect((await aktion({ typ: "unterweisung-start", modul: MODUL })).status()).toBe(200);
+    r = await aktion({ ...ergebnis, unterschrift: gut, video: "player" });
+    expect(r.status()).toBe(409);
+    // Unbekanntes Modul, falsches Ergebnis
+    expect((await aktion({ typ: "unterweisung-start", modul: "gibtesnicht" })).status()).toBe(400);
+    expect((await aktion({ ...ergebnis, modul: "gibtesnicht", unterschrift: gut, video: "manuell" })).status()).toBe(400);
+    expect((await aktion({ ...ergebnis, richtig: 1, unterschrift: gut, video: "manuell" })).status()).toBe(400);
+    // Ohne gültige Unterschrift wird nichts abgeschlossen (auch mit bestätigtem Video)
+    for (const schlecht of ["", "data:image/png;base64,AAAA", "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", "kein bild", `data:image/png;base64,${Buffer.from("x".repeat(3000)).toString("base64")}`]) {
+      r = await aktion({ ...ergebnis, unterschrift: schlecht, video: "manuell" });
+      expect(r.status(), schlecht.slice(0, 30)).toBe(400);
+    }
+    // Das Bild selbst wird nie im Profil abgelegt: der Client-Zustand kennt keine Unterschrift
+    const st = await (await (crewCtx as BrowserContext).request.get("/api/neu/crew/state")).json();
+    expect(JSON.stringify(st)).not.toContain("data:image/png");
+    expect(st.self.unterweisungen[MODUL]).toBeUndefined();
+  });
+
+  test("Nach der Mindestdauer geht es durch: Nachweis-PDF mit Unterschrift für die Person und die Administration", async ({ browser, request }) => {
+    // Die Uhr läuft seit dem Start im vorigen Test; zur Sicherheit etwas warten (Testserver: 3 % der Videolänge ≈ 2,2 s)
+    await new Promise((res) => setTimeout(res, 2500));
+    const r = await aktion({ ...ergebnis, unterschrift: unterschriftDataUrl(), video: "player" });
+    expect(r.status(), await r.text()).toBe(200);
+
+    const crew = (crewCtx as BrowserContext).request;
+    const st = await (await crew.get("/api/neu/crew/state")).json();
+    const ack = st.self.unterweisungen[MODUL];
+    expect(ack).toMatchObject({ video: "player", quizScore: 1 });
+    expect(ack.unterschriftAm).toBeTruthy();
+    expect(ack.nachweisId).toBeTruthy();
+    expect(JSON.stringify(st)).not.toContain("data:image/png");
+    nachweisId = ack.nachweisId;
+
+    const pdf = await crew.get(`/api/neu/crew/nachweis/${MODUL}`);
+    expect(pdf.status()).toBe(200);
+    expect(pdf.headers()["content-type"]).toBe("application/pdf");
+    const bytes = await pdf.body();
+    expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(bytes.length).toBeGreaterThan(8_000);
+    // Für ein Modul ohne Abschluss gibt es kein Nachweis-PDF; ohne Anmeldung auch nicht
+    expect((await crew.get("/api/neu/crew/nachweis/einlass")).status()).toBe(404);
+    expect((await request.get(`/api/neu/crew/nachweis/${MODUL}`)).status()).toBe(401);
+    expect((await request.get(`/api/neu/files/${nachweisId}`, { maxRedirects: 0 })).status()).not.toBe(200);
+
+    // Die Administration lädt dasselbe PDF
+    const admin = await neuerAdmin(browser);
+    const adm = await admin.request.get(`/api/neu/files/${nachweisId}`);
+    expect(adm.status()).toBe(200);
+    expect(adm.headers()["content-type"]).toBe("application/pdf");
+    expect(createHash("sha256").update(await adm.body()).digest("hex")).toBe(createHash("sha256").update(bytes).digest("hex"));
+    await admin.close();
+  });
+
+  test("Im Dashboard stehen Video, Unterschrift und Nachweis bei der Person", async ({ browser }) => {
+    const admin = await neuerAdmin(browser);
+    // Die eingeladene Person steht (noch) nicht in der Crew-Liste, sondern bei den Bewerbern: direkt zum Profil
+    const alle = await (await admin.request.get("/api/neu/state")).json();
+    const person = alle.records.crew.find((c: { data: { nachname: string } }) => c.data.nachname.includes(`Crew-${RUN}`));
+    expect(person).toBeTruthy();
+    await admin.goto(`/admin/crew/${person.id}`);
+    await admin.getByRole("tab", { name: "Unterweisungen" }).click();
+    await expect(admin.getByTestId(`uw-video-${MODUL}`)).toHaveText("abgespielt");
+    await expect(admin.getByTestId(`uw-unterschrift-${MODUL}`)).toContainText("✓");
+    await expect(admin.getByTestId(`uw-nachweis-${MODUL}`)).toHaveAttribute("href", `/api/neu/files/${nachweisId}`);
+    // Das Modul ohne Abschluss hat nichts
+    await expect(admin.getByTestId("uw-unterschrift-einlass")).toHaveText("–");
+    await admin.close();
+  });
+
+  test("Am Handy: das Video lässt sich nicht überspringen, die Unterschrift ist Pflicht, am Ende liegt der Nachweis bereit", async () => {
+    const page = await (crewCtx as BrowserContext).newPage();
+    await page.goto("/crew/unterweisung/einlass");
+    await expect(page.getByTestId("video-player")).toBeVisible();
+    // Vorher kein Weiterklicken
+    await expect(page.getByTestId("video-weiter")).toBeDisabled();
+    await expect(page.getByTestId("karte")).toHaveCount(0);
+    // Der Player hat keine eigenen Bedienelemente zum Vorspulen
+    await expect(page.getByTestId("video-player").locator("video")).not.toHaveAttribute("controls", /.*/);
+    await unterweisungDurcharbeiten(page);
+    await expect(page.getByTestId("uw-fertig")).toBeVisible();
+    const link = page.getByTestId("nachweis-pdf");
+    await expect(link).toHaveAttribute("href", "/api/neu/crew/nachweis/einlass");
+    const pdf = await page.request.get("/api/neu/crew/nachweis/einlass");
+    expect((await pdf.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    await page.close();
   });
 });
 
@@ -835,6 +1037,30 @@ test.describe("Neues System: Sicherung pro Monat", () => {
     const gesamt = JSON.parse((await zip.file("Neues-System/Gesamtstand.json")?.async("string")) ?? "{}");
     expect(Array.isArray(gesamt.records.crew)).toBe(true);
     expect(gesamt.records.benutzer).toEqual([]);
+    await page.close();
+  });
+
+  test("Unterweisungsnachweise (PDF mit Unterschrift) und Übersicht des Monats", async ({ browser }) => {
+    const page = await neuerAdmin(browser);
+    // Die Nachweise aus den Tests oben sind von heute: also der laufende Monat (Berlin)
+    const heuteMonat = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date()).slice(0, 7);
+    const alle = await (await page.request.get("/api/neu/state")).json();
+    const PNR_CREW: string = alle.records.crew.find((c: { data: { nachname: string } }) => c.data.nachname.includes(`Crew-${RUN}`)).data.pnr;
+    const zip = await zipVon(page, `monat=${heuteMonat}&bereiche=neu-unterweisungen`);
+    const namen = Object.keys(zip.files);
+    const pdfs = namen.filter((n) => n.startsWith("Neues-System/Unterweisungsnachweise/"));
+    expect(pdfs.some((n) => n.includes(`Unterweisung_stapler_${PNR_CREW}_`))).toBe(true);
+    expect(pdfs.some((n) => n.includes(`Unterweisung_grund_${PNR_CREW}_`))).toBe(true);
+    const pdf = await zip.file(pdfs.find((n) => n.includes(`Unterweisung_stapler_${PNR_CREW}_`)) as string)?.async("nodebuffer");
+    expect(pdf?.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    const csvText = (await zip.file(`Neues-System/Unterweisungen_${heuteMonat}.csv`)?.async("string")) ?? "";
+    expect(csvText.split("\r\n")[0]).toContain("Unterschrift");
+    expect(csvText).toContain(PNR_CREW);
+    expect(csvText).toContain("abgespielt");
+    // Nichts anderes ist dabei – der Bereich ist einzeln wählbar
+    expect(namen.some((n) => n.startsWith("Neues-System/Belege") || n.includes("Gesamtstand"))).toBe(false);
+    const inhalt = (await zip.file("Inhalt.csv")?.async("string")) ?? "";
+    expect(inhalt).toContain("neu-unterweisungen");
     await page.close();
   });
 

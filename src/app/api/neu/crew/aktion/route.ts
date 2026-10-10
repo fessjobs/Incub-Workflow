@@ -8,7 +8,15 @@ export const dynamic = "force-dynamic";
 const aktion = z.discriminatedUnion("typ", [
   z.object({ typ: z.literal("entwurf"), antworten: z.record(z.unknown()), etappe: z.number().int() }),
   z.object({ typ: z.literal("abschicken") }),
-  z.object({ typ: z.literal("unterweisung"), modul: z.string().max(40), richtig: z.number().int().min(0).max(50), gesamt: z.number().int().min(1).max(50) }),
+  z.object({
+    typ: z.literal("unterweisung"),
+    modul: z.string().max(40),
+    richtig: z.number().int().min(0).max(50),
+    gesamt: z.number().int().min(1).max(50),
+    unterschrift: z.string().max(450_000),
+    video: z.enum(["player", "manuell", "keins"]).default("keins"),
+  }),
+  z.object({ typ: z.literal("unterweisung-start"), modul: z.string().max(40) }),
   z.object({
     typ: z.literal("bewerbung"),
     jobId: z.string().min(1).max(80),

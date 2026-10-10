@@ -27,9 +27,14 @@ const PFLICHT_JE_TAETIGKEIT: Record<Taetigkeit, ModulId[]> = {
 // Standard (die Konstanten oben), so verhalten sich alle bisherigen Aufrufe gleich.
 export interface VideoEintrag {
   url: string;
+  // Englische Fassung (optional); fehlt sie, läuft auch bei englischer Oberfläche das deutsche Video
+  urlEn?: string;
   titel: string;
   // Muss die Person das Video angesehen haben (bestätigt), bevor das Quiz startet?
   pflicht: boolean;
+  // Absichtlich entfernt: für dieses Modul gibt es kein Video (statt des mitgelieferten). Eine leere Adresse ohne
+  // diese Markierung (ältere Einstellungen) gilt nicht als „entfernt“, dann bleibt das mitgelieferte Video.
+  entfernt?: boolean;
 }
 
 export interface SchulungRegeln {
@@ -47,6 +52,12 @@ export interface SchulungRegeln {
   video: Record<string, VideoEintrag>;
 }
 
+// Die mitgelieferten Unterweisungsvideos (public/videos, ausgeliefert über die geschützte Medienroute)
+export const MEDIEN_PFAD = "/api/neu/crew/video/";
+export function standardVideos(): Record<string, VideoEintrag> {
+  return Object.fromEntries(MODUL_IDS.map((m) => [m, { url: `${MEDIEN_PFAD}${m}.de.mp4`, titel: "", pflicht: true }]));
+}
+
 export function standardSchulung(): SchulungRegeln {
   return {
     pflichtAlle: ["grund", "brandschutz"],
@@ -54,7 +65,7 @@ export function standardSchulung(): SchulungRegeln {
     pflichtHoehe: ["hoehe"],
     jeKunde: [],
     freigabeModule: ["grund", "brandschutz"],
-    video: {},
+    video: standardVideos(),
   };
 }
 
@@ -91,11 +102,16 @@ export function bereinigeSchulung(roh: unknown): SchulungRegeln {
   const je = { ...std.pflichtJeTaetigkeit };
   if (r.pflichtJeTaetigkeit && typeof r.pflichtJeTaetigkeit === "object") for (const t of Object.keys(je) as Taetigkeit[]) je[t] = ids(r.pflichtJeTaetigkeit[t], je[t]);
   const jeKunde = Array.isArray(r.jeKunde) ? r.jeKunde.filter((x) => x && typeof x.kunde === "string").map((x) => ({ kunde: x.kunde.slice(0, 200), module: ids(x.module, []) })).slice(0, 200) : [];
-  const video: Record<string, VideoEintrag> = {};
+  // Mitgelieferte Videos gelten, solange nichts anderes eingestellt ist; „kein Video“ nur, wenn es ausdrücklich entfernt wurde
+  const video: Record<string, VideoEintrag> = standardVideos();
   if (r.video && typeof r.video === "object") {
     for (const m of MODUL_IDS) {
       const v = (r.video as Record<string, Partial<VideoEintrag>>)[m];
-      if (v && typeof v.url === "string") video[m] = { url: v.url.slice(0, 500), titel: typeof v.titel === "string" ? v.titel.slice(0, 200) : "", pflicht: v.pflicht === true };
+      if (v && typeof v.url === "string" && (v.url.trim() !== "" || v.entfernt === true)) {
+        video[m] = { url: v.url.slice(0, 500), titel: typeof v.titel === "string" ? v.titel.slice(0, 200) : "", pflicht: v.pflicht === true };
+        if (v.url.trim() === "") video[m].entfernt = true;
+        if (typeof v.urlEn === "string" && v.urlEn.trim() !== "") video[m].urlEn = v.urlEn.slice(0, 500);
+      }
     }
   }
   return { pflichtAlle: ids(r.pflichtAlle, std.pflichtAlle), pflichtJeTaetigkeit: je, pflichtHoehe: ids(r.pflichtHoehe, std.pflichtHoehe), jeKunde, freigabeModule: ids(r.freigabeModule, std.freigabeModule), video };

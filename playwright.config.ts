@@ -42,7 +42,9 @@ export default defineConfig({
           // Bewusst OHNE APP_BASE_URL, dafür mit der Variable, die Railway selbst
           // setzt: der Test prüft, dass die Links auch ohne eigene Konfiguration
           // vollständig und öffentlich erreichbar sind (127.0.0.1 gilt als intern).
-          env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: "", RAILWAY_PUBLIC_DOMAIN: "incub-workflow-production.up.railway.app" },
+          // NEU_VIDEO_MINDESTANTEIL: Der Server verlangt sonst 85 % der Videolänge (ca. 56 s) zwischen Start und Abschluss;
+          // im Test genügen 3 % (≈ 2 s), die Prüfung selbst bleibt aber aktiv (siehe „Der Server verlangt Video, Mindestdauer und Unterschrift“).
+          env: { ...process.env, PORT: String(port), JOBS_WORKER: "off", APP_BASE_URL: "", RAILWAY_PUBLIC_DOMAIN: "incub-workflow-production.up.railway.app", NEU_VIDEO_MINDESTANTEIL: "0.03" },
         },
         {
           // Zweiter Server nur für den Klick-Prototyp „Testversion“ (/preview):

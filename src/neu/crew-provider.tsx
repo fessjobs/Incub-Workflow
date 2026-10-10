@@ -166,7 +166,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
           }
           const [modul, ack] = neu;
           const gesamt = modulById(modul)?.quiz.length ?? 1;
-          const r = await senden({ typ: "unterweisung", modul, richtig: Math.round(ack.quizScore * gesamt), gesamt });
+          const r = await senden({ typ: "unterweisung", modul, richtig: Math.round(ack.quizScore * gesamt), gesamt, unterschrift: ack.unterschrift ?? "", video: ack.video ?? "keins" });
           if (!r.ok) {
             setS((x) => ({ ...x, crew: x.crew.map((c) => ({ ...c, unterweisungen: JSON.parse(b.acks) as Crew["unterweisungen"] })) }));
             return melde(r.fehler ?? "Die Unterweisung konnte nicht gespeichert werden.");
@@ -247,6 +247,13 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  // Einzelne Aktion senden, ohne den Abgleich der übrigen Eingaben anzufassen (z. B. „Video gestartet“)
+  const crewAktion = useCallback(async (aktion: Record<string, unknown>) => {
+    const r = await aufruf("/api/neu/crew/aktion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(aktion) });
+    if (r.status === 401) setAbgemeldet(true);
+    return r.ok;
+  }, []);
+
   // Solange die Freigabe aussteht: beim Zurückkehren in den Tab und alle 30 Sekunden nachsehen
   const freigabeOffen = s.meineFreigabe !== "freigegeben";
   useEffect(() => {
@@ -271,7 +278,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
     window.location.href = "/crew";
   }, []);
 
-  const wert = useMemo<Ctx>(() => ({ s, modus: "crew", set, reset: () => void loeschen(), toast, melde, geladen, abmelden: () => void crewAbmelden(), aktualisieren }), [s, set, loeschen, toast, melde, geladen, aktualisieren]);
+  const wert = useMemo<Ctx>(() => ({ s, modus: "crew", set, reset: () => void loeschen(), toast, melde, geladen, abmelden: () => void crewAbmelden(), aktualisieren, crewAktion }), [s, set, loeschen, toast, melde, geladen, aktualisieren, crewAktion]);
 
   if (abgemeldet) {
     return (

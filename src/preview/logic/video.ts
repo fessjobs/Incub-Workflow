@@ -2,9 +2,16 @@
 // direkte Videodateien werden eingebettet, alles andere wird als Link angeboten.
 export type VideoEinbettung = { art: "iframe" | "video" | "link"; src: string };
 
+// Eigene Videos (mitgeliefert oder auf dem eigenen Server): nur diese beiden Pfade, nur Dateien mit Videoendung
+const EIGENE_PFADE = ["/api/neu/crew/video/", "/videos/"];
+
 export function videoEinbettung(roh: string): VideoEinbettung | null {
   const text = roh.trim();
   if (!text) return null;
+  if (text.startsWith("/")) {
+    if (text.startsWith("//") || !EIGENE_PFADE.some((p) => text.startsWith(p)) || /[?#\\]|\.\./.test(text) || !/\.(mp4|webm|mov|m4v)$/i.test(text)) return null;
+    return { art: "video", src: text };
+  }
   let u: URL;
   try {
     u = new URL(text);
@@ -28,4 +35,22 @@ export function videoEinbettung(roh: string): VideoEinbettung | null {
   }
   if (/\.(mp4|webm|mov|m4v)$/i.test(u.pathname)) return { art: "video", src: u.toString() };
   return { art: "link", src: u.toString() };
+}
+
+// Vorschaubild zu einem eigenen Video (gleicher Name mit .jpg), sonst keins
+export function videoPoster(src: string): string | undefined {
+  return EIGENE_PFADE.some((p) => src.startsWith(p)) && /\.mp4$/i.test(src) ? src.replace(/\.mp4$/i, ".jpg") : undefined;
+}
+
+// Beim Vorspulen: wohin darf der Player springen? Höchstens ein Stück über die bisher gesehene Stelle hinaus.
+// Zurückspulen ist immer erlaubt.
+export function begrenzeSprung(ziel: number, maxGesehen: number, toleranz = 0.75): number {
+  return ziel > maxGesehen + toleranz ? maxGesehen : ziel;
+}
+
+// Die Wiedergabe gilt als vollständig, wenn mindestens `anteil` der Videolänge seit dem Start vergangen ist
+export function videoZeitErfuellt(startMs: number | null, jetztMs: number, dauerSekunden: number | null, anteil: number): boolean {
+  if (anteil <= 0 || dauerSekunden === null) return true;
+  if (startMs === null) return false;
+  return jetztMs - startMs >= dauerSekunden * anteil * 1000;
 }

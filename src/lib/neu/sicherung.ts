@@ -185,7 +185,7 @@ export async function planeSicherung(a: Abrufer, anfrage: SicherungsAnfrage): Pr
   }
 
   // Neues System
-  if (sel.has("neu-belege") || sel.has("neu-stunden") || sel.has("neu-gesamt")) {
+  if (sel.has("neu-belege") || sel.has("neu-stunden") || sel.has("neu-unterweisungen") || sel.has("neu-gesamt")) {
     const alles = await ladeAlles(org, "admin");
     const crew = new Map(alles.records.crew.map((c) => [(c.data as { pnr: string }).pnr, c.data as { vorname: string; nachname: string }]));
     const imMonat = (datum: string) => datum.slice(0, 7) === anfrage.monat;
@@ -208,6 +208,28 @@ export async function planeSicherung(a: Abrufer, anfrage: SicherungsAnfrage): Pr
       const num = (n: number) => String(n).replace(".", ",");
       tabellen.push({ pfad: `Neues-System/Stunden_${anfrage.monat}.csv`, bereich: "neu-stunden", inhalt: csv([["Datum", "Personalnummer", "Name", "Beginn", "Ende", "Pausen", "Garantiestunden", "Kunde", "Auftrag", "Spesen (€)", "Reise privat (km)", "Reise geschäftlich (€)", "Bonus (€)", "Abzug (€)", "Bemerkung", "Status", "Quelle"], ...zeilen.map((s) => [datumDe(s.datum), s.pnr, `${crew.get(s.pnr)?.vorname ?? ""} ${crew.get(s.pnr)?.nachname ?? ""}`.trim(), s.start, s.ende, s.pausen.map((p) => `${p.von}-${p.bis}`).join(" "), num(s.pauschale), s.kunde, s.auftrag, num(s.spesen), num(s.reiseKm), num(s.reiseGesch), num(s.bonus), num(s.abzug), s.bemerkung, s.status, s.quelle])]) });
       zaehler["neu-stunden"] = { dateien: zeilen.length, bytes: 0 };
+    }
+    if (sel.has("neu-unterweisungen")) {
+      type Ack = { version?: number; bestaetigtAm: string; quizScore: number; video?: string; unterschriftAm?: string; nachweisId?: string };
+      const acks = alles.records.crew.flatMap((c) => {
+        const d = c.data as { pnr: string; vorname: string; nachname: string; unterweisungen?: Record<string, Ack> };
+        return Object.entries(d.unterweisungen ?? {}).filter(([, a]) => a.bestaetigtAm.slice(0, 7) === anfrage.monat).map(([modul, a]) => ({ pnr: d.pnr, name: `${d.vorname} ${d.nachname}`.trim(), modul, ack: a }));
+      });
+      acks.sort((x, y) => x.ack.bestaetigtAm.localeCompare(y.ack.bestaetigtAm) || x.name.localeCompare(y.name, "de"));
+      const ids = acks.map((x) => x.ack.nachweisId).filter((x): x is string => Boolean(x));
+      const dateien = ids.length > 0 ? await db.v2File.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true, size: true, sha256: true } }) : [];
+      const nachId = new Map(dateien.map((d) => [d.id, d]));
+      let anzahl = 0;
+      for (const x of acks) {
+        const f = x.ack.nachweisId ? nachId.get(x.ack.nachweisId) : undefined;
+        if (!f) continue;
+        const pfad = eindeutigerPfad(belegt, `Neues-System/Unterweisungsnachweise/${sicherDateiname(f.name, "Unterweisung.pdf")}`);
+        posten.push({ quelle: "v2datei", bereich: "neu-unterweisungen", id: f.id, pfad, groesse: f.size, sha256: f.sha256, name: f.name, datum: datumDe(x.ack.bestaetigtAm) });
+        zaehle("neu-unterweisungen", f.size);
+        anzahl++;
+      }
+      tabellen.push({ pfad: `Neues-System/Unterweisungen_${anfrage.monat}.csv`, bereich: "neu-unterweisungen", inhalt: csv([["Datum", "Personalnummer", "Name", "Modul", "Quiz (%)", "Video", "Unterschrift", "Nachweis-PDF"], ...acks.map((x) => [datumDe(x.ack.bestaetigtAm), x.pnr, x.name, x.modul, String(Math.round(x.ack.quizScore * 100)), x.ack.video === "player" ? "abgespielt" : x.ack.video === "manuell" ? "bestätigt" : "–", x.ack.unterschriftAm ? "ja" : "nein (älterer Stand)", x.ack.nachweisId && nachId.has(x.ack.nachweisId) ? nachId.get(x.ack.nachweisId)?.name ?? "" : ""])]) });
+      if (anzahl === 0) zaehler["neu-unterweisungen"] = { dateien: 0, bytes: 0 };
     }
     if (sel.has("neu-gesamt")) {
       const inhalt = JSON.stringify({ erstelltAm: new Date().toISOString(), hinweis: "Gesamtstand des neuen Systems. Enthält Personen- und Vertragsdaten – sicher aufbewahren.", ...alles, records: { ...alles.records, benutzer: [] } }, null, 2);

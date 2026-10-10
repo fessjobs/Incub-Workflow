@@ -159,6 +159,8 @@ export interface Ctx {
   speicher?: "ok" | "laeuft" | "fehler";
   // Mitarbeiterlink im echten System: Stand vom Server holen (z. B. nach der Freigabe)
   aktualisieren?: () => Promise<void>;
+  // Mitarbeiterlink im echten System: eine einzelne, vom Server geprüfte Aktion senden (z. B. „Video gestartet“)
+  crewAktion?: (aktion: Record<string, unknown>) => Promise<boolean>;
   echt?: {
     benutzer: string;
     rolle: NeuRolle;

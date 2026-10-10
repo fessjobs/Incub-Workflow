@@ -15,6 +15,7 @@ vorhandenen `v2_`-Tabellen (neue Datensatz-Arten und zusätzliche Felder).
 | Vorgefertigte Nachricht je Person mit Link | **Nachrichten** |
 | Aufträge erst nach deiner Bestätigung sichtbar | **Freigaben** |
 | Welche Schulung für was nötig ist, Videos | **Unterweisungen → Pflicht & Videos** |
+| Video muss abgespielt werden, Unterschrift am Ende | Unterweisung am Handy, Nachweis in **Crew → Person → Unterweisungen** |
 | Unterschiedliche Benutzer | **Benutzer** |
 | Anbindung ans bisherige System (vorbereitet, **aus**) | **Schnittstelle** |
 | Monats-Sicherung der Dokumente auf den eigenen Rechner | **Sicherung** |
@@ -127,13 +128,74 @@ Uhrzeiten (`8`, `8:30`, `0830`, `08:00-16:30`) und Zahlen (`13,90 €`) werden t
   **Zusatz-Schulungen nur für diesen Auftrag**. Alles addiert sich. Der Server nutzt dieselben Regeln
   vor jeder Bewerbung; die Disposition zeigt fehlende Schulungen entsprechend. „Auf Standard“ stellt
   die bisherigen Regeln wieder her.
-- **Videos**: je Modul eine Adresse (YouTube, Vimeo oder eine Videodatei; nur `https`). Sie erscheint
-  auf der ersten Lernkarte; ohne Adresse bleibt der Platzhalter. Optional **Pflicht „Video angesehen“**
-  vor dem Quiz. YouTube wird ohne Cookies (`youtube-nocookie.com`) eingebunden; wer jede Verbindung zu
-  Google vermeiden will, nimmt eine `.mp4` von eigenem Speicher.
+- **Videos**: Die acht mitgelieferten Videos (Deutsch) sind schon eingetragen (siehe nächster Abschnitt). Pro Modul
+  lässt sich eine andere Adresse eintragen (YouTube, Vimeo oder eine Videodatei; nur `https`), optional eine
+  **englische Fassung**, oder das Video **entfernen** (dann beginnt die Unterweisung gleich mit den Lernkarten).
+  „Standard wiederherstellen“ trägt das mitgelieferte Video wieder ein. YouTube wird ohne Cookies
+  (`youtube-nocookie.com`) eingebunden; wer jede Verbindung zu Google vermeiden will, nimmt die mitgelieferten Dateien.
 - Zu jedem Modul gibt es einen **Drehbuch-Entwurf** (Szenen, Sprechertext, Bildidee, Einblendung) auf
   Deutsch und Englisch zum Kopieren – abgeleitet aus den Lernkarten, **nicht** von einer Fachkraft für
   Arbeitssicherheit freigegeben. Alle acht Entwürfe auch als Dokument: `docs/video-drehbuecher.md`.
+
+## Unterweisung mit Video und Unterschrift
+
+**Ablauf am Handy:** 1. Video → 2. Lernkarten → 3. Quiz (ab 80 %) → 4. Bestätigung („gelesen und verstanden“) →
+5. **Unterschrift** mit dem Finger → fertig. Erst mit der Unterschrift gilt die Unterweisung als abgeschlossen
+(12 Monate gültig, wie bisher). Die Testversion (`/preview`) zeigt denselben Ablauf mit Unterschrift, aber ohne
+Videodatei.
+
+### Die Videos
+- **Dateien:** `public/videos/<modul>.de.mp4` und `<modul>.de.jpg` (Vorschaubild) für `grund`, `stagehand`, `catering`,
+  `stapler`, `hoehe`, `elektrik`, `einlass`, `brandschutz` (hochkant 9:16, ca. 65–75 s, Untertitel eingebrannt, zusammen
+  ca. 29 MB). Das Dockerfile kopiert `public` mit, ein Deployment genügt.
+- **Nicht öffentlich:** Die Videos werden nicht als freie Dateien unter `/videos/…` ausgeliefert (die Anmeldung der App
+  gilt dafür), sondern über `GET /api/neu/crew/video/<datei>`. Das geht nur mit Mitarbeiter-Sitzung oder angemeldeter
+  Administration, kennt Teilabrufe (`Range`, wichtig für Handys und iPhone) und akzeptiert nur Dateinamen aus dem Ordner
+  (`a–z`, Ziffern, `.`, `-`; `.mp4`/`.jpg`).
+- **Eintragen:** Der Standard ist `/api/neu/crew/video/<modul>.de.mp4`. Die englische Fassung
+  (`<modul>.en.mp4`) ist vorbereitet (Feld „Adresse der englischen Fassung“), die Dateien liegen aber noch nicht bei.
+- **Video tauschen:** neuen Dateinamen vergeben (z. B. `grund.de.v2.mp4`) und im Dashboard eintragen, sonst zeigen Handys
+  unter Umständen noch die alte Fassung aus dem Zwischenspeicher.
+
+### Das Video muss abgespielt werden
+- Eigener Player **ohne Bedienelemente zum Vorspulen**: Abspielen/Pause und ein Fortschrittsbalken. Vorspulen wird auf die
+  bisher gesehene Stelle zurückgesetzt, **Zurückspulen** ist erlaubt. Beim Verlassen des Tabs pausiert das Video.
+- „Weiter zu den Lernkarten“ wird erst frei, wenn das Video **zu Ende gelaufen** ist.
+- **Prüfung auf dem Server:** Beim ersten Abspielen merkt sich der Server die Startzeit (`unterweisung-start`). Beim
+  Abschluss muss seit dem Start mindestens **85 % der Videolänge** vergangen sein (Länge aus der MP4-Datei gelesen;
+  Einstellung `NEU_VIDEO_MINDESTANTEIL`, `0` schaltet das ab). Ohne Start oder zu früh antwortet der Server mit 409.
+  Das ist eine **Plausibilitätsprüfung**, kein Beweis, dass jemand wirklich hingeschaut hat.
+- **Wenn das Video nicht abspielbar ist** (alter Browser, Netzproblem): Der Player zeigt einen Hinweis und einen Link zum
+  Öffnen in neuem Tab; die Person kann dann bestätigen, es auf anderem Weg vollständig gesehen zu haben. Das wird im
+  Nachweis als „von der Person bestätigt“ vermerkt (im Dashboard: *bestätigt* statt *abgespielt*).
+- Bei **YouTube/Vimeo/Link** kann der Player nichts prüfen; dort bestätigt die Person („Ich habe das Video angesehen“).
+- Das Video ist Pflicht, solange beim Modul „Pflicht“ angehakt ist (Standard: ja) und eine Adresse eingetragen ist.
+
+### Unterschrift und Nachweis
+- Die Unterschrift wird auf dem Gerät gezeichnet (PNG) und **nur zum Erzeugen des Nachweises** an den Server geschickt. Dort
+  wird sie geprüft (echtes PNG, Größe, nicht leer) und in ein **Nachweis-PDF** gesetzt: Person, Personalnummer, Modul,
+  Datum und Uhrzeit (Berlin), Gültigkeit, Version der Inhalte, Quiz-Ergebnis, Video (abgespielt/bestätigt), Erklärung und
+  Hinweis „Entwurf, nicht von einer Fachkraft für Arbeitssicherheit freigegeben“.
+- Das PDF liegt unveränderlich in `v2_files` (Art `unterweisung-nachweis`, mit SHA-256). Im Profil der Person stehen nur
+  Zeitpunkt der Unterschrift und die Nachweis-Nummer – **das Unterschriftsbild steht nie in den Personendaten** (das
+  Schema lehnt es ab, ein Test prüft es).
+- Die Person öffnet ihr PDF am Ende der Unterweisung (`/api/neu/crew/nachweis/<modul>`, nur das eigene). Die
+  Administration sieht je Modul **Video**, **Unterschrift** und **Nachweis (PDF)** unter *Crew → Person → Unterweisungen*.
+  Ältere Bestätigungen ohne Unterschrift bleiben gültig und zeigen „ohne“.
+- Je **Modul eine Unterschrift** und ein eigenes PDF (jedes Modul gilt 12 Monate für sich). Wiederholt die Person das
+  Modul, entsteht ein neues PDF; das bisherige bleibt gespeichert.
+- **Sicherung:** Bereich „Unterweisungsnachweise“ legt die PDFs des Monats unter
+  `Neues-System/Unterweisungsnachweise/` ab, dazu `Neues-System/Unterweisungen_<Monat>.csv`.
+- **Löschen durch die Person (DSGVO):** Entfernt die Person ihr Profil, werden die Personendaten gelöscht; die
+  Nachweis-PDFs bleiben als Dokumentation der erfolgten Unterweisung zunächst bestehen (wie die Beleg-Dateien). Ob und wie
+  lange das nötig ist (Aufbewahrung), ist mit dem Datenschutz und der Fachkraft für Arbeitssicherheit zu klären.
+
+### Offene Punkte
+- **KI-Stimme:** Der Sprecher der Videos ist eine KI-Stimme. Bitte prüfen, ob sie gekennzeichnet werden soll/muss.
+- **Fachliche Freigabe:** Die Texte sind Entwürfe nach dem Drehbuch (`docs/video-drehbuecher.md`) und noch nicht von einer
+  Fachkraft für Arbeitssicherheit geprüft; die Hinweise zu Flurförderzeugen (Fahrausweis) und Einlass (§ 34a GewO)
+  stehen am Ende des jeweiligen Videos im Bild.
+- **Englische Videos** liegen noch nicht im Projekt (bisher nur die deutschen Dateien geliefert).
 
 ## Benutzer und Rollen
 
@@ -205,6 +267,7 @@ wählst vorher, was hineinkommt:
 | Personalstamm | `Personalstamm_Stand_<Datum>.csv` (Stand heute; ohne Geburtsdatum und Bankdaten) |
 | Neues System: Belege | Fotos/PDFs der Beleg-Links des Monats + Übersicht |
 | Neues System: Stunden | `Neues-System/Stunden_<Monat>.csv` |
+| Neues System: Unterweisungsnachweise | `Neues-System/Unterweisungsnachweise/…pdf` (mit Unterschrift) + `Neues-System/Unterweisungen_<Monat>.csv` |
 | Neues System: Gesamtstand | `Neues-System/Gesamtstand.json` (alle Personen, Aufträge, Einstellungen …) |
 
 Immer dabei: **`Inhalt.csv`** (jede Datei mit Größe und SHA-256-Fingerabdruck, damit sich später prüfen lässt, dass nichts
@@ -226,7 +289,12 @@ verändert wurde) und **`LIESMICH.txt`**.
 ## Tests
 
 - Unit: `tests/unit/neu-erweiterung.test.ts` (Tabellen lesen, Personal- und Auftragsimport, Freigabe,
-  Schulungsregeln, Kleidung, Video, Nachrichten, Rollen, Schnittstelle aus, Trennung vom bisherigen System).
+  Schulungsregeln, Kleidung, Video, Nachrichten, Rollen, Schnittstelle aus, Trennung vom bisherigen System;
+  Videos: Standardvideos, eigene Pfade, Vorspul-Sperre, Mindestdauer, MP4-Länge aus den echten Dateien, Dateinamen der
+  Medienroute, Unterschrift prüfen, Nachweis-PDF).
 - Browser: `tests/e2e/neu.spec.ts` (Fragebogen mit Kleidung → Freigabe → Bewerbung, Kleidung im Dashboard,
   Import mit Datei und Einfügen, Nachrichten, Schulungen/Video, Benutzer/Rollen mit echtem Zweitkonto,
-  Schnittstelle aus).
+  Schnittstelle aus; Unterweisung: Medienroute mit Anmeldung und Teilabrufen, Server verlangt Video, Mindestdauer und
+  Unterschrift, Nachweis-PDF für Person und Administration, Sicherung). Der Testserver läuft mit
+  `NEU_VIDEO_MINDESTANTEIL=0.03`; das Test-Chromium spielt H.264 nicht ab, darum stellen die Tests Start und Ende des
+  Players nach (`play`/`ended`).

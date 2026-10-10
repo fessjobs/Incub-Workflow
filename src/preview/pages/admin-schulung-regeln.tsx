@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { usePv } from "../state/store";
 import { Btn, Chip, Feld, Karte, Note, kopiere } from "../ui/kit";
 import { MODULE, t } from "../data/trainings";
-import { MODUL_IDS, standardSchulung, type ModulId, type SchulungRegeln } from "../logic/unterweisung";
+import { MODUL_IDS, standardSchulung, standardVideos, type ModulId, type SchulungRegeln, type VideoEintrag } from "../logic/unterweisung";
 import { TAETIGKEITEN, type Taetigkeit } from "../logic/types";
 import { videoEinbettung } from "../logic/video";
 
@@ -91,24 +91,38 @@ export function PflichtUndVideos() {
         <div className="pv-hint">Auch einzelne Aufträge können zusätzliche Schulungen verlangen – das stellst du beim Anlegen des Auftrags ein.</div>
       </Karte>
 
-      <Karte titel="Videos zu den Schulungen">
-        <p className="small">Trage pro Modul die Adresse eines Videos ein (YouTube, Vimeo oder eine Videodatei, immer <b>https</b>). Es erscheint auf der ersten Lernkarte. Ohne Adresse bleibt der Platzhalter. Optional muss die Person vor dem Quiz bestätigen, das Video gesehen zu haben.</p>
-        <div className="small muted mt1">Datenschutz: YouTube wird ohne Cookies (youtube-nocookie.com) eingebunden, lädt aber trotzdem von Google. Wer das vermeiden will, nutzt eine Videodatei (.mp4) von eigenem Speicher.</div>
+      <Karte titel="Videos zu den Schulungen" aktionen={istAdmin ? <Btn v="ghost" groesse="sm" onClick={() => { aendere((x) => ({ ...x, video: standardVideos() })); melde("Alle Videos auf die mitgelieferten zurückgesetzt."); }} data-testid="videos-standard-alle">Alle auf Standard</Btn> : undefined}>
+        <p className="small">Die acht mitgelieferten Videos (Deutsch) sind schon eingetragen. Wer die Schulung macht, sieht zuerst das Video – es muss bis zum Ende laufen (Vorspulen ist gesperrt), danach folgen Lernkarten, Quiz und die Unterschrift. Du kannst pro Modul eine andere Adresse eintragen (YouTube, Vimeo oder eine Videodatei, immer <b>https</b>) oder das Video entfernen.</p>
+        <div className="small muted mt1">Eigene Videos liegen im Ordner <code>public/videos</code> und werden nur an angemeldete Personen ausgeliefert. Der Dateiname entspricht dem Modul (z. B. <code>grund.de.mp4</code>); ein ausgetauschtes Video bekommt einen neuen Dateinamen (z. B. <code>grund.de.v2.mp4</code>), sonst zeigen Handys eventuell noch die alte Version. Bei YouTube/Vimeo kann der Player nicht prüfen, ob bis zum Ende geschaut wurde – dort bestätigt die Person es selbst. YouTube wird ohne Cookies (youtube-nocookie.com) eingebunden, lädt aber trotzdem von Google.</div>
         <div className="col mt2">
           {MODULE.map((m) => {
-            const v = r.video[m.id];
+            const std = standardVideos()[m.id];
+            const v: VideoEintrag | undefined = r.video[m.id];
+            const istStandard = !!v && v.url === std.url && !v.urlEn;
             const emb = v?.url ? videoEinbettung(v.url) : null;
+            const setzeVideo = (patch: Partial<VideoEintrag>) => aendere((x) => {
+              const neu: VideoEintrag = { ...(x.video[m.id] ?? { url: "", titel: "", pflicht: false }), ...patch };
+              // Leere Adresse = absichtlich kein Video; sonst die Markierung wieder weg
+              if (neu.url.trim() === "") neu.entfernt = true;
+              else delete neu.entfernt;
+              return { ...x, video: { ...x.video, [m.id]: neu } };
+            });
+            const eigenes = emb?.art === "video";
             return (
               <div key={m.id} className="pv-card flat" style={{ background: "var(--mist)" }} data-testid={`video-${m.id}`}>
-                <div className="row between"><b>{t(m.titel, "de")}</b>{v?.url ? (emb ? <Chip ton="gut">{emb.art === "iframe" ? "YouTube/Vimeo erkannt" : emb.art === "video" ? "Videodatei erkannt" : "Link"}</Chip> : <Chip ton="err">Adresse ungültig (nur https)</Chip>) : <Chip>Platzhalter</Chip>}</div>
+                <div className="row between"><b>{t(m.titel, "de")}</b>{v?.url ? (emb ? <Chip ton="gut">{istStandard ? "Mitgeliefertes Video" : emb.art === "iframe" ? "YouTube/Vimeo erkannt" : emb.art === "video" ? "Videodatei erkannt" : "Link"}</Chip> : <Chip ton="err">Adresse ungültig (nur https oder eigene Datei)</Chip>) : <Chip>Kein Video</Chip>}</div>
                 <div className="pva-grid c2 mt1">
-                  <Feld label="Adresse des Videos"><input className="pv-input sm" aria-label={`Video-Adresse ${m.id}`} disabled={!istAdmin} placeholder="https://youtu.be/…" value={v?.url ?? ""} onChange={(e) => aendere((x) => ({ ...x, video: { ...x.video, [m.id]: { url: e.target.value, titel: x.video[m.id]?.titel ?? "", pflicht: x.video[m.id]?.pflicht ?? false } } }))} /></Feld>
-                  <Feld label="Titel (optional)"><input className="pv-input sm" aria-label={`Video-Titel ${m.id}`} disabled={!istAdmin} value={v?.titel ?? ""} onChange={(e) => aendere((x) => ({ ...x, video: { ...x.video, [m.id]: { url: x.video[m.id]?.url ?? "", titel: e.target.value, pflicht: x.video[m.id]?.pflicht ?? false } } }))} /></Feld>
+                  <Feld label="Adresse des Videos (Deutsch)"><input className="pv-input sm" aria-label={`Video-Adresse ${m.id}`} disabled={!istAdmin} placeholder="https://youtu.be/…" value={v?.url ?? ""} onChange={(e) => setzeVideo({ url: e.target.value })} /></Feld>
+                  <Feld label="Titel (optional)"><input className="pv-input sm" aria-label={`Video-Titel ${m.id}`} disabled={!istAdmin} value={v?.titel ?? ""} onChange={(e) => setzeVideo({ titel: e.target.value })} /></Feld>
+                </div>
+                <div className="pva-grid c2">
+                  <Feld label="Adresse der englischen Fassung (optional)"><input className="pv-input sm" aria-label={`Video-Adresse Englisch ${m.id}`} disabled={!istAdmin} placeholder={`${std.url.replace(".de.mp4", ".en.mp4")}`} value={v?.urlEn ?? ""} onChange={(e) => setzeVideo({ urlEn: e.target.value })} /></Feld>
                 </div>
                 <div className="row wrap">
-                  <label className="pv-check"><input type="checkbox" disabled={!istAdmin || !v?.url} checked={v?.pflicht ?? false} onChange={(e) => aendere((x) => ({ ...x, video: { ...x.video, [m.id]: { url: x.video[m.id]?.url ?? "", titel: x.video[m.id]?.titel ?? "", pflicht: e.target.checked } } }))} aria-label={`Video Pflicht ${m.id}`} />Vor dem Quiz bestätigen „Video angesehen“</label>
+                  <label className="pv-check"><input type="checkbox" disabled={!istAdmin || !v?.url} checked={v?.pflicht ?? false} onChange={(e) => setzeVideo({ pflicht: e.target.checked })} aria-label={`Video Pflicht ${m.id}`} />{eigenes ? "Pflicht: Video muss vollständig abgespielt werden" : "Pflicht: Person bestätigt „Video angesehen“"}</label>
                   <Btn v="ghost" groesse="sm" onClick={() => setOffenVideo(offenVideo === m.id ? null : m.id)}>{offenVideo === m.id ? "Drehbuch zuklappen" : "Drehbuch-Entwurf"}</Btn>
-                  {v?.url ? <Btn v="ghost" groesse="sm" onClick={() => aendere((x) => { const { [m.id]: _w, ...rest } = x.video; void _w; return { ...x, video: rest }; })} disabled={!istAdmin}>Video entfernen</Btn> : null}
+                  {istAdmin && !istStandard ? <Btn v="ghost" groesse="sm" onClick={() => { aendere((x) => ({ ...x, video: { ...x.video, [m.id]: std } })); melde("Mitgeliefertes Video wieder eingetragen."); }} data-testid={`video-standard-${m.id}`}>Standard wiederherstellen</Btn> : null}
+                  {istAdmin && v?.url ? <Btn v="ghost" groesse="sm" onClick={() => aendere((x) => ({ ...x, video: { ...x.video, [m.id]: { url: "", titel: "", pflicht: false, entfernt: true } } }))} data-testid={`video-entfernen-${m.id}`}>Video entfernen</Btn> : null}
                 </div>
                 {offenVideo === m.id ? (
                   <div className="mt2">
@@ -123,7 +137,7 @@ export function PflichtUndVideos() {
             );
           })}
         </div>
-        <div className="mt2"><Note>Die Drehbücher sind Entwürfe aus den Lernkarten – sie sind nicht von einer Fachkraft für Arbeitssicherheit freigegeben.</Note></div>
+        <div className="mt2"><Note>Die Texte der Videos und die Drehbücher sind Entwürfe nach den Lernkarten – sie sind nicht von einer Fachkraft für Arbeitssicherheit freigegeben. Die Sprecherstimme der mitgelieferten Videos ist eine KI-Stimme; bitte vor dem Livegang prüfen, ob sie gekennzeichnet werden muss.</Note></div>
       </Karte>
     </div>
   );
