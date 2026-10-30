@@ -56,8 +56,8 @@ export function GameRoute() {
         : [
             {
               id: myProfile.id,
-              displayName: myProfile.display_name,
-              avatarUrl: myProfile.avatar_url,
+              displayName: myProfile.displayName,
+              avatarUrl: myProfile.avatarUrl,
             },
           ],
     );

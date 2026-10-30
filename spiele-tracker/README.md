@@ -10,8 +10,16 @@ Mobile first – das Ding wird auf dem Handy neben der Dartscheibe bedient.
 
 ```bash
 npm install
-cp .env.example .env.local     # VITE_SUPABASE_URL und VITE_SUPABASE_ANON_KEY eintragen
 npm run dev
+```
+
+Ohne `.env.local` startet die App im **Testmodus**: keine Anmeldung nötig,
+alles bleibt im Browser. So lässt sie sich sofort ausprobieren.
+
+Für den echten Betrieb mit Konten, Gruppen und geteilten Ranglisten:
+
+```bash
+cp .env.example .env.local     # VITE_SUPABASE_URL und VITE_SUPABASE_ANON_KEY eintragen
 ```
 
 Supabase-Schema einspielen: siehe [`supabase/README.md`](./supabase/README.md).
@@ -22,6 +30,7 @@ Supabase-Schema einspielen: siehe [`supabase/README.md`](./supabase/README.md).
 | --- | --- |
 | `npm run dev` | Dev-Server |
 | `npm run build` | Produktions-Build |
+| `npm run build:artifact` | Build als einzelne veröffentlichbare Seite |
 | `npm run test` | Vitest |
 | `npm run typecheck` | `tsc --noEmit` |
 | `supabase/test/run.sh` | Migrations- und RLS-Tests gegen lokales Postgres |
@@ -34,10 +43,9 @@ Ein neues Spiel bauen: [`src/games/README.md`](./src/games/README.md).
 
 ## Stand
 
-Block 1 (Setup, Schema, RLS, Auth) und Block 2 (Plugin-System mit Demo-Spiel)
-sind fertig, dazu Mehrspieler an einem Gerät.
+**Round the Clock ist spielbar.** Antippbare Scheibe, Schnellmodus,
+Rundenlogik mit Ziehphase, mehrere Spieler an einem Gerät, volle Auswertung
+aus dem Event-Log.
 
-Als Nächstes kommt das Dart-Fundament: ein geteiltes SVG-Board mit
-Segmentmodell und Eingabemodi, auf dem Round the Clock, 501, Shanghai und
-Cutthroat aufsetzen. Begründung und Reihenfolge stehen im Fahrplan in
-[`PROJECT.md`](./PROJECT.md).
+Als Nächstes: Logbuch und Ranglisten, dann 501, Shanghai und Cutthroat auf
+demselben Dart-Fundament. Fahrplan in [`PROJECT.md`](./PROJECT.md).

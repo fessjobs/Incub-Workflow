@@ -29,6 +29,12 @@ export type EventSource =
 export interface GameEvent<TPayload = Record<string, unknown>> {
   /** Von der Datenbank vergeben. Fehlt, solange das Event nur lokal gepuffert ist. */
   id?: number;
+  /**
+   * Lokale ID der Hülle. Schon vor dem Serverschreiben vorhanden – ein Spiel
+   * kann damit auf einen eben erst erzeugten Wurf verweisen, etwa um ihn zu
+   * korrigieren.
+   */
+  localId?: number;
   sessionId: string;
   playerId: string | null;
   tMs: number;

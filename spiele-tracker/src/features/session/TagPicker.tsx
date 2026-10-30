@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
-import { supabase } from '@/lib/supabase';
+import { backend } from '@/lib/backend';
 import { normaliseTags } from './sessionStore';
 
 /**
@@ -19,10 +19,13 @@ export function TagPicker({
 
   useEffect(() => {
     let cancelled = false;
-    void supabase
-      .rpc('recent_tags', { p_limit: 12 })
-      .then(({ data }) => {
-        if (!cancelled && data) setRecent(data.map((r) => r.tag));
+    void backend.sessions
+      .recentTags(12)
+      .then((tags) => {
+        if (!cancelled) setRecent(tags);
+      })
+      .catch(() => {
+        /* Vorschläge sind Komfort, kein Muss. */
       });
     return () => {
       cancelled = true;

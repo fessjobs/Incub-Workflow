@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useEffect, useState, type FormEvent } from 'react';
+import { backend, testMode } from '@/lib/backend';
 import type { SessionPlayer } from '@/games/types';
 
 /**
@@ -28,6 +28,14 @@ export function PlayerPicker({
 }) {
   const [available, setAvailable] = useState<SessionPlayer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+
+  /**
+   * Im echten Betrieb meldet sich jeder selbst an (Entscheidung vom 30.10.).
+   * Im Testmodus gibt es keine Anmeldung — dort muss man Mitspieler von Hand
+   * anlegen können, sonst lässt sich Mehrspieler gar nicht ausprobieren.
+   */
+  const canAddLocal = testMode && typeof backend.profiles.createLocal === 'function';
 
   // Einzelspieler-Spiele brauchen weder Auswahl noch Abfrage.
   const soloOnly = max <= 1;
@@ -40,19 +48,21 @@ export function PlayerPicker({
       return;
     }
 
-    void supabase
-      .from('profiles')
-      .select('id, display_name, avatar_url')
-      .order('display_name')
-      .then(({ data }) => {
+    void backend.profiles
+      .list()
+      .then((people) => {
         if (cancelled) return;
-        const people = (data ?? []).map((row) => ({
-          id: row.id,
-          displayName: row.display_name,
-          avatarUrl: row.avatar_url,
-        }));
-        setAvailable(people);
+        setAvailable(
+          people.map((p) => ({
+            id: p.id,
+            displayName: p.displayName,
+            avatarUrl: p.avatarUrl,
+          })),
+        );
         setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -69,6 +79,21 @@ export function PlayerPicker({
     } else if (selected.length < max) {
       onChange([...selected, player]);
     }
+  }
+
+  async function addLocalPlayer(e: FormEvent) {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name || !backend.profiles.createLocal) return;
+    const created = await backend.profiles.createLocal(name);
+    const player: SessionPlayer = {
+      id: created.id,
+      displayName: created.displayName,
+      avatarUrl: created.avatarUrl,
+    };
+    setAvailable((list) => [...list, player]);
+    if (selected.length < max) onChange([...selected, player]);
+    setNewName('');
   }
 
   function move(index: number, direction: -1 | 1) {
@@ -158,7 +183,26 @@ export function PlayerPicker({
         </p>
       )}
 
-      {available.length <= 1 && (
+      {canAddLocal && (
+        <form onSubmit={(e) => void addLocalPlayer(e)} className="mt-3 flex gap-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Mitspieler hinzufügen"
+            maxLength={40}
+            className="min-w-0 flex-1 rounded-xl border border-surface-border bg-surface-raised px-3 py-2 text-sm placeholder:text-slate-600"
+          />
+          <button
+            type="submit"
+            disabled={!newName.trim()}
+            className="rounded-xl border border-surface-border px-4 py-2 text-sm font-semibold disabled:opacity-40"
+          >
+            Hinzufügen
+          </button>
+        </form>
+      )}
+
+      {!canAddLocal && available.length <= 1 && (
         <p className="mt-2 text-sm text-slate-500">
           Es taucht nur dein eigenes Profil auf. Mitspieler erscheinen hier,
           sobald ihr in derselben Gruppe seid.

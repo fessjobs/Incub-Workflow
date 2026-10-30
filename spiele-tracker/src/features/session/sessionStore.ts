@@ -1,12 +1,11 @@
 import { create } from 'zustand';
-import { supabase } from '@/lib/supabase';
+import { backend } from '@/lib/backend';
 import type {
   AppendableEvent,
   GameEvent,
   SessionPlayer,
   StatsResult,
 } from '@/games/types';
-import type { Json } from '@/lib/database.types';
 
 /**
  * Die generische Session-Hülle.
@@ -115,54 +114,40 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     clientSeqCounter = 0;
 
     const now = new Date();
-    const { data, error } = await supabase
-      .from('game_sessions')
-      .insert({
-        game_id: gameId,
-        group_id: groupId ?? null,
-        created_by: createdBy,
-        config: config as Json,
-        status: 'running',
-        started_at: now.toISOString(),
+    let sessionId: string;
+    try {
+      sessionId = await backend.sessions.create({
+        gameId,
+        groupId: groupId ?? null,
+        createdBy,
+        config,
+        startedAt: now.toISOString(),
         // Lokale Zeit ohne Zone plus Offset: die Tageszeit-Auswertung fragt
         // "war das eine Session um 22 Uhr abends", nicht "um 20 Uhr UTC".
-        local_started_at: toLocalTimestamp(now),
-        tz_offset_minutes: -now.getTimezoneOffset(),
-      })
-      .select()
-      .single();
-
-    if (error || !data) {
-      set({ phase: 'error', error: error?.message ?? 'Session konnte nicht angelegt werden.' });
+        localStartedAt: toLocalTimestamp(now),
+        tzOffsetMinutes: -now.getTimezoneOffset(),
+      });
+      await backend.sessions.addPlayers(
+        sessionId,
+        players.map((p) => p.id),
+      );
+      await backend.sessions.addTags(sessionId, normaliseTags(tags ?? []));
+    } catch (e) {
+      set({ phase: 'error', error: (e as Error).message });
       return null;
-    }
-
-    const { error: playerError } = await supabase.from('session_players').insert(
-      players.map((p, seat) => ({ session_id: data.id, player_id: p.id, seat })),
-    );
-    if (playerError) {
-      set({ phase: 'error', error: playerError.message });
-      return null;
-    }
-
-    const cleanTags = normaliseTags(tags ?? []);
-    if (cleanTags.length > 0) {
-      await supabase
-        .from('session_tags')
-        .insert(cleanTags.map((tag) => ({ session_id: data.id, tag })));
     }
 
     startPerf = performance.now();
     set({
       phase: 'running',
-      sessionId: data.id,
+      sessionId,
       gameId,
       config,
       players,
       activePlayerId: players[0].id,
     });
     scheduleFlush();
-    return data.id;
+    return sessionId;
   },
 
   append: (event) => {
@@ -247,25 +232,23 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     await flushEvents();
 
-    const { error } = await supabase
-      .from('game_sessions')
-      .update({ status: 'finished', ended_at: new Date().toISOString() })
-      .eq('id', sessionId);
-
-    const rows = Object.entries(statsByPlayer).map(([playerId, stats]) => ({
-      session_id: sessionId,
-      player_id: playerId,
-      stats: stats as unknown as Json,
-      stats_version: STATS_VERSION,
-      computed_at: new Date().toISOString(),
-    }));
-
-    if (rows.length > 0) {
-      await supabase.from('session_results').upsert(rows);
+    let error: string | null = null;
+    try {
+      await backend.sessions.finish(sessionId);
+      await backend.sessions.saveResults(
+        Object.entries(statsByPlayer).map(([playerId, stats]) => ({
+          sessionId,
+          playerId,
+          stats,
+          statsVersion: STATS_VERSION,
+        })),
+      );
+    } catch (e) {
+      error = (e as Error).message;
     }
 
     stopFlush();
-    set({ phase: 'finished', error: error?.message ?? null });
+    set({ phase: 'finished', error });
   },
 
   reset: () => {
@@ -317,33 +300,32 @@ async function flushEvents(): Promise<void> {
 
   flushing = true;
   try {
-    const rows = pending.map((e) => ({
-      session_id: e.sessionId,
-      player_id: e.playerId,
-      t_ms: e.tMs,
-      type: e.type,
-      payload: e.payload as Json,
-      source: e.source,
-      // Zeigt die Korrektur auf ein Event, das inzwischen geschrieben wurde,
-      // holen wir uns dessen Server-ID jetzt nach.
-      corrects_event_id: resolveCorrectsId(e, state.events),
-      voids_target: e.voidsTarget ?? false,
-      client_seq: e.clientSeq ?? null,
-    }));
-
-    const { data, error } = await supabase.from('game_events').insert(rows).select('id');
-    if (error || !data) {
-      // Absichtlich still: nächster Versuch in 1,5 s.
-      return;
-    }
+    const ids = await backend.events.append(
+      pending.map((e) => ({
+        sessionId: e.sessionId,
+        playerId: e.playerId,
+        tMs: e.tMs,
+        type: e.type,
+        payload: e.payload as Record<string, unknown>,
+        source: e.source,
+        // Zeigt die Korrektur auf ein Event, das inzwischen geschrieben
+        // wurde, holen wir uns dessen Server-ID jetzt nach.
+        correctsEventId: resolveCorrectsId(e, state.events),
+        voidsTarget: e.voidsTarget ?? false,
+        clientSeq: e.clientSeq ?? null,
+      })),
+    );
 
     useSessionStore.setState((current) => {
-      const byLocalId = new Map(pending.map((e, i) => [e.localId, data[i]?.id]));
+      const byLocalId = new Map(pending.map((e, i) => [e.localId, ids[i]]));
       const events = current.events.map((e) =>
         byLocalId.has(e.localId) ? { ...e, id: byLocalId.get(e.localId), persisted: true } : e,
       );
       return { events, pendingCount: events.filter((e) => !e.persisted).length };
     });
+  } catch {
+    // Absichtlich still: nächster Versuch in 1,5 s. Die Events bleiben im
+    // Puffer, der Live-Screen merkt nichts davon.
   } finally {
     flushing = false;
   }

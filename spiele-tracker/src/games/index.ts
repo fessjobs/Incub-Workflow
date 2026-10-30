@@ -1,5 +1,6 @@
 import { registerGame } from './registry';
 import { demoReactionGame } from './demo-reaction';
+import { dartClockGame } from './dart-clock';
 
 /**
  * Die einzige Stelle, an der Spiele eingehängt werden.
@@ -12,8 +13,8 @@ export function initGames(): void {
   if (initialised) return;
   initialised = true;
 
+  registerGame(dartClockGame);
   registerGame(demoReactionGame);
-  // registerGame(dartClockGame);  ← kommt in Block 3
 }
 
 export * from './types';

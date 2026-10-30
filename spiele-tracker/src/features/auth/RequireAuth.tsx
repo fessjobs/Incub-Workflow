@@ -4,10 +4,10 @@ import { useAuthStore } from '@/store/authStore';
 import { Layout } from '@/components/Layout';
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const session = useAuthStore((s) => s.session);
+  const user = useAuthStore((s) => s.user);
   const location = useLocation();
 
-  if (session === undefined) {
+  if (user === undefined) {
     return (
       <Layout>
         <p className="text-slate-400">Einen Moment …</p>
@@ -15,7 +15,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
 
-  if (session === null) {
+  if (user === null) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 

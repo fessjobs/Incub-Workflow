@@ -5,8 +5,9 @@ implementiertes Spiel wird ein Dart-Trainingsspiel ("Round the Clock auf
 Zeit"); die Architektur ist von Anfang an auf beliebige weitere Spiele als
 Plugin ausgelegt.
 
-**Stand: Block 1 und 2 abgeschlossen, Fundament auf die Antworten vom 30.10.
-angepasst.** Siehe [Entschieden](#entschieden) und [Fahrplan](#fahrplan).
+**Stand: Block 1 bis 4 abgeschlossen — die App ist spielbar.** Ohne
+Supabase-Zugangsdaten startet sie im Testmodus und speichert alles im Browser.
+Siehe [Entschieden](#entschieden) und [Fahrplan](#fahrplan).
 
 ---
 
@@ -35,7 +36,15 @@ laufende Beweis: es funktioniert überall, ohne dass die App es kennt.
 Monoton – eine Systemzeitkorrektur mitten in der Session darf die
 Zeitstatistiken nicht verschieben.
 
-**5. Mehrspieler heißt ein Handy, das herumgereicht wird.**
+**5. Das Backend ist austauschbar.**
+Die App spricht nie direkt mit Supabase, sondern mit einer schmalen
+Schnittstelle (`src/lib/backend/`). Dahinter stehen zwei Implementierungen:
+Supabase und ein lokaler Ersatz, der alles im Browser speichert. Ohne
+Zugangsdaten springt der lokale ein. Das ist kein Notbehelf — es macht die App
+ausprobierbar, bevor ein Server existiert, und neben der Dartscheibe
+unabhängig vom WLAN.
+
+**6. Mehrspieler heißt ein Handy, das herumgereicht wird.**
 Keine Geräte-Synchronisierung, kein Live-Zuschauen. Wer am Abwurfpunkt steht,
 ist Zustand dieses einen Geräts; der Wechsel landet als `player_change`-Event
 im Log. `tMs` läuft durchgehend über die ganze Session, auch über Wechsel
@@ -111,6 +120,10 @@ src/
     index.ts             Die einzige Stelle, an der Spiele eingehängt werden
     README.md            Anleitung: wie baue ich ein neues Spiel
     demo-reaction/       Demo-Spiel als Architektur-Nachweis (löschbar)
+    _dart/               Geteiltes Dart-Fundament (kein Spiel, nicht registriert)
+      segments.ts        Die 82 Felder, Kranz-Nachbarschaft, Punktwerte
+      Dartboard.tsx      Maßstabsgetreues SVG, vergrößerte Hitboxen
+    dart-clock/          Round the Clock auf Zeit
   features/
     auth/                Login, Callback, Zugriffsschutz
     session/             Die generische Session-Hülle
@@ -119,6 +132,7 @@ src/
       useElapsed.ts      Uhr auf Basis von requestAnimationFrame
       TagPicker.tsx      Freitext-Tags plus zuletzt verwendete
   lib/
+    backend/             Schnittstelle plus Supabase- und Lokal-Implementierung
     supabase.ts          Client
     database.types.ts    Typen zum Schema (handgeschrieben, siehe unten)
   store/authStore.ts     Session und Profil
@@ -327,9 +341,10 @@ Block 3 etwas mehr und zahlt sich ab dem zweiten Spiel aus.
 | 1 | Setup, Schema, Migrationen, RLS, Auth-Flow | ✅ |
 | 2 | Game-Registry, Plugin-Interface, Dummy-Spiel | ✅ |
 | 2b | Mehrspieler an einem Gerät, Shop entfernt, Rechte gelockert | ✅ |
-| 3 | **Dart-Fundament**: SVG-Board, Segmentmodell, Eingabemodi, Rundenlogik | offen |
-| 4 | **Round the Clock auf Zeit** als erstes echtes Spiel | offen |
-| 5 | Statistik-Engine und Auswertungs-Screens | offen |
+| 2c | Backend-Schnittstelle plus Testmodus ohne Server | ✅ |
+| 3 | **Dart-Fundament**: SVG-Board, Segmentmodell, Eingabemodi, Rundenlogik | ✅ |
+| 4 | **Round the Clock auf Zeit** als erstes echtes Spiel | ✅ |
+| 5 | Statistik-Engine und Auswertungs-Screens | ✅ bis auf Heatmap und Sessionvergleich |
 | 6 | Profile, Gruppen, Logbuch, Ranglisten | offen |
 | 7 | **501** („normal") | offen |
 | 8 | **Shanghai** und **Cutthroat Cricket** | offen |
@@ -349,6 +364,16 @@ Die Sprache ist nicht gestrichen – das Event-Log kennt `source = 'speech'` und
 `source = 'transcription'` von Anfang an. Sie wird nur erst gebaut, wenn das
 Board steht, und dann mit einem ehrlichen Hinweis, falls das Gerät sie nicht
 trägt.
+
+### Testmodus
+
+`npm run dev` ohne `.env.local` startet die App im Testmodus: keine Anmeldung,
+Mitspieler lassen sich von Hand anlegen, alles liegt im localStorage. Mit
+`?test=1` in der Adresse lässt er sich auch bei vorhandenen Zugangsdaten
+erzwingen, um nichts in die echte Statistik zu schreiben.
+
+`npm run build:artifact` baut daraus eine Fassung, die sich als einzelne Seite
+veröffentlichen lässt.
 
 ### Was das Dart-Fundament enthält
 
@@ -385,9 +410,16 @@ sollten:
   Falls das stört: `created_by` nullable machen und Sessions behalten.
 - **`session_results` kann veralten.** `stats_version` ist vorhanden, ein
   Nachrechnen-Job noch nicht.
-- **Mehrspieler** ist in der Hülle umgesetzt (Spielerauswahl, Reihenfolge,
-  `player_change`-Events, ein Ergebnis je Spieler), aber noch von keinem Spiel
-  genutzt – das Demo-Spiel ist einspielerig. Erster echter Test wird Block 4.
+- **Heatmap über die Scheibe** fehlt noch. Die Daten liegen vor
+  (`detail.heatmap`), nur die Einfärbung der Board-Komponente fehlt.
+- **Auswertung über mehrere Sessions** (Tageszeit, Tag-Vergleich, Verlauf)
+  braucht das Logbuch und kommt mit Block 6.
+- **Kein Wiederaufnehmen nach Reload.** Bricht das Handy mitten in der Session
+  ab, sind die Events in der Datenbank, aber der Live-Screen startet leer.
+- **Trefferquote und Wurfzahlen stehen in zwei Diagrammen**, nicht in einem mit
+  zwei Achsen wie ursprünglich geplant. Eine zweite y-Achse mit anderem Maßstab
+  lässt sich nicht zuverlässig ablesen; beide Diagramme teilen sich jetzt die
+  x-Achse.
 - **Die Spielerauswahl zeigt alle sichtbaren Profile**, nicht die Mitglieder
   einer bestimmten Gruppe. Solange es keine Gruppen-UI gibt (Block 6), ist das
   dasselbe, weil RLS ohnehin nur Gruppenmitglieder durchlässt.

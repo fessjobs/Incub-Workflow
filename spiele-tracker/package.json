@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:artifact": "vite build --base=./ && node scripts/build-artifact.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

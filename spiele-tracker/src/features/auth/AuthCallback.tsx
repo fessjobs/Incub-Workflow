@@ -9,13 +9,13 @@ import { Layout } from '@/components/Layout';
  * hier nur, bis der Store das mitbekommen hat.
  */
 export function AuthCallback() {
-  const session = useAuthStore((s) => s.session);
+  const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (session === undefined) return;
-    navigate(session ? '/' : '/login', { replace: true });
-  }, [session, navigate]);
+    if (user === undefined) return;
+    navigate(user ? '/' : '/login', { replace: true });
+  }, [user, navigate]);
 
   return (
     <Layout>
