@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getGame } from '@/games';
-import type { AppendableEvent, StatsResult } from '@/games/types';
+import type { AppendableEvent, SessionPlayer, StatsResult } from '@/games/types';
 import { useSessionStore } from './sessionStore';
 import { useAuthStore } from '@/store/authStore';
 import { useElapsed } from './useElapsed';
 import { TagPicker } from './TagPicker';
+import { PlayerPicker } from './PlayerPicker';
 import { Layout } from '@/components/Layout';
 
 /**
@@ -19,46 +20,102 @@ export function GameRoute() {
   const { gameId = '' } = useParams();
   const game = getGame(gameId);
 
-  const playerId = useAuthStore((s) => s.user?.id ?? null);
+  const meId = useAuthStore((s) => s.user?.id ?? null);
+  const myProfile = useAuthStore((s) => s.profile);
   const phase = useSessionStore((s) => s.phase);
   const events = useSessionStore((s) => s.events);
+  const sessionPlayers = useSessionStore((s) => s.players);
+  const activePlayerId = useSessionStore((s) => s.activePlayerId);
   const pendingCount = useSessionStore((s) => s.pendingCount);
   const storeError = useSessionStore((s) => s.error);
   const start = useSessionStore((s) => s.start);
   const append = useSessionStore((s) => s.append);
   const correct = useSessionStore((s) => s.correct);
+  const setActivePlayer = useSessionStore((s) => s.setActivePlayer);
   const finish = useSessionStore((s) => s.finish);
   const reset = useSessionStore((s) => s.reset);
 
   const [config, setConfig] = useState<unknown>(game?.defaultConfig);
+  const [players, setPlayers] = useState<SessionPlayer[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [shownPlayerId, setShownPlayerId] = useState<string | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const elapsedMs = useElapsed(phase === 'running');
 
   // Beim Verlassen der Route eine noch offene Session nicht liegen lassen.
   useEffect(() => reset, [reset]);
 
-  const stats: StatsResult | null = useMemo(() => {
-    if (!game || phase !== 'finished') return null;
-    return game.computeStats(events, config);
-  }, [game, phase, events, config]);
+  // Wer das Gerät in der Hand hat, spielt im Zweifel mit. Gilt auch für
+  // Einzelspieler-Spiele, bei denen gar keine Auswahl angezeigt wird.
+  useEffect(() => {
+    if (!myProfile) return;
+    setPlayers((current) =>
+      current.length > 0
+        ? current
+        : [
+            {
+              id: myProfile.id,
+              displayName: myProfile.display_name,
+              avatarUrl: myProfile.avatar_url,
+            },
+          ],
+    );
+  }, [myProfile]);
+
+  /** Ein Ergebnis je Spieler – auch bei Einzelsessions. */
+  const statsByPlayer: Record<string, StatsResult> = useMemo(() => {
+    if (!game || phase !== 'finished') return {};
+    const out: Record<string, StatsResult> = {};
+    for (const player of sessionPlayers) {
+      out[player.id] = game.computeStats(events, config, {
+        playerId: player.id,
+        players: sessionPlayers,
+      });
+    }
+    return out;
+  }, [game, phase, events, config, sessionPlayers]);
 
   const handleStart = useCallback(async () => {
-    if (!game || !playerId) return;
+    if (!game || !meId) return;
+
     const parsed = game.configSchema.safeParse(config);
     if (!parsed.success) {
-      setConfigError(parsed.error.issues.map((i) => i.message).join(', '));
+      setSetupError(parsed.error.issues.map((i) => i.message).join(', '));
       return;
     }
-    setConfigError(null);
-    await start({ gameId: game.id, config: parsed.data, playerId, tags });
-  }, [game, playerId, config, tags, start]);
+    if (players.length < game.minPlayers) {
+      setSetupError(
+        `${game.name} braucht mindestens ${game.minPlayers} ${
+          game.minPlayers === 1 ? 'Spieler' : 'Spieler'
+        }.`,
+      );
+      return;
+    }
+
+    setSetupError(null);
+    setShownPlayerId(players[0]?.id ?? null);
+    await start({
+      gameId: game.id,
+      config: parsed.data,
+      players,
+      createdBy: meId,
+      tags,
+    });
+  }, [game, meId, config, players, tags, start]);
 
   const handleFinish = useCallback(() => {
     if (!game) return;
     // Die Statistik wird aus dem Log gerechnet, nicht mitgeführt.
-    void finish(game.computeStats(useSessionStore.getState().events, config));
+    const state = useSessionStore.getState();
+    const out: Record<string, StatsResult> = {};
+    for (const player of state.players) {
+      out[player.id] = game.computeStats(state.events, config, {
+        playerId: player.id,
+        players: state.players,
+      });
+    }
+    void finish(out);
   }, [game, finish, config]);
 
   const handleAppend = useCallback((event: AppendableEvent) => append(event), [append]);
@@ -96,20 +153,57 @@ export function GameRoute() {
           correct={handleCorrect}
           elapsedMs={elapsedMs}
           finish={handleFinish}
-          playerId={playerId}
+          players={sessionPlayers}
+          activePlayerId={activePlayerId}
+          setActivePlayer={setActivePlayer}
         />
       </div>
     );
   }
 
-  if (phase === 'finished' && stats) {
+  if (phase === 'finished') {
+    const shown = shownPlayerId ?? sessionPlayers[0]?.id ?? null;
+    const stats = shown ? statsByPlayer[shown] : undefined;
+
     return (
       <Layout title="Auswertung">
-        <ResultComponent config={config} events={events} stats={stats} />
-        <div className="mt-8 space-y-3">
-          <p className="text-sm text-slate-500">
-            {events.length} Events aufgezeichnet · {game.xpFormula(stats)} XP
-          </p>
+        {sessionPlayers.length > 1 && (
+          <div className="mb-5 flex flex-wrap gap-2">
+            {sessionPlayers.map((player) => (
+              <button
+                key={player.id}
+                type="button"
+                onClick={() => setShownPlayerId(player.id)}
+                aria-pressed={player.id === shown}
+                className={[
+                  'rounded-xl border px-3 py-2 text-sm',
+                  player.id === shown
+                    ? 'border-accent bg-accent-muted text-slate-100'
+                    : 'border-surface-border text-slate-400',
+                ].join(' ')}
+              >
+                {player.displayName}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {stats && (
+          <>
+            <ResultComponent
+              config={config}
+              events={events}
+              stats={stats}
+              allStats={statsByPlayer}
+              players={sessionPlayers}
+            />
+            <p className="mt-8 text-sm text-slate-500">
+              {events.length} Events aufgezeichnet · {game.xpFormula(stats)} XP
+            </p>
+          </>
+        )}
+
+        <div className="mt-4 space-y-3">
           <button
             type="button"
             onClick={() => {
@@ -142,11 +236,18 @@ export function GameRoute() {
         starting={phase === 'starting'}
       />
 
-      <div className="mt-8">
+      <div className="mt-8 space-y-8">
+        <PlayerPicker
+          selected={players}
+          onChange={setPlayers}
+          min={game.minPlayers}
+          max={game.maxPlayers}
+          meId={meId}
+        />
         <TagPicker value={tags} onChange={setTags} />
       </div>
 
-      {configError && <p className="mt-4 text-sm text-bad">{configError}</p>}
+      {setupError && <p className="mt-4 text-sm text-bad">{setupError}</p>}
       {storeError && <p className="mt-4 text-sm text-bad">{storeError}</p>}
     </Layout>
   );

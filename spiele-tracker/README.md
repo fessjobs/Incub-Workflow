@@ -34,5 +34,10 @@ Ein neues Spiel bauen: [`src/games/README.md`](./src/games/README.md).
 
 ## Stand
 
-Block 1 (Setup, Schema, RLS, Auth) und Block 2 (Plugin-System mit
-Demo-Spiel) sind fertig. Das Dart-Spiel folgt in Block 3.
+Block 1 (Setup, Schema, RLS, Auth) und Block 2 (Plugin-System mit Demo-Spiel)
+sind fertig, dazu Mehrspieler an einem Gerät.
+
+Als Nächstes kommt das Dart-Fundament: ein geteiltes SVG-Board mit
+Segmentmodell und Eingabemodi, auf dem Round the Clock, 501, Shanghai und
+Cutthroat aufsetzen. Begründung und Reihenfolge stehen im Fahrplan in
+[`PROJECT.md`](./PROJECT.md).

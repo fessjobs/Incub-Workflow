@@ -75,5 +75,5 @@ export const demoReactionGame: GameDefinition<ReactionConfig> = {
       best: 10,
     },
   ],
-  minSessionsForCard: 5,
+  confidentAfterSessions: 5,
 };

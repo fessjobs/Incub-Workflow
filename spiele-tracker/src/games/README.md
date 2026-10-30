@@ -22,12 +22,41 @@ Logbuch und Profil funktionieren danach automatisch.
 Die Hülle (`src/features/session/`) erledigt für dich:
 
 - Session in der Datenbank anlegen, Teilnehmer und Tags eintragen
+- Spielerauswahl inklusive Reihenfolge am Abwurfpunkt
 - Zeitbasis: `tMs` wird gesetzt, `elapsedMs` tickt
 - Events lokal puffern und im Hintergrund nach Supabase schreiben –
   ein Wurf geht auch bei mieser Verbindung nicht verloren
-- Session beenden, `computeStats` aufrufen, Ergebnis speichern
+- Session beenden, `computeStats` je Spieler aufrufen, Ergebnisse speichern
 
-Dein Spiel ruft nur `append()`, `correct()` und `finish()`.
+Dein Spiel ruft nur `append()`, `correct()`, `setActivePlayer()` und `finish()`.
+
+## Mehrere Spieler
+
+Gespielt wird an **einem Handy, das herumgereicht wird** – es gibt keine
+Synchronisierung zwischen Geräten. Die Hülle führt die Teilnehmerliste und
+merkt sich, wer gerade wirft; jedes Event, das du anhängst, bekommt
+automatisch diese Spieler-ID.
+
+Wann gewechselt wird, entscheidest **du**, denn das ist eine Regelfrage: bei
+Round the Clock nach einem ganzen Durchgang, bei 501 nach drei Pfeilen. Ruf
+dafür `setActivePlayer(id)`; die Hülle schreibt ein `player_change`-Event ins
+Log, damit später rekonstruierbar bleibt, wer wann am Abwurfpunkt stand.
+
+`computeStats` wird **einmal je Spieler** aufgerufen und bekommt im dritten
+Argument den Kontext mit `playerId`. Das Filtern machst du selbst:
+
+```ts
+const mine = events.filter((e) => ctx.playerId === null || e.playerId === ctx.playerId);
+```
+
+Warum nicht die Hülle? Weil manche Kennzahlen die Gegner brauchen – bei
+Cutthroat bekommt man Punkte dafür, dass die anderen treffen.
+
+`tMs` läuft durchgehend über die ganze Session, auch über Spielerwechsel
+hinweg. Brauchst du pro Spieler eine eigene Uhr (Round the Clock auf Zeit),
+dann setz beim Start des Durchgangs ein eigenes Event und rechne in
+`computeStats` relativ dazu. So bleibt das Log eine einzige, saubere
+Zeitachse.
 
 ## Die wichtigste Regel
 
@@ -85,8 +114,10 @@ function Result({ stats }) {
 }
 
 // Reine Funktion, ausschließlich aus dem Log gerechnet.
-function computeStats(events: GameEvent[], config: Config) {
-  const tosses = events.filter((e) => e.type === 'toss');
+function computeStats(events: GameEvent[], config: Config, ctx: StatsContext) {
+  const tosses = events.filter(
+    (e) => e.type === 'toss' && (ctx.playerId === null || e.playerId === ctx.playerId),
+  );
   const heads = tosses.filter((e) => e.payload.side === 'kopf').length;
   return {
     metrics: {
@@ -141,6 +172,7 @@ registerGame(muenzwurfGame);
 | `leaderboards` | Verweisen per `metric` auf Schlüssel aus `StatsResult.metrics`. |
 | `xpFormula` | Bekommt das `StatsResult` und gibt XP zurück. |
 | `playerCardAttributes` | Optional, für die Sammelkarte. Rohwert wird über `worst`→`best` auf 1..99 gerechnet; `best < worst` heißt "weniger ist besser". |
+| `confidentAfterSessions` | Ab wann die Karte als aussagekräftig gilt. Darunter zeigt sie trotzdem echte Werte, nur mit dem Hinweis "noch wenig Daten". |
 
 ### `StatsResult`
 
@@ -178,6 +210,22 @@ Event-Array rein, Ergebnis prüfen.
 
 Denk an die unangenehmen Fälle: leeres Log, unsortiert eintreffende Events,
 abgebrochene Session, Events ohne passenden Vorgänger.
+
+## Dart-Spiele
+
+Für Dart gibt es ab Block 3 ein geteiltes Fundament unter `src/games/_dart/`:
+Segmentmodell (die 82 Felder samt Nachbarschaft auf dem Zahlenkranz),
+Board-Komponente, Eingabemodi und Rundenlogik. Round the Clock, 501, Shanghai
+und Cutthroat setzen darauf auf und bestimmen nur noch das Ziel, den
+Spielerwechsel und die Siegbedingung.
+
+Der Unterstrich im Ordnernamen ist Absicht: `_dart` ist kein Spiel und wird
+nicht registriert.
+
+Wenn du ein weiteres Dart-Spiel baust, nimm das Fundament und erweitere es
+lieber, als eigene Board-Logik danebenzustellen. Die Nachbarschaft der
+Segmente ist die Stelle, an der man sich am leichtesten vertut – die 20 liegt
+neben der 1 und der 5, nicht neben der 19.
 
 ## Das Demo-Spiel
 

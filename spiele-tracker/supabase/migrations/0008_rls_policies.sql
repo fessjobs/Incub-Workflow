@@ -3,7 +3,7 @@
 --
 -- Zwei Grundsätze:
 --   1. Jede Tabelle hat RLS an. Ohne passende Policy ist der Zugriff verboten.
---   2. game_events, economy_ledger und player_achievements bekommen bewusst
+--   2. game_events, xp_ledger und player_achievements bekommen bewusst
 --      KEINE update-/delete-Policy. Damit sind sie für Clients append-only.
 --      Korrekturen entstehen als neue Zeile mit corrects_event_id.
 
@@ -17,12 +17,9 @@ alter table public.game_events           enable row level security;
 alter table public.session_results       enable row level security;
 alter table public.personal_bests        enable row level security;
 alter table public.player_economy        enable row level security;
-alter table public.economy_ledger        enable row level security;
+alter table public.xp_ledger             enable row level security;
 alter table public.achievements          enable row level security;
 alter table public.player_achievements   enable row level security;
-alter table public.shop_items            enable row level security;
-alter table public.player_inventory      enable row level security;
-alter table public.player_loadout        enable row level security;
 alter table public.notifications         enable row level security;
 alter table public.play_invites          enable row level security;
 alter table public.play_invite_responses enable row level security;
@@ -57,14 +54,19 @@ create policy groups_insert_own on public.groups
   for insert to authenticated
   with check (created_by = auth.uid());
 
+-- Entscheidung vom 30.10.: in einer Freundesgruppe darf jedes Mitglied
+-- die Gruppe umbenennen und Leute rauswerfen. Einzige Ausnahme ist das
+-- Löschen der Gruppe — das nimmt die gesamte Historie mit und bleibt
+-- deshalb beim Gründer.
 drop policy if exists groups_update_admin on public.groups;
 create policy groups_update_admin on public.groups
   for update to authenticated
-  using (public.is_group_admin(id))
-  with check (public.is_group_admin(id));
+  using (public.is_group_member(id))
+  with check (public.is_group_member(id));
 
--- Über die Rolle, nicht über created_by: das Feld wird null, wenn der
--- Gründer seinen Account löscht.
+-- Bewusst die einzige Stelle, die eng bleibt: ein delete kaskadiert auf
+-- alle Sessions und Events der Gruppe. Über die Rolle, nicht über
+-- created_by — das Feld wird null, wenn der Gründer seinen Account löscht.
 drop policy if exists groups_delete_owner on public.groups;
 create policy groups_delete_owner on public.groups
   for delete to authenticated
@@ -89,14 +91,14 @@ create policy group_members_insert_self on public.group_members
 drop policy if exists group_members_update_admin on public.group_members;
 create policy group_members_update_admin on public.group_members
   for update to authenticated
-  using (public.is_group_admin(group_id))
-  with check (public.is_group_admin(group_id));
+  using (public.is_group_member(group_id))
+  with check (public.is_group_member(group_id));
 
--- Austreten darf jeder selbst, rauswerfen dürfen Admins.
+-- Austreten darf jeder selbst, rauswerfen darf jedes Mitglied.
 drop policy if exists group_members_delete on public.group_members;
 create policy group_members_delete on public.group_members
   for delete to authenticated
-  using (user_id = auth.uid() or public.is_group_admin(group_id));
+  using (user_id = auth.uid() or public.is_group_member(group_id));
 
 -- ----------------------------------------------------------- game_sessions
 drop policy if exists game_sessions_select on public.game_sessions;
@@ -239,15 +241,15 @@ create policy player_economy_update_self on public.player_economy
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
--- --------------------------------------------------------- economy_ledger
+-- -------------------------------------------------------------- xp_ledger
 -- Append-only, nur eigene Buchungen sichtbar.
-drop policy if exists economy_ledger_select on public.economy_ledger;
-create policy economy_ledger_select on public.economy_ledger
+drop policy if exists xp_ledger_select on public.xp_ledger;
+create policy xp_ledger_select on public.xp_ledger
   for select to authenticated
   using (user_id = auth.uid());
 
-drop policy if exists economy_ledger_insert on public.economy_ledger;
-create policy economy_ledger_insert on public.economy_ledger
+drop policy if exists xp_ledger_insert on public.xp_ledger;
+create policy xp_ledger_insert on public.xp_ledger
   for insert to authenticated
   with check (user_id = auth.uid());
 
@@ -268,52 +270,6 @@ drop policy if exists player_achievements_insert on public.player_achievements;
 create policy player_achievements_insert on public.player_achievements
   for insert to authenticated
   with check (user_id = auth.uid());
-
--- --------------------------------------------------------------- shop
-drop policy if exists shop_items_select on public.shop_items;
-create policy shop_items_select on public.shop_items
-  for select to authenticated
-  using (active);
-
--- Kein insert-Policy: Inventar füllt ausschließlich public.purchase_item().
-drop policy if exists player_inventory_select on public.player_inventory;
-create policy player_inventory_select on public.player_inventory
-  for select to authenticated
-  using (user_id = auth.uid() or public.shares_group_with(user_id));
-
-drop policy if exists player_loadout_select on public.player_loadout;
-create policy player_loadout_select on public.player_loadout
-  for select to authenticated
-  using (user_id = auth.uid() or public.shares_group_with(user_id));
-
--- Ausrüsten darf man nur, was man besitzt.
-drop policy if exists player_loadout_insert on public.player_loadout;
-create policy player_loadout_insert on public.player_loadout
-  for insert to authenticated
-  with check (
-    user_id = auth.uid()
-    and exists (
-      select 1 from public.player_inventory pi
-      where pi.user_id = auth.uid() and pi.item_id = player_loadout.item_id
-    )
-  );
-
-drop policy if exists player_loadout_update on public.player_loadout;
-create policy player_loadout_update on public.player_loadout
-  for update to authenticated
-  using (user_id = auth.uid())
-  with check (
-    user_id = auth.uid()
-    and exists (
-      select 1 from public.player_inventory pi
-      where pi.user_id = auth.uid() and pi.item_id = player_loadout.item_id
-    )
-  );
-
-drop policy if exists player_loadout_delete on public.player_loadout;
-create policy player_loadout_delete on public.player_loadout
-  for delete to authenticated
-  using (user_id = auth.uid());
 
 -- ------------------------------------------------------------ notifications
 drop policy if exists notifications_select on public.notifications;

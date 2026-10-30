@@ -18,7 +18,6 @@ export type EventSourceDb =
   | 'manual'
   | 'transcription'
   | 'external';
-export type ShopItemKind = 'avatar_frame' | 'board_theme' | 'card_design' | 'sound_pack';
 export type InviteResponse = 'yes' | 'maybe' | 'no';
 
 export type ProfileRow = {
@@ -81,7 +80,6 @@ export type SessionResultRow = {
   player_id: string;
   stats: Json;
   xp_awarded: number;
-  coins_awarded: number;
   stats_version: number;
   computed_at: string;
 }
@@ -139,13 +137,11 @@ export interface Database {
         user_id: string;
         xp: number;
         level: number;
-        coins: number;
         updated_at: string;
       }>;
-      economy_ledger: Table<{
+      xp_ledger: Table<{
         id: number;
         user_id: string;
-        kind: 'xp' | 'coins';
         delta: number;
         reason: string;
         session_id: string | null;
@@ -160,7 +156,6 @@ export interface Database {
         icon: string | null;
         rule: Json;
         xp_reward: number;
-        coin_reward: number;
         secret: boolean;
         active: boolean;
         sort_order: number;
@@ -172,19 +167,6 @@ export interface Database {
         session_id: string | null;
         progress: Json;
       }>;
-      shop_items: Table<{
-        id: string;
-        kind: ShopItemKind;
-        name: string;
-        description: string | null;
-        price_coins: number;
-        payload: Json;
-        min_level: number;
-        active: boolean;
-        sort_order: number;
-      }>;
-      player_inventory: Table<{ user_id: string; item_id: string; acquired_at: string }>;
-      player_loadout: Table<{ user_id: string; kind: ShopItemKind; item_id: string }>;
       notifications: Table<NotificationRow>;
       play_invites: Table<{
         id: string;
@@ -216,10 +198,6 @@ export interface Database {
         Args: { p_limit?: number };
         Returns: { tag: string; last_used: string; uses: number }[];
       };
-      purchase_item: {
-        Args: { p_item_id: string };
-        Returns: { user_id: string; item_id: string; acquired_at: string };
-      };
       create_play_invite: {
         Args: {
           p_group_id: string;
@@ -243,7 +221,6 @@ export interface Database {
       group_role: GroupRole;
       session_status: SessionStatus;
       event_source: EventSourceDb;
-      shop_item_kind: ShopItemKind;
       invite_response: InviteResponse;
     };
     CompositeTypes: Record<string, never>;

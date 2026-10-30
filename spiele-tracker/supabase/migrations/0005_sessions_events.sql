@@ -134,7 +134,6 @@ create table if not exists public.session_results (
   player_id     uuid not null references public.profiles (id) on delete cascade,
   stats         jsonb not null default '{}'::jsonb,
   xp_awarded    integer not null default 0,
-  coins_awarded integer not null default 0,
   stats_version integer not null default 1,
   computed_at   timestamptz not null default now(),
   primary key (session_id, player_id)

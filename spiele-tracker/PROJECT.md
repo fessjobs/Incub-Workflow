@@ -5,7 +5,8 @@ implementiertes Spiel wird ein Dart-Trainingsspiel ("Round the Clock auf
 Zeit"); die Architektur ist von Anfang an auf beliebige weitere Spiele als
 Plugin ausgelegt.
 
-**Stand: Block 1 und 2 abgeschlossen.** Siehe [Fahrplan](#fahrplan).
+**Stand: Block 1 und 2 abgeschlossen, Fundament auf die Antworten vom 30.10.
+angepasst.** Siehe [Entschieden](#entschieden) und [Fahrplan](#fahrplan).
 
 ---
 
@@ -33,6 +34,52 @@ laufende Beweis: es funktioniert überall, ohne dass die App es kennt.
 **4. Zeit über `performance.now()`, nicht `Date.now()`.**
 Monoton – eine Systemzeitkorrektur mitten in der Session darf die
 Zeitstatistiken nicht verschieben.
+
+**5. Mehrspieler heißt ein Handy, das herumgereicht wird.**
+Keine Geräte-Synchronisierung, kein Live-Zuschauen. Wer am Abwurfpunkt steht,
+ist Zustand dieses einen Geräts; der Wechsel landet als `player_change`-Event
+im Log. `tMs` läuft durchgehend über die ganze Session, auch über Wechsel
+hinweg – wo ein Spiel pro Spieler eine eigene Uhr braucht, markiert es den
+Beginn mit einem eigenen Event und rechnet relativ dazu.
+
+---
+
+## Entschieden
+
+Beantwortet am 30. Oktober. Was davon den Bau verändert hat:
+
+| Frage | Antwort | Folge im Code |
+| --- | --- | --- |
+| Gruppengröße | 7 bis 15 | Ranglisten brauchen keine Seitenumbrüche |
+| Zusammen oder allein | Beides, halbe-halbe | Hülle unterstützt 1..n Spieler je Session |
+| Ein Handy oder mehrere | **Ein Handy** | Kein Realtime-Sync zwischen Geräten |
+| Live zuschauen | Nein | Realtime bleibt auf Benachrichtigungen beschränkt |
+| Erstes Spiel | **Round the Clock, 501, Shanghai, Cutthroat …** | Geteiltes Dart-Fundament statt einem Spiel |
+| Treffer zählt | Single, Double, Triple – alles | Keine Multiplikatoren im Fortschritt |
+| Nach der 20 | Schluss, kein Bull | Fortschritt endet bei 20 |
+| Zeit abgelaufen | Zählt voll mit erreichter Zahl | Abbrüche gehen in die Rangliste |
+| Pfeile pro Runde | Immer 6 | Fest, nicht konfigurierbar |
+| Geräte | **Überwiegend iPhone** | Sprache ist nicht der Hauptweg |
+| Eingabe | **Tap-Board, Sprache zuschaltbar** | Board ist Kernfunktion, Sprache ein Extra |
+| Lautstärke | Partyraum mit Musik | Bestätigt: Sprache wäre unzuverlässig |
+| Audio-Mitschnitt | Nur mit sichtbarem Hinweis und Schalter | Aufnahme braucht Indikator, Standard aus |
+| Motivation | Rangliste und eigener Fortschritt gleichwertig | Startseite zeigt beides |
+| Sichtbarkeit | Alles offen | Keine Privatschaltung nötig |
+| Coins und Shop | **Nein, nur Level und XP** | Shop-Schema wieder entfernt |
+| Spielerkarte | Sofort zeigen, mit Hinweis | Kein Rookie-Zustand, nur ein Konfidenz-Hinweis |
+| Gastzugang | Nein, alle melden sich an | Keine Platzhalter-Spieler im Datenmodell |
+| Hosting | Kostenlos, egal wo | Statischer Build, Supabase als Backend |
+| Rechte | Alle dürfen alles | Policies auf `is_group_member` gelockert |
+
+Zwei Stellen, an denen ich bewusst nicht wörtlich umgesetzt habe:
+
+- **„Alle dürfen alles"** gilt fürs Umbenennen und Rauswerfen. Das *Löschen*
+  einer Gruppe bleibt beim Gründer, weil es per Cascade alle Sessions und das
+  gesamte Event-Log der Gruppe mitnimmt. Unumkehrbar und von jedem auslösbar
+  wäre eine schlechte Kombination.
+- **Audio-Mitschnitt** ist zwar erlaubt, wandert aber ans Ende des Fahrplans.
+  Sein einziger Zweck war das Nachkorrigieren der Spracherkennung – und die ist
+  jetzt ein Extra. Aufwand und Nutzen passen nicht mehr zusammen.
 
 ---
 
@@ -155,18 +202,15 @@ Whisper-Nachkorrektur.
 
 ### Progression
 
-`player_economy` (XP, Level, Coins) als Projektion über das append-only
-`economy_ledger`. `achievements` ist eine **deklarative Regeltabelle** – ein
-neues Achievement ist ein `insert`, keine Code-Änderung:
+`player_economy` (XP und Level) als Projektion über das append-only
+`xp_ledger`. Keine Währung, kein Shop, keine Kosmetik – so entschieden am
+30.10. `achievements` ist eine **deklarative Regeltabelle**: ein neues
+Achievement ist ein `insert`, keine Code-Änderung:
 
 ```json
 { "scope": "session", "metric": "hitRate", "op": "gte",
   "value": 0.5, "gameId": "dart-clock" }
 ```
-
-`shop_items` / `player_inventory` / `player_loadout`: ausschließlich Kosmetik,
-keine Pay-to-Win-Mechanik, keine Echtgeldanbindung. Käufe laufen über
-`purchase_item()` serverseitig, damit der Preis nicht umgangen werden kann.
 
 ### Benachrichtigungen
 
@@ -274,18 +318,55 @@ npm run build
 
 ## Fahrplan
 
+Nach den Antworten vom 30.10. umgestellt: statt eines tief gebauten Dart-Spiels
+erst ein geteiltes Fundament, auf dem mehrere Dart-Spiele sitzen. Das kostet in
+Block 3 etwas mehr und zahlt sich ab dem zweiten Spiel aus.
+
 | Block | Inhalt | Stand |
 | --- | --- | --- |
 | 1 | Setup, Schema, Migrationen, RLS, Auth-Flow | ✅ |
 | 2 | Game-Registry, Plugin-Interface, Dummy-Spiel | ✅ |
-| 3 | Dart: Setup, Timer, Rundenlogik, Event-Logging, Tap-Board | offen |
-| 4 | Spracherkennung, Normalisierer, Korrektur-UI | offen |
+| 2b | Mehrspieler an einem Gerät, Shop entfernt, Rechte gelockert | ✅ |
+| 3 | **Dart-Fundament**: SVG-Board, Segmentmodell, Eingabemodi, Rundenlogik | offen |
+| 4 | **Round the Clock auf Zeit** als erstes echtes Spiel | offen |
 | 5 | Statistik-Engine und Auswertungs-Screens | offen |
 | 6 | Profile, Gruppen, Logbuch, Ranglisten | offen |
-| 7 | Level, Coins, Shop, Achievements, Spielerkarten | offen |
-| 8 | Benachrichtigungen | offen |
+| 7 | **501** („normal") | offen |
+| 8 | **Shanghai** und **Cutthroat Cricket** | offen |
+| 9 | Level, XP, Achievements, Spielerkarten | offen |
+| 10 | Benachrichtigungen | offen |
+| 11 | Spracherkennung als Extra, nur wo der Browser mitspielt | offen |
 
----
+### Warum Sprache nach hinten gerutscht ist
+
+Die ursprüngliche Vorlage setzte die Web Speech API als Hauptweg. Drei Antworten
+sprechen dagegen: überwiegend iPhones, Partyraum mit Musik, und der Wunsch nach
+dem Tap-Board als Standard. Dazu kommt, dass die Browserunterstützung auf iOS
+bestenfalls als „teilweise" geführt wird und der Dauerbetrieb über 120 Sekunden
+nirgends belastbar dokumentiert ist.
+
+Die Sprache ist nicht gestrichen – das Event-Log kennt `source = 'speech'` und
+`source = 'transcription'` von Anfang an. Sie wird nur erst gebaut, wenn das
+Board steht, und dann mit einem ehrlichen Hinweis, falls das Gerät sie nicht
+trägt.
+
+### Was das Dart-Fundament enthält
+
+Alle vier gewünschten Spiele brauchen dasselbe Unterbau-Material, deshalb liegt
+es in `src/games/_dart/` und nicht in einem einzelnen Spiel:
+
+- **Segmentmodell**: die 82 Felder, Nachbarschaft auf dem Zahlenkranz
+  (die 20 liegt neben der 1 und der 5, nicht neben der 19), Punktwerte
+- **Board-Komponente**: maßstabsgetreues SVG, einzeln antippbar, mit
+  vergrößerten Hitboxen nahe am Bull
+- **Eingabemodi**: Tap-Board, Treffer/Daneben, später Sprache – alle liefern
+  dasselbe `throw`-Event
+- **Rundenlogik**: Pfeilzähler, Ziehphase als `retrieval_start` /
+  `retrieval_end`, Spielerwechsel
+- **Geteilte Kennzahlen**: Trefferquote, Würfe pro Minute, Ziehzeiten
+
+Die einzelnen Spiele darüber sind dann vergleichsweise klein: sie bestimmen das
+Ziel, wann gewechselt wird und wie gewonnen wird.
 
 ## Offene Punkte
 
@@ -304,8 +385,20 @@ sollten:
   Falls das stört: `created_by` nullable machen und Sessions behalten.
 - **`session_results` kann veralten.** `stats_version` ist vorhanden, ein
   Nachrechnen-Job noch nicht.
-- **Mehrspieler-Sessions** sind im Schema vorgesehen (`session_players`),
-  aber weder in der Hülle noch im Demo-Spiel umgesetzt.
+- **Mehrspieler** ist in der Hülle umgesetzt (Spielerauswahl, Reihenfolge,
+  `player_change`-Events, ein Ergebnis je Spieler), aber noch von keinem Spiel
+  genutzt – das Demo-Spiel ist einspielerig. Erster echter Test wird Block 4.
+- **Die Spielerauswahl zeigt alle sichtbaren Profile**, nicht die Mitglieder
+  einer bestimmten Gruppe. Solange es keine Gruppen-UI gibt (Block 6), ist das
+  dasselbe, weil RLS ohnehin nur Gruppenmitglieder durchlässt.
+- **Ranglisten brauchen eine Mindestzahl an Sessions.** Weil die Spielerkarte
+  jetzt sofort echte Werte zeigt, wird eine einzelne Glückssession sonst ganz
+  oben stehen. Vorschlag für Block 6: Sessions-Zähler neben jedem Eintrag und
+  ein Filter „ab 5 Sessions".
+- **XP ohne Währung.** Da der Shop gestrichen ist, ist XP reine
+  Fortschrittsanzeige. Das ist in Ordnung, nimmt dem Level-Up aber etwas von
+  seinem Zweck – falls es sich schal anfühlt, wäre eine kleine Freischaltung
+  (Board-Farbe) der naheliegende Nachschlag.
 - **Bundle-Größe** liegt bei ~464 kB (131 kB gzip), im Wesentlichen
   supabase-js. Vor Block 5 (Recharts) lohnt ein Blick auf Code-Splitting.
 - **Web-Push** funktioniert ohne PWA-Installation nur eingeschränkt und auf iOS

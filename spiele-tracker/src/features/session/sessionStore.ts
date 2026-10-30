@@ -1,18 +1,27 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
-import type { AppendableEvent, GameEvent, StatsResult } from '@/games/types';
+import type {
+  AppendableEvent,
+  GameEvent,
+  SessionPlayer,
+  StatsResult,
+} from '@/games/types';
 import type { Json } from '@/lib/database.types';
 
 /**
  * Die generische Session-Hülle.
  *
- * Sie kennt kein einziges Spiel. Sie legt die Session an, vergibt tMs, puffert
- * Events lokal und schreibt sie asynchron nach Supabase. Ein Spiel ruft nur
- * append() und finish() – alles andere passiert hier.
+ * Sie kennt kein einziges Spiel. Sie legt die Session an, vergibt tMs, führt
+ * die Teilnehmerliste, puffert Events lokal und schreibt sie asynchron nach
+ * Supabase. Ein Spiel ruft append(), setActivePlayer() und finish().
  *
  * Warum lokal puffern: neben der Dartscheibe ist das WLAN oft mies. Der
  * Live-Screen darf nie auf eine Netzwerkantwort warten, und ein Wurf darf
  * nicht verloren gehen, nur weil gerade ein Request hängt.
+ *
+ * Mehrspieler läuft über ein Handy, das herumgereicht wird (Entscheidung vom
+ * 30.10.). Es gibt deshalb bewusst keine Geräte-Synchronisierung: wer am
+ * Abwurfpunkt steht, ist reiner Zustand dieses einen Geräts.
  */
 
 export interface LocalEvent extends GameEvent {
@@ -22,6 +31,8 @@ export interface LocalEvent extends GameEvent {
   id?: number;
   /** true, sobald die Zeile in der Datenbank liegt. */
   persisted: boolean;
+  /** Korrekturziel, solange dessen Server-ID noch fehlt. */
+  correctsLocalId?: number;
 }
 
 export type SessionPhase = 'idle' | 'starting' | 'running' | 'finishing' | 'finished' | 'error';
@@ -29,7 +40,10 @@ export type SessionPhase = 'idle' | 'starting' | 'running' | 'finishing' | 'fini
 interface StartOptions {
   gameId: string;
   config: unknown;
-  playerId: string;
+  /** Mindestens einer. Die Reihenfolge ist die Spielreihenfolge. */
+  players: SessionPlayer[];
+  /** Wer die Session anlegt – das ist der angemeldete Nutzer am Gerät. */
+  createdBy: string;
   groupId?: string | null;
   tags?: string[];
 }
@@ -39,9 +53,10 @@ interface SessionState {
   sessionId: string | null;
   gameId: string | null;
   config: unknown;
-  playerId: string | null;
+  players: SessionPlayer[];
+  activePlayerId: string | null;
   events: LocalEvent[];
-  stats: StatsResult | null;
+  statsByPlayer: Record<string, StatsResult>;
   error: string | null;
   /** Anzahl noch nicht geschriebener Events – fürs UI ("3 ausstehend"). */
   pendingCount: number;
@@ -49,22 +64,25 @@ interface SessionState {
   start: (options: StartOptions) => Promise<string | null>;
   append: (event: AppendableEvent) => void;
   correct: (targetId: number | undefined, patch: AppendableEvent) => void;
-  finish: (stats: StatsResult) => Promise<void>;
+  setActivePlayer: (playerId: string) => void;
+  finish: (statsByPlayer: Record<string, StatsResult>) => Promise<void>;
   reset: () => void;
-  /** Nur für Tests: erlaubt das Setzen eines Startpunkts. */
-  _debugSetEvents: (events: LocalEvent[]) => void;
 }
 
 /**
  * Zeitbasis. performance.now() statt Date.now(), weil es monoton ist – eine
  * Systemzeitkorrektur mitten in der Session darf die Zeitstatistiken nicht
  * verschieben.
+ *
+ * tMs zählt über die ganze Session, auch über Spielerwechsel hinweg. Wo ein
+ * Spiel pro Spieler eine eigene Uhr braucht (Round the Clock auf Zeit),
+ * markiert es den Beginn mit einem eigenen Event und rechnet in computeStats
+ * relativ dazu. So bleibt das Log eine durchgehende Zeitachse.
  */
 let startPerf = 0;
 let localIdCounter = 0;
 let clientSeqCounter = 0;
 
-/** Läuft im Hintergrund und schreibt gepufferte Events weg. */
 let flushTimer: number | undefined;
 let flushing = false;
 
@@ -73,14 +91,26 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   sessionId: null,
   gameId: null,
   config: null,
-  playerId: null,
+  players: [],
+  activePlayerId: null,
   events: [],
-  stats: null,
+  statsByPlayer: {},
   error: null,
   pendingCount: 0,
 
-  start: async ({ gameId, config, playerId, groupId, tags }) => {
-    set({ phase: 'starting', error: null, events: [], stats: null, pendingCount: 0 });
+  start: async ({ gameId, config, players, createdBy, groupId, tags }) => {
+    if (players.length === 0) {
+      set({ phase: 'error', error: 'Ohne Spieler lässt sich keine Session starten.' });
+      return null;
+    }
+
+    set({
+      phase: 'starting',
+      error: null,
+      events: [],
+      statsByPlayer: {},
+      pendingCount: 0,
+    });
     localIdCounter = 0;
     clientSeqCounter = 0;
 
@@ -90,7 +120,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       .insert({
         game_id: gameId,
         group_id: groupId ?? null,
-        created_by: playerId,
+        created_by: createdBy,
         config: config as Json,
         status: 'running',
         started_at: now.toISOString(),
@@ -107,7 +137,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return null;
     }
 
-    await supabase.from('session_players').insert({ session_id: data.id, player_id: playerId });
+    const { error: playerError } = await supabase.from('session_players').insert(
+      players.map((p, seat) => ({ session_id: data.id, player_id: p.id, seat })),
+    );
+    if (playerError) {
+      set({ phase: 'error', error: playerError.message });
+      return null;
+    }
 
     const cleanTags = normaliseTags(tags ?? []);
     if (cleanTags.length > 0) {
@@ -122,20 +158,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       sessionId: data.id,
       gameId,
       config,
-      playerId,
+      players,
+      activePlayerId: players[0].id,
     });
     scheduleFlush();
     return data.id;
   },
 
   append: (event) => {
-    const { sessionId, playerId, phase } = get();
+    const { sessionId, activePlayerId, phase } = get();
     if (!sessionId || (phase !== 'running' && phase !== 'finishing')) return;
 
     const local: LocalEvent = {
       localId: ++localIdCounter,
       sessionId,
-      playerId: event.playerId ?? playerId,
+      // Ohne ausdrückliche Angabe gehört ein Event dem, der gerade wirft.
+      playerId: event.playerId !== undefined ? event.playerId : activePlayerId,
       // Wenn ein Spiel selbst einen Zeitpunkt mitgibt, gilt der. Die
       // Spracherkennung nutzt das, um den Zeitpunkt des ersten
       // Zwischenergebnisses zu setzen statt den des finalen.
@@ -163,23 +201,45 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     get().append({
       ...patch,
-      // Die Korrektur erbt den Zeitpunkt des Originals, sonst verschieben sich
-      // sämtliche Zeitstatistiken.
+      // Die Korrektur erbt den Zeitpunkt und den Spieler des Originals, sonst
+      // verschieben sich sämtliche Zeitstatistiken.
       tMs: patch.tMs ?? target?.tMs,
+      playerId: patch.playerId ?? target?.playerId,
     });
 
-    if (target) {
-      // Verknüpfung erst beim Flush setzen, wenn die Server-ID des Originals
-      // bekannt ist. Bis dahin merken wir sie uns lokal.
-      const correction = get().events[get().events.length - 1];
-      correction.correctsEventId = target.id ?? null;
-      (correction as LocalEvent & { correctsLocalId?: number }).correctsLocalId = target.localId;
-    }
+    if (!target) return;
+
+    set((state) => {
+      const events = [...state.events];
+      const i = events.length - 1;
+      events[i] = {
+        ...events[i],
+        correctsEventId: target.id ?? null,
+        correctsLocalId: target.localId,
+      };
+      return { events };
+    });
   },
 
-  finish: async (stats) => {
-    const { sessionId, playerId } = get();
-    set({ phase: 'finishing', stats });
+  setActivePlayer: (playerId) => {
+    const { activePlayerId, players } = get();
+    if (playerId === activePlayerId) return;
+    if (!players.some((p) => p.id === playerId)) return;
+
+    // Der Wechsel gehört ins Log, sonst lässt sich später nicht
+    // rekonstruieren, wer wann am Abwurfpunkt stand.
+    get().append({
+      type: 'player_change',
+      source: 'system',
+      payload: { from: activePlayerId, to: playerId },
+      playerId,
+    });
+    set({ activePlayerId: playerId });
+  },
+
+  finish: async (statsByPlayer) => {
+    const { sessionId } = get();
+    set({ phase: 'finishing', statsByPlayer });
     if (!sessionId) {
       set({ phase: 'finished' });
       return;
@@ -192,14 +252,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       .update({ status: 'finished', ended_at: new Date().toISOString() })
       .eq('id', sessionId);
 
-    if (playerId) {
-      await supabase.from('session_results').upsert({
-        session_id: sessionId,
-        player_id: playerId,
-        stats: stats as unknown as Json,
-        stats_version: STATS_VERSION,
-        computed_at: new Date().toISOString(),
-      });
+    const rows = Object.entries(statsByPlayer).map(([playerId, stats]) => ({
+      session_id: sessionId,
+      player_id: playerId,
+      stats: stats as unknown as Json,
+      stats_version: STATS_VERSION,
+      computed_at: new Date().toISOString(),
+    }));
+
+    if (rows.length > 0) {
+      await supabase.from('session_results').upsert(rows);
     }
 
     stopFlush();
@@ -213,15 +275,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       sessionId: null,
       gameId: null,
       config: null,
-      playerId: null,
+      players: [],
+      activePlayerId: null,
       events: [],
-      stats: null,
+      statsByPlayer: {},
       error: null,
       pendingCount: 0,
     });
   },
-
-  _debugSetEvents: (events) => set({ events }),
 }));
 
 /**
@@ -279,9 +340,7 @@ async function flushEvents(): Promise<void> {
     useSessionStore.setState((current) => {
       const byLocalId = new Map(pending.map((e, i) => [e.localId, data[i]?.id]));
       const events = current.events.map((e) =>
-        byLocalId.has(e.localId)
-          ? { ...e, id: byLocalId.get(e.localId), persisted: true }
-          : e,
+        byLocalId.has(e.localId) ? { ...e, id: byLocalId.get(e.localId), persisted: true } : e,
       );
       return { events, pendingCount: events.filter((e) => !e.persisted).length };
     });
@@ -292,9 +351,8 @@ async function flushEvents(): Promise<void> {
 
 function resolveCorrectsId(event: LocalEvent, all: LocalEvent[]): number | null {
   if (event.correctsEventId) return event.correctsEventId;
-  const localRef = (event as LocalEvent & { correctsLocalId?: number }).correctsLocalId;
-  if (localRef === undefined) return null;
-  return all.find((e) => e.localId === localRef)?.id ?? null;
+  if (event.correctsLocalId === undefined) return null;
+  return all.find((e) => e.localId === event.correctsLocalId)?.id ?? null;
 }
 
 /** 'YYYY-MM-DDTHH:mm:ss' in lokaler Zeit, ohne Zonenangabe. */

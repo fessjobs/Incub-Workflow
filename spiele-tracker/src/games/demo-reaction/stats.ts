@@ -1,4 +1,4 @@
-import type { GameEvent, StatsResult } from '../types';
+import type { GameEvent, StatsContext, StatsResult } from '../types';
 import type { ReactionConfig } from './config';
 
 /**
@@ -11,11 +11,18 @@ import type { ReactionConfig } from './config';
  *
  * Ein tap gehört zum letzten signal davor. Die Reaktionszeit ist die Differenz
  * der tMs-Werte. Genau dieses Muster nutzt später auch das Dart-Spiel.
+ *
+ * Das Filtern nach Spieler macht jedes Spiel selbst – die Hülle kann das nicht
+ * übernehmen, weil manche Kennzahlen die Würfe der Gegner brauchen.
  */
-export function computeReactionStats(events: GameEvent[], config: ReactionConfig): StatsResult {
-  const ordered = [...events].sort(
-    (a, b) => a.tMs - b.tMs || (a.clientSeq ?? 0) - (b.clientSeq ?? 0),
-  );
+export function computeReactionStats(
+  events: GameEvent[],
+  config: ReactionConfig,
+  ctx: StatsContext,
+): StatsResult {
+  const ordered = events
+    .filter((e) => ctx.playerId === null || e.playerId === ctx.playerId)
+    .sort((a, b) => a.tMs - b.tMs || (a.clientSeq ?? 0) - (b.clientSeq ?? 0));
 
   const reactions: number[] = [];
   let openSignalAt: number | null = null;

@@ -34,10 +34,8 @@ truncate table
   public.play_invite_responses,
   public.play_invites,
   public.notifications,
-  public.player_loadout,
-  public.player_inventory,
   public.player_achievements,
-  public.economy_ledger,
+  public.xp_ledger,
   public.player_economy,
   public.personal_bests,
   public.session_results,
@@ -205,44 +203,60 @@ exception
     raise notice 'ok  C sieht die fremde Session nicht einmal';
 end $$;
 
--- ------------------------------------------------------------- Oekonomie
+-- ----------------------------------------------------------------- XP
 set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 
-insert into public.player_economy (user_id, xp, level, coins)
-values ('11111111-1111-1111-1111-111111111111', 900, 5, 500);
+insert into public.player_economy (user_id, xp, level)
+values ('11111111-1111-1111-1111-111111111111', 900, 5);
 
-select public.assert_true((select item_id = 'frame_neon' from public.purchase_item('frame_neon')),
-  'A kauft einen Rahmen fuer 400 Coins');
-select public.assert_eq((select coins from public.player_economy where user_id = auth.uid()), 100,
-  'Coins wurden abgebucht');
-select public.assert_eq((select count(*)::int from public.economy_ledger where reason = 'purchase'), 1,
-  'Der Kauf steht im Ledger');
+insert into public.xp_ledger (user_id, delta, reason)
+values ('11111111-1111-1111-1111-111111111111', 120, 'session');
 
--- Zu teuer: der zweite Kauf muss scheitern.
+select public.assert_eq((select xp from public.player_economy where user_id = auth.uid()), 900,
+  'A sieht seinen eigenen XP-Stand');
+select public.assert_eq((select count(*)::int from public.xp_ledger), 1,
+  'Die Buchung steht im Ledger');
+
+-- Das Ledger ist append-only.
 do $$
 begin
-  perform public.purchase_item('card_holo');
-  raise exception 'FAIL: Kauf ohne Deckung war moeglich';
-exception
-  when sqlstate 'P0001' then
-    raise notice 'ok  Kauf ohne ausreichende Coins wird abgelehnt';
+  update public.xp_ledger set delta = 99999;
+  if found then
+    raise exception 'FAIL: update auf xp_ledger war moeglich';
+  end if;
+  raise notice 'ok  update auf xp_ledger greift ins Leere (append-only)';
 end $$;
 
--- Nur Besitz darf ausgeruestet werden.
-insert into public.player_loadout (user_id, kind, item_id)
-values (auth.uid(), 'avatar_frame', 'frame_neon');
-select public.assert_eq((select count(*)::int from public.player_loadout), 1,
-  'Gekauftes Item laesst sich ausruesten');
+-- Fremde XP-Staende bleiben unsichtbar, solange keine Gruppe geteilt wird.
+set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
+select public.assert_eq((select count(*)::int from public.player_economy), 0,
+  'C sieht den XP-Stand von A nicht');
+select public.assert_eq((select count(*)::int from public.xp_ledger), 0,
+  'C sieht fremde Buchungen nicht');
 
+-- B teilt eine Gruppe mit A und darf den Stand sehen.
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select public.assert_eq((select count(*)::int from public.player_economy), 1,
+  'B sieht den XP-Stand des Gruppenmitglieds');
+
+-- ------------------------------------------------- Rechte in der Gruppe
+-- Entscheidung vom 30.10.: jedes Mitglied darf verwalten. B ist nur
+-- 'member', muss die Gruppe aber trotzdem umbenennen koennen.
+update public.groups set name = 'Freitagsrunde' where id = :'gid';
+select public.assert_eq((select name from public.groups where id = :'gid'), 'Freitagsrunde',
+  'Ein einfaches Mitglied darf die Gruppe umbenennen');
+
+-- Loeschen bleibt beim Gruender, weil es die gesamte Historie mitnimmt.
 do $$
 begin
-  insert into public.player_loadout (user_id, kind, item_id)
-  values (auth.uid(), 'card_design', 'card_holo');
-  raise exception 'FAIL: nicht besessenes Item konnte ausgeruestet werden';
-exception
-  when insufficient_privilege then
-    raise notice 'ok  Nicht besessene Items lassen sich nicht ausruesten';
+  delete from public.groups;
+  if found then
+    raise exception 'FAIL: ein einfaches Mitglied konnte die Gruppe loeschen';
+  end if;
+  raise notice 'ok  Loeschen der Gruppe bleibt dem Gruender vorbehalten';
 end $$;
+
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 
 -- --------------------------------------------------------- Spielaufruf
 select public.assert_true(

@@ -47,6 +47,18 @@ export interface GameEvent<TPayload = Record<string, unknown>> {
   clientSeq?: number;
 }
 
+// ----------------------------------------------------------- Spieler
+
+/**
+ * Ein Teilnehmer einer Session. Alle Spieler haben einen Account — Gäste
+ * ohne Anmeldung gibt es bewusst nicht (Entscheidung vom 30.10.).
+ */
+export interface SessionPlayer {
+  id: string;
+  displayName: string;
+  avatarUrl?: string | null;
+}
+
 // ------------------------------------------------------------ Statistik
 
 /**
@@ -68,6 +80,16 @@ export interface StatsResult {
 }
 
 /** Wie eine Metrik dem Menschen gezeigt wird. */
+/**
+ * Was computeStats über die Session weiß, das nicht im Event-Log steht.
+ * Bei Mehrspieler-Sessions wird computeStats einmal je Spieler aufgerufen;
+ * `playerId` sagt, für wen gerade gerechnet wird.
+ */
+export interface StatsContext {
+  playerId: string | null;
+  players: SessionPlayer[];
+}
+
 export interface MetricFormat {
   /** 'number' | 'percent' | 'duration' | 'perMinute' */
   kind: 'number' | 'percent' | 'duration' | 'perMinute';
@@ -132,13 +154,32 @@ export interface GamePlayProps<TConfig> {
   elapsedMs: number;
   /** Beendet die Session und springt zur Auswertung. */
   finish: () => void;
-  playerId: string | null;
+
+  /** Alle Teilnehmer dieser Session, in Spielreihenfolge. */
+  players: SessionPlayer[];
+  /**
+   * Wer gerade an der Reihe ist. Bei Einzelsessions der einzige Spieler.
+   * Events, die das Spiel anhängt, werden automatisch diesem Spieler
+   * zugeordnet.
+   */
+  activePlayerId: string | null;
+  /**
+   * Wechselt den Spieler am Abwurfpunkt. Die Hülle schreibt dazu ein
+   * `player_change`-Event – wann gewechselt wird, bestimmt das Spiel, denn
+   * das ist eine Regelfrage (ganzer Durchgang bei Round the Clock, alle drei
+   * Pfeile bei 501).
+   */
+  setActivePlayer: (playerId: string) => void;
 }
 
 export interface GameResultProps<TConfig> {
   config: TConfig;
   events: GameEvent[];
+  /** Das Ergebnis des angezeigten Spielers. */
   stats: StatsResult;
+  /** Bei Mehrspieler-Sessions alle Ergebnisse, nach Spieler-ID. */
+  allStats: Record<string, StatsResult>;
+  players: SessionPlayer[];
 }
 
 /** Was ein Spiel beim Anhängen angeben muss – der Rest kommt von der Hülle. */
@@ -174,18 +215,27 @@ export interface GameDefinition<TConfig = unknown> {
 
   /**
    * Der Kern. Muss eine reine Funktion sein: gleiche Events plus gleiche
-   * Config ergeben immer dasselbe Ergebnis. Nur so lassen sich neue
-   * Auswertungen rückwirkend auf alte Sessions anwenden.
+   * Config plus gleicher Kontext ergeben immer dasselbe Ergebnis. Nur so
+   * lassen sich neue Auswertungen rückwirkend auf alte Sessions anwenden.
+   *
+   * Bei mehreren Spielern wird einmal je Spieler aufgerufen. Das Spiel
+   * filtert die Events selbst nach ctx.playerId – die Hülle tut das nicht,
+   * weil manche Kennzahlen den Gegner brauchen (Cutthroat).
    */
-  computeStats: (events: GameEvent[], config: TConfig) => StatsResult;
+  computeStats: (events: GameEvent[], config: TConfig, ctx: StatsContext) => StatsResult;
 
   leaderboards: LeaderboardDef[];
   xpFormula: (result: StatsResult) => number;
 
   /** Optional: Attribute für die Sammelkarte (Block 7). */
   playerCardAttributes?: PlayerCardAttributeDef[];
-  /** Ab wie vielen Sessions zeigt die Karte echte Werte statt "Rookie"? */
-  minSessionsForCard?: number;
+  /**
+   * Ab wie vielen Sessions gilt die Karte als aussagekräftig? Unterhalb
+   * dieser Zahl zeigt die Karte trotzdem echte Werte, aber mit dem Hinweis
+   * "noch wenig Daten" (Entscheidung vom 30.10. – kein Rookie-Zustand, der
+   * die Werte versteckt).
+   */
+  confidentAfterSessions?: number;
 }
 
 /**
