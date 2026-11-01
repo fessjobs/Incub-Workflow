@@ -62,7 +62,14 @@ export interface GameEvent<TPayload = Record<string, unknown>> {
 export interface SessionPlayer {
   id: string;
   displayName: string;
+  /** Hochgeladenes Foto als Data-URL, falls vorhanden. */
   avatarUrl?: string | null;
+  /** Emoji als Ersatzbild, wenn kein Foto da ist. */
+  emoji?: string | null;
+  /** Farbe des Spielers – zieht sich durch Avatar, Tabellen und Karten. */
+  color?: string | null;
+  /** Frei gewählter Spitzname/Typ, z.B. "Der Ruhige". */
+  character?: string | null;
 }
 
 // ------------------------------------------------------------ Statistik

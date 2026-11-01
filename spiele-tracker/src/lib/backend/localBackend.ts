@@ -22,6 +22,17 @@ import type {
 
 const PREFIX = 'spiele-tracker.local.';
 
+/**
+ * Startbilder und Farben für neue Spieler. Jeder bekommt automatisch etwas
+ * Unterscheidbares, damit die Tabelle neben der Scheibe auf einen Blick
+ * lesbar ist – ändern kann man es danach jederzeit.
+ */
+export const PLAYER_EMOJI = ['🎯', '🔥', '🦊', '🐻', '🦅', '🐺', '🦁', '🐸', '🦈', '🐙'];
+export const PLAYER_COLORS = [
+  '#0891B2', '#E11D48', '#D97706', '#7C3AED',
+  '#059669', '#DB2777', '#2563EB', '#CA8A04',
+];
+
 interface Store {
   profiles: Profile[];
   currentUserId: string | null;
@@ -39,6 +50,7 @@ interface Store {
   }>;
   events: Array<NewEvent & { id: number }>;
   results: SessionResultRowInput[];
+  achievements: Record<string, string[]>;
   nextEventId: number;
 }
 
@@ -48,6 +60,7 @@ const EMPTY: Store = {
   sessions: [],
   events: [],
   results: [],
+  achievements: {},
   nextEventId: 1,
 };
 
@@ -106,6 +119,9 @@ function ensureCurrentUser(store: Store): Profile {
     avatarUrl: null,
     bio: null,
     favoriteGame: null,
+    emoji: PLAYER_EMOJI[0],
+    color: PLAYER_COLORS[0],
+    character: null,
   };
   store.profiles.push(me);
   store.currentUserId = me.id;
@@ -189,10 +205,20 @@ export const localBackend: Backend = {
         avatarUrl: null,
         bio: null,
         favoriteGame: null,
+        emoji: PLAYER_EMOJI[store.profiles.length % PLAYER_EMOJI.length],
+        color: PLAYER_COLORS[store.profiles.length % PLAYER_COLORS.length],
+        character: null,
       };
       store.profiles.push(profile);
       write(store);
       return profile;
+    },
+
+    async removeLocal(id) {
+      const store = read();
+      if (id === store.currentUserId) return; // sich selbst nicht
+      store.profiles = store.profiles.filter((p) => p.id !== id);
+      write(store);
     },
   },
 
@@ -260,6 +286,16 @@ export const localBackend: Backend = {
       return [...seen.keys()].slice(0, limit);
     },
 
+    async careerFor(playerId) {
+      const store = read();
+      const mine = store.sessions.filter(
+        (s) => s.endedAt !== null && s.playerIds.includes(playerId),
+      );
+      const byGame: Record<string, number> = {};
+      for (const s of mine) byGame[s.gameId] = (byGame[s.gameId] ?? 0) + 1;
+      return { sessionsPlayed: mine.length, byGame };
+    },
+
     async listRecent(limit): Promise<LoggedSession[]> {
       const store = read();
       return [...store.sessions]
@@ -273,6 +309,21 @@ export const localBackend: Backend = {
           tags: s.tags,
           playerIds: s.playerIds,
         }));
+    },
+  },
+
+  achievements: {
+    async unlocked(playerId) {
+      return read().achievements[playerId] ?? [];
+    },
+
+    async record(playerId, ids) {
+      if (ids.length === 0) return;
+      const store = read();
+      const current = new Set(store.achievements[playerId] ?? []);
+      for (const id of ids) current.add(id);
+      store.achievements[playerId] = [...current];
+      write(store);
     },
   },
 

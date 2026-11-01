@@ -5,7 +5,7 @@ implementiertes Spiel wird ein Dart-Trainingsspiel ("Round the Clock auf
 Zeit"); die Architektur ist von Anfang an auf beliebige weitere Spiele als
 Plugin ausgelegt.
 
-**Stand: Block 1 bis 4 abgeschlossen — die App ist spielbar.** Ohne
+**Stand: vier Dartspiele spielbar, mit Spielerprofilen und Auszeichnungen.** Ohne
 Supabase-Zugangsdaten startet sie im Testmodus und speichert alles im Browser.
 Siehe [Entschieden](#entschieden) und [Fahrplan](#fahrplan).
 
@@ -345,10 +345,11 @@ Block 3 etwas mehr und zahlt sich ab dem zweiten Spiel aus.
 | 3 | **Dart-Fundament**: SVG-Board, Segmentmodell, Eingabemodi, Rundenlogik | ✅ |
 | 4 | **Round the Clock auf Zeit** als erstes echtes Spiel | ✅ |
 | 5 | Statistik-Engine und Auswertungs-Screens | ✅ bis auf Heatmap und Sessionvergleich |
-| 6 | Profile, Gruppen, Logbuch, Ranglisten | offen |
-| 7 | **501** („normal") | offen |
-| 8 | **Shanghai** und **Cutthroat Cricket** | offen |
-| 9 | Level, XP, Achievements, Spielerkarten | offen |
+| 6 | **501**, **Cricket** samt Cutthroat, **Shanghai** | ✅ |
+| 7 | Spielerprofile: Name, Bild, Farbe, Charakter | ✅ |
+| 8 | Auszeichnungen als Regeltabelle | ✅ |
+| 9 | Profile im echten Betrieb, Gruppen, Logbuch, Ranglisten | offen |
+| 9b | Level und XP-Kurve, Spielerkarten | offen |
 | 10 | Benachrichtigungen | offen |
 | 11 | Spracherkennung als Extra, nur wo der Browser mitspielt | offen |
 

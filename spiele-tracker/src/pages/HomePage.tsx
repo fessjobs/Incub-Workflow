@@ -30,8 +30,23 @@ export function HomePage() {
         <p className="text-slate-400">Noch kein Spiel registriert.</p>
       )}
 
+      <Link
+        to="/spieler"
+        className="mt-6 flex items-center gap-3 rounded-2xl border border-surface-border p-4 active:bg-surface-raised"
+      >
+        <span className="text-2xl" aria-hidden>
+          👥
+        </span>
+        <span>
+          <span className="block font-semibold">Spieler</span>
+          <span className="block text-sm text-slate-400">
+            Namen, Bilder, Farben und Charaktere verwalten
+          </span>
+        </span>
+      </Link>
+
       <p className="mt-8 text-sm text-slate-600">
-        Logbuch, Ranglisten, Profil und Shop folgen in den nächsten Blöcken.
+        Logbuch und Ranglisten folgen als Nächstes.
       </p>
     </Layout>
   );

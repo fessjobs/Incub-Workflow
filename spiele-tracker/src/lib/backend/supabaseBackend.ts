@@ -182,6 +182,31 @@ export const supabaseBackend: Backend = {
       return (data ?? []).map((row) => row.tag);
     },
 
+    async careerFor(playerId) {
+      // Zwei einfache Abfragen statt eines verschachtelten Selects: die
+      // handgeschriebenen Typen kennen die Fremdschlüssel nicht, und eine
+      // erfundene Beziehung im Typ wäre schlimmer als ein zweiter Roundtrip.
+      const { data: rows } = await supabase
+        .from('session_players')
+        .select('session_id')
+        .eq('player_id', playerId);
+
+      const ids = (rows ?? []).map((r) => r.session_id);
+      if (ids.length === 0) return { sessionsPlayed: 0, byGame: {} };
+
+      const { data: sessions } = await supabase
+        .from('game_sessions')
+        .select('game_id, ended_at')
+        .in('id', ids)
+        .not('ended_at', 'is', null);
+
+      const byGame: Record<string, number> = {};
+      for (const s of sessions ?? []) {
+        byGame[s.game_id] = (byGame[s.game_id] ?? 0) + 1;
+      }
+      return { sessionsPlayed: (sessions ?? []).length, byGame };
+    },
+
     async listRecent(limit): Promise<LoggedSession[]> {
       const { data } = await supabase
         .from('game_sessions')
@@ -196,6 +221,23 @@ export const supabaseBackend: Backend = {
         tags: [],
         playerIds: [],
       }));
+    },
+  },
+
+  achievements: {
+    async unlocked(playerId) {
+      const { data } = await supabase
+        .from('player_achievements')
+        .select('achievement_id')
+        .eq('user_id', playerId);
+      return (data ?? []).map((r) => r.achievement_id);
+    },
+
+    async record(playerId, ids) {
+      if (ids.length === 0) return;
+      await supabase
+        .from('player_achievements')
+        .upsert(ids.map((id) => ({ user_id: playerId, achievement_id: id })));
     },
   },
 

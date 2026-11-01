@@ -43,9 +43,16 @@ Ein neues Spiel bauen: [`src/games/README.md`](./src/games/README.md).
 
 ## Stand
 
-**Round the Clock ist spielbar.** Antippbare Scheibe, Schnellmodus,
-Rundenlogik mit Ziehphase, mehrere Spieler an einem Gerät, volle Auswertung
-aus dem Event-Log.
+**Vier Spiele sind spielbar**, alle auf demselben Dart-Fundament:
 
-Als Nächstes: Logbuch und Ranglisten, dann 501, Shanghai und Cutthroat auf
-demselben Dart-Fundament. Fahrplan in [`PROJECT.md`](./PROJECT.md).
+| Spiel | Besonderheit |
+| --- | --- |
+| **501** | Double Out, Bust-Logik, Average, Checkout-Hinweise |
+| **Cricket** | 20–15 und Bull, mit Cutthroat-Variante |
+| **Shanghai** | Runde für Runde, Sofortsieg bei Single + Double + Triple |
+| **Round the Clock** | 1–20 auf Zeit, mit Ziehphase |
+
+Dazu Spielerprofile (Name, Foto oder Emoji, Farbe, Charakter) und
+Auszeichnungen als Regeltabelle.
+
+Als Nächstes: Logbuch und Ranglisten. Fahrplan in [`PROJECT.md`](./PROJECT.md).

@@ -24,6 +24,12 @@ export interface Profile {
   avatarUrl: string | null;
   bio: string | null;
   favoriteGame: string | null;
+  /** Emoji als Ersatzbild. */
+  emoji?: string | null;
+  /** Spielerfarbe. */
+  color?: string | null;
+  /** Frei gewählter Typ, z.B. "Der Ruhige". */
+  character?: string | null;
 }
 
 export interface NewSession {
@@ -88,6 +94,8 @@ export interface Backend {
      * Betrieb meldet sich jeder selbst an (Entscheidung vom 30.10.).
      */
     createLocal?(displayName: string): Promise<Profile>;
+    /** Nur im lokalen Modus: Mitspieler wieder entfernen. */
+    removeLocal?(id: string): Promise<void>;
   };
 
   sessions: {
@@ -99,6 +107,18 @@ export interface Backend {
     recentTags(limit: number): Promise<string[]>;
     /** Fürs Logbuch. */
     listRecent(limit: number): Promise<LoggedSession[]>;
+    /** Wie viele Sessions hat dieser Spieler gespielt, je Spiel aufgeschlüsselt? */
+    careerFor(playerId: string): Promise<{
+      sessionsPlayed: number;
+      byGame: Record<string, number>;
+    }>;
+  };
+
+  achievements: {
+    /** Bereits freigeschaltete IDs dieses Spielers. */
+    unlocked(playerId: string): Promise<string[]>;
+    /** Neue Freischaltungen festhalten. */
+    record(playerId: string, ids: string[]): Promise<void>;
   };
 
   events: {

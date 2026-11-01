@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { backend, testMode } from '@/lib/backend';
+import { backend, testMode, type Profile } from '@/lib/backend';
 import type { SessionPlayer } from '@/games/types';
 
 /**
@@ -13,6 +13,17 @@ import type { SessionPlayer } from '@/games/types';
  * liefert die Datenbank ohnehin nicht zurück, dafür sorgt die RLS-Policy – der
  * Client muss also nicht filtern.
  */
+export function toSessionPlayer(p: Profile): SessionPlayer {
+  return {
+    id: p.id,
+    displayName: p.displayName,
+    avatarUrl: p.avatarUrl,
+    emoji: p.emoji ?? null,
+    color: p.color ?? null,
+    character: p.character ?? null,
+  };
+}
+
 export function PlayerPicker({
   selected,
   onChange,
@@ -52,13 +63,7 @@ export function PlayerPicker({
       .list()
       .then((people) => {
         if (cancelled) return;
-        setAvailable(
-          people.map((p) => ({
-            id: p.id,
-            displayName: p.displayName,
-            avatarUrl: p.avatarUrl,
-          })),
-        );
+        setAvailable(people.map(toSessionPlayer));
         setLoading(false);
       })
       .catch(() => {
@@ -86,11 +91,7 @@ export function PlayerPicker({
     const name = newName.trim();
     if (!name || !backend.profiles.createLocal) return;
     const created = await backend.profiles.createLocal(name);
-    const player: SessionPlayer = {
-      id: created.id,
-      displayName: created.displayName,
-      avatarUrl: created.avatarUrl,
-    };
+    const player = toSessionPlayer(created);
     setAvailable((list) => [...list, player]);
     if (selected.length < max) onChange([...selected, player]);
     setNewName('');
@@ -138,6 +139,11 @@ export function PlayerPicker({
               ].join(' ')}
             >
               {isOn && <span className="mr-1 tabular-nums text-accent">{index + 1}</span>}
+              <span
+                className="mr-1 inline-block h-2.5 w-2.5 rounded-full align-middle"
+                style={{ background: person.color ?? '#2A343F' }}
+              />
+              {person.emoji ? `${person.emoji} ` : ''}
               {person.displayName}
               {person.id === meId && <span className="ml-1 text-slate-500">(du)</span>}
             </button>

@@ -6,6 +6,7 @@ import { AuthCallback } from '@/features/auth/AuthCallback';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { GameRoute } from '@/features/session/GameRoute';
 import { HomePage } from '@/pages/HomePage';
+import { PlayersPage } from '@/pages/PlayersPage';
 
 export function App() {
   const init = useAuthStore((s) => s.init);
@@ -21,6 +22,14 @@ export function App() {
         element={
           <RequireAuth>
             <HomePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/spieler"
+        element={
+          <RequireAuth>
+            <PlayersPage />
           </RequireAuth>
         }
       />

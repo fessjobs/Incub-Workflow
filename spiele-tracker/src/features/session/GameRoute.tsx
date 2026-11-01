@@ -6,8 +6,9 @@ import { useSessionStore } from './sessionStore';
 import { useAuthStore } from '@/store/authStore';
 import { useElapsed } from './useElapsed';
 import { TagPicker } from './TagPicker';
-import { PlayerPicker } from './PlayerPicker';
+import { PlayerPicker, toSessionPlayer } from './PlayerPicker';
 import { Layout } from '@/components/Layout';
+import { AchievementBanner } from '@/features/achievements/AchievementBanner';
 
 /**
  * Treibt jedes Spiel durch Setup → Live → Auswertung.
@@ -46,6 +47,14 @@ export function GameRoute() {
   // Beim Verlassen der Route eine noch offene Session nicht liegen lassen.
   useEffect(() => reset, [reset]);
 
+  // Wechselt man das Spiel, während eine Session läuft, würde das neue Spiel
+  // sonst mit den Events des alten gerendert. Bei HashRouter lädt die Seite
+  // dabei nicht neu, der Store bliebe also stehen.
+  const runningGameId = useSessionStore((s) => s.gameId);
+  useEffect(() => {
+    if (runningGameId && runningGameId !== gameId) reset();
+  }, [runningGameId, gameId, reset]);
+
   // Wer das Gerät in der Hand hat, spielt im Zweifel mit. Gilt auch für
   // Einzelspieler-Spiele, bei denen gar keine Auswahl angezeigt wird.
   useEffect(() => {
@@ -53,13 +62,7 @@ export function GameRoute() {
     setPlayers((current) =>
       current.length > 0
         ? current
-        : [
-            {
-              id: myProfile.id,
-              displayName: myProfile.displayName,
-              avatarUrl: myProfile.avatarUrl,
-            },
-          ],
+        : [toSessionPlayer(myProfile)],
     );
   }, [myProfile]);
 
@@ -187,6 +190,14 @@ export function GameRoute() {
             ))}
           </div>
         )}
+
+        <div className="mb-6">
+          <AchievementBanner
+            gameId={game.id}
+            players={sessionPlayers}
+            statsByPlayer={statsByPlayer}
+          />
+        </div>
 
         {stats && (
           <>
