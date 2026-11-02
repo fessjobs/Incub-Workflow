@@ -415,6 +415,28 @@ Woher die Zeilen kommen:
 
 Der Text steht in einem Feld und ist **vor dem Kopieren frei bearbeitbar** – kurzfristig ändert sich oft noch etwas, und niemand soll deswegen neu tippen. „Zurücksetzen“ stellt die erzeugte Fassung wieder her.
 
+### 7e2. Monatszettel: Stunden für Personen, die laufend für einen Kunden arbeiten
+
+Für Personen, die nicht je Auftrag, sondern **einfach für einen Kunden** arbeiten: ein **Monatsstundenzettel je Person und Kunde**. Tab **Monatszettel** in der Unternavigation des Einsatzmoduls (Dispo und Admin).
+
+**Ablauf**
+1. *Einsätze → Monatszettel*: **Kunde** und **Monat** wählen, **Personen** ankreuzen, „Monatslinks erstellen“. Jede Person bekommt einen **eigenen Link** (`/e/m/<Token>`), der Kunde einen Link für den ganzen Monat (`/e/k/<Token>`). Je Person gibt es die fertige Nachricht zum **Kopieren** oder als **WhatsApp-Link** (mit der Handynummer aus dem Personalstamm); der Text lässt sich ändern (wird im Browser gemerkt). „Link versendet“ wird beim Kopieren/Öffnen vermerkt.
+2. **Person am Handy:** Kalender des Monats, auf einen Tag tippen: Beginn, Ende, Pause (Pflicht: Beginn und Ende), freiwillig Tätigkeit, **Fahrten** (Start, Ziel, km; Privat-PKW oder Firmenfahrzeug), Spesen, **Sonderabsprache**, **„Was wurde gemacht?“**, Notiz. Mehrere Einträge am Tag (geteilte Schicht), „Wie letzter Eintrag“, Tage in der Zukunft gesperrt. Die Einträge werden laufend gespeichert (Entwurf). Am Monatsende: Haken + **Unterschrift**.
+3. **Kunde** (`/e/k/…`): sieht alle Zettel, die die Person abgeschlossen hat (aufklappbar, mit Unterschrift der Person), und bestätigt sie mit **einer Unterschrift** – oder **gibt einen Zettel mit Hinweis zurück** (die Person sieht den Hinweis, korrigiert, unterschreibt neu).
+4. Das **PDF „Monatsstundenzettel“** (je Person, mit beiden Unterschriften) landet in der **Dokumentenablage** (Kategorie `stundennachweis`, verknüpft mit Einsatz, Kunde, Person, Datum = Monatsbeginn) – also unter *Dokumente*, im Einsatz und in der **Monats-Sicherung** („Stundennachweise“). Die Person öffnet es über ihren Link, die Dispo über *Details / PDF* (vorher als Vorschau).
+
+**Was dabei im Einsatzmodul entsteht** (damit Freigabe, Auswertung, Exporte und Abrechnung unverändert funktionieren): Bei der ersten Unterschrift legt das System unter dem Kunden einen **Einsatz „Monatszettel <Monat>“** an (eigene Einsatznummer, Status laufend). Jeder Tag der Person wird dort zu einer **Schicht „Monatszettel TT.MM.“** (bei mehreren Einträgen am Tag „… (2)“), die Person wird eingeteilt und bekommt je Eintrag einen **Zeiteintrag** (Stunden, Pause, Fahrten, Spesen, Notiz = Absprache/Beschreibung/Notiz, Unterschrift der Person, Status „erfasst“) – genau wie nach einer Unterschrift im Einsatzlink. Die Bestätigung des Kunden wird je Schicht als **Kundenbestätigung** am Einsatz abgelegt. Haben **alle** Zettel des Monats bestätigt, wird der Monatseinsatz **abgeschlossen**; kommt danach noch ein Zettel dazu, läuft er weiter.
+
+**Sperren und Korrekturen**
+- Die Person kann bis zur **Bestätigung des Kunden** ändern („Doch noch etwas ändern“); geändert wird mit neuer Version des Zeiteintrags (die alte bleibt), gestrichene Tage stornieren die Einteilung.
+- Sobald der Kunde bestätigt hat, **gesperrt** (Änderungen über die Dispo). Sind Zeiten schon **freigegeben**, sperrt das die Person und die Rückgabe durch den Kunden. Ein gesperrter Monat (Monatssperre) nimmt keine Unterschrift an.
+- Der Kunde sieht Zettel erst, wenn die Person unterschrieben hat; er kann nur Zettel dieses Kunden und Monats zurückgeben oder bestätigen.
+- Wird der Monatseinsatz in der Einsatzverwaltung gelöscht (Admin, mit Bestätigung), gelten die Zettel wieder als nicht unterschrieben und lassen sich neu ausfüllen und unterschreiben. Wird eine Person ohne Einteilungen gelöscht, gehen ihre leeren Zettel mit; leere Links entfernt die Dispo mit ✕.
+
+**Technik:** Tabellen `month_batches` (Kunde + Monat, Kundenlink, Monatseinsatz) und `month_sheets` (Person, Link, Entwurf der Tage als JSON, Unterschriften, Stand des Kunden) – Migration `prisma/migrations/20261102190000_monatszettel/` (nur neue Tabellen, mit `down.sql`). Logik: `src/lib/einsatz/monatszettel.ts` (rein), `src/lib/einsatz/service/monatszettel.ts` (Datenbank), `src/lib/einsatz/pdf/monatsstundenzettel.tsx`. Oberflächen: `src/app/(app)/einsaetze/monatszettel/`, `src/app/e/m/[token]`, `src/app/e/k/[token]`; Schnittstellen: `/api/e/m/<Token>`, `/api/e/k/<Token>` (öffentlich, UUID-Token, Rate-Limit), `/api/documents/monatszettel/<id>` (Dashboard). Tests: `tests/unit/einsatz-monatszettel.test.ts`, `tests/e2e/monatszettel.spec.ts`.
+
+**Nicht enthalten:** Zuschläge oder Lohnbeträge im Zettel (die rechnet wie sonst die Lohnvorbereitung aus den Zeiteinträgen), Konkretisierung für den Monatseinsatz (wird nicht automatisch erzeugt – bitte rechtlich prüfen, ob für Dauerkunden eine nötig ist), automatische Erinnerungen (das Dashboard zeigt, wer noch offen ist), Sicherheitsunterweisung im Zettel.
+
 ### 7f. Wer Zahlen sieht
 
 Die Disposition disponiert und prüft Zeiten; **was daraus berechnet wird, geht sie nichts an**. Alles mit Beträgen ist deshalb auf **Admin und Buchhaltung** begrenzt (`canSeeMoney()` in `access.ts`, deckungsgleich mit `canInvoice()`, weil sieht, wer abrechnet). Durchgesetzt wird das serverseitig – die Daten landen gar nicht erst im HTML, nicht nur ausgeblendet:

@@ -9,6 +9,8 @@ export default async function EinsaetzeLayout({ children }: { children: React.Re
     ...(canReview(user) ? [{ href: "/einsaetze/freigabe", label: "Freigabe" }] : []),
     // Abrechnung und Projekte zeigen Zahlen – nur für Admin und Buchhaltung
     ...(canSeeMoney(user) ? [{ href: "/einsaetze/abrechnung", label: "Abrechnung" }, { href: "/einsaetze/projekte", label: "Projekte" }] : []),
+    // Monatszettel: Stunden für Personen, die laufend für einen Kunden arbeiten
+    ...(canDispo(user) ? [{ href: "/einsaetze/monatszettel", label: "Monatszettel" }] : []),
     ...(canDispo(user) ? [{ href: "/einsaetze/kunden", label: "Kunden" }, { href: "/einsaetze/personal", label: "Personal" }] : []),
     ...(canManageRules(user) ? [{ href: "/einsaetze/lohnarten", label: "Lohnarten" }] : []),
   ];

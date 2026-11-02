@@ -1,5 +1,7 @@
 # Monatsstundenzettel (Klick-Prototyp)
 
+> **Umgesetzt im bisherigen Einsatzmodul** (Tab *Einsätze → Monatszettel*, Ablage unter *Dokumente*): siehe `docs/einsatzmodul.md`, Abschnitt 7e2. Dieser Text beschreibt den Klick-Prototyp in der Testversion, der die Abläufe vorab zeigt. Im echten Modul laufen die Stunden **nicht** ins neue System, sondern wie alle anderen durch das Einsatzmodul.
+
 Stand: 02.11.2026 · **Nur Klick-Prototyp in der Testversion** – nichts davon ist im echten System, nichts wird gespeichert,
 verschickt oder in die Datenbank geschrieben. Das bisherige System (Einsätze, Stunden, Belege, Dokumente) ist nicht berührt.
 

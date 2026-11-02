@@ -8,5 +8,7 @@ import { Tutorial } from "./tutorial";
 
 export function TutorialMount() {
   const pathname = usePathname();
+  // Monatszettel (Person und Kunde) erklären sich auf der Seite selbst – die Anleitung für Einzelschichten passt dort nicht
+  if (pathname?.startsWith("/e/m/") || pathname?.startsWith("/e/k/")) return null;
   return <Tutorial variante={pathname?.startsWith("/e/crew/") ? "gruppe" : "einzel"} />;
 }

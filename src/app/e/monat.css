@@ -1,0 +1,96 @@
+/* Monatszettel (Personen- und Kundenlink): Kalender, Tageszeilen. Baut auf den Variablen von e.css auf. */
+.ez-kal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.ez-kal-kopf {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ez-muted);
+  padding: 0.2rem 0;
+}
+.ez-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 3.2rem;
+  border: 1.5px solid var(--ez-line);
+  background: #fff;
+  border-radius: 12px;
+  font: inherit;
+  color: var(--ez-ink);
+  cursor: pointer;
+  padding: 0.2rem 0;
+}
+.ez-tag .nr {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.ez-tag .std {
+  font-size: 0.62rem;
+  color: var(--ez-green);
+  font-variant-numeric: tabular-nums;
+}
+.ez-tag.we {
+  background: var(--ez-canvas);
+  color: var(--ez-muted);
+}
+.ez-tag.belegt {
+  background: rgba(30, 138, 91, 0.1);
+  border-color: rgba(30, 138, 91, 0.4);
+}
+.ez-tag.heute {
+  border-color: var(--ez-orange);
+  box-shadow: 0 0 0 2px var(--ez-orange-soft);
+}
+.ez-tag:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ez-zeile-btn {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ez-line);
+  padding: 0.75rem 0.1rem;
+  font: inherit;
+  color: var(--ez-ink);
+  cursor: pointer;
+}
+.ez-zeile-btn:last-child {
+  border-bottom: 0;
+}
+.ez-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.ez-tabelle th {
+  text-align: left;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ez-muted);
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1.5px solid var(--ez-line);
+}
+.ez-tabelle td {
+  padding: 0.45rem 0.4rem;
+  border-bottom: 1px solid var(--ez-line);
+  vertical-align: top;
+}
+/* Kundenseite: breiter als die Handy-Spalte, damit die Tabellen Platz haben */
+.ez-wrap:has(.mz-breit) {
+  max-width: 56rem;
+}

@@ -49,6 +49,8 @@ model Organization {
   customers               Customer[]
   employees               Employee[]
   assignments             Assignment[]
+  monthBatches            MonthBatch[]
+  monthSheets             MonthSheet[]
   shifts                  Shift[]
   shiftAssignments        ShiftAssignment[]
   timeEntries             TimeEntry[]
@@ -621,6 +623,7 @@ model Customer {
   assignments   Assignment[]
   documentLinks DocumentLink[]
   projects      Project[]
+  monthBatches  MonthBatch[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -656,6 +659,7 @@ model Employee {
   deductions       ManualDeduction[]
   bewertungen      ShiftRating[]
   ergaenzungen     AssignmentAdjustment[]
+  monthSheets      MonthSheet[]
 
   @@unique([organizationId, personalnummer])
   @@index([organizationId, nachname, vorname])
@@ -768,6 +772,7 @@ model Assignment {
   confirmations AssignmentConfirmation[]
   documentLinks DocumentLink[]
   ergaenzungen  AssignmentAdjustment[]
+  monthBatch    MonthBatch?
 
   @@unique([organizationId, einsatznummer])
   @@index([organizationId, status, datumVon])
@@ -1094,6 +1099,79 @@ model Blob {
 
   @@index([organizationId])
   @@map("blobs")
+}
+
+// ─── Monatszettel ───────────────────────────────────────────────────────────
+// Für Personen, die laufend für einen Kunden arbeiten (ohne Einsatz je Auftrag): ein Zettel je Person und Monat.
+// Die Person trägt Tage ein (Entwurf, JSON) und unterschreibt am Monatsende; erst dann entstehen unter einem
+// Einsatz „Monatszettel <Monat>“ Schichten, Einteilungen und Zeiteinträge wie bei jedem anderen Einsatz – damit
+// laufen Freigabe, Auswertung, Exporte und Dokumentenablage unverändert. Der Kunde bestätigt alle Zettel eines
+// Monats über einen eigenen Link.
+model MonthBatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  customerId     String
+  // JJJJ-MM
+  monat          String
+  // Link für den Kunden (alle Personen dieses Monats auf einer Seite)
+  token          String   @unique @default(uuid())
+  tokenExpiresAt DateTime
+  // Ansprechpartner beim Kunden (nur zur Information)
+  kontakt        String?
+  // Einsatz, unter dem die unterschriebenen Zeiten laufen (entsteht bei der ersten Unterschrift)
+  assignmentId   String?  @unique
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  customer     Customer     @relation(fields: [customerId], references: [id])
+  assignment   Assignment?  @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  sheets       MonthSheet[]
+
+  @@unique([organizationId, customerId, monat])
+  @@index([organizationId, monat])
+  @@map("month_batches")
+}
+
+enum MonthSheetKunde {
+  OFFEN
+  ZURUECK
+  BESTAETIGT
+}
+
+model MonthSheet {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  batchId            String
+  employeeId         String
+  token              String          @unique @default(uuid())
+  tokenExpiresAt     DateTime
+  // Tageseinträge (Entwurf und zuletzt unterschriebener Stand); je Eintrag steht nach der Unterschrift die
+  // zugehörige Einteilung (saId)
+  tage               Json            @default("[]")
+  linkSentAt         DateTime?
+  personSignedAt     DateTime?
+  personSignatureUrl String?
+  personIp           String?
+  personUserAgent    String?
+  kundeStatus        MonthSheetKunde @default(OFFEN)
+  kundeHinweis       String?
+  kundeAm            DateTime?
+  kundeName          String?
+  kundeSignatureUrl  String?
+  createdById        String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  batch        MonthBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  // Wird eine Person gelöscht (nur ohne Einteilungen möglich), gehen ihre leeren Zettel mit
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, employeeId])
+  @@index([organizationId, employeeId])
+  @@map("month_sheets")
 }
 
 // ─── Lohnvorbereitung ───────────────────────────────────────────────────────
