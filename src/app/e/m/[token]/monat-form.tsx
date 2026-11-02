@@ -35,11 +35,16 @@ export function MonatForm({ token }: { token: string }) {
   const [haken, setHaken] = useState(false);
   const [leer, setLeer] = useState(true);
   const [sendet, setSendet] = useState(false);
+  // Name, den die Person selbst einträgt (nur bei Links ohne vorab gewählte Person)
+  const [name, setName] = useState({ vorname: "", nachname: "" });
+  const [nameFehler, setNameFehler] = useState<string | null>(null);
+  const [nameSpeichert, setNameSpeichert] = useState(false);
   const sig = useRef<SignaturePadHandle>(null);
 
   const uebernehme = useCallback((v: PersonAnsicht) => {
     setView(v);
     setTage(v.tage);
+    setName({ vorname: v.person.vorname, nachname: v.person.nachname });
   }, []);
 
   useEffect(() => {
@@ -81,6 +86,21 @@ export function MonatForm({ token }: { token: string }) {
       setFehler("Keine Verbindung – deine letzte Änderung ist noch nicht gespeichert.");
       setSpeicher("");
       return false;
+    }
+  };
+
+  const speichereName = async () => {
+    setNameFehler(null);
+    setNameSpeichert(true);
+    try {
+      const r = await fetch(`/api/e/m/${token}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ aktion: "name", vorname: name.vorname, nachname: name.nachname }) });
+      const j = await r.json();
+      if (!r.ok) setNameFehler(j.error ?? "Der Name konnte nicht gespeichert werden.");
+      else uebernehme(j.view);
+    } catch {
+      setNameFehler("Keine Verbindung. Bitte noch einmal versuchen.");
+    } finally {
+      setNameSpeichert(false);
     }
   };
 
@@ -128,6 +148,8 @@ export function MonatForm({ token }: { token: string }) {
   }
 
   const gesperrt = view.personSigniert || view.gesperrt !== null;
+  // Der Name steht erst fest, wenn er gespeichert ist; ohne ihn lässt sich nicht unterschreiben
+  const nameGespeichert = !view.nameOffen || (view.person.vorname !== "" && view.person.nachname !== "" && name.vorname.trim() === view.person.vorname && name.nachname.trim() === view.person.nachname);
   const su = summe(tage);
   const abschluss = kannAbschliessen(view.monat, tage);
 
@@ -139,7 +161,7 @@ export function MonatForm({ token }: { token: string }) {
         <h1 className="ez-h1" style={{ marginTop: "0.2rem" }}>{view.monatLabel}</h1>
         <p className="ez-muted" style={{ marginTop: "0.3rem" }}>{view.kunde}</p>
         <div style={{ marginTop: "0.7rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-          <span className="ez-pill ez-pill-orange">{view.person.vorname} {view.person.nachname}</span>
+          <span className="ez-pill ez-pill-orange" data-testid="mz-name-pill">{view.person.vorname || view.person.nachname ? `${view.person.vorname} ${view.person.nachname}` : "Name fehlt noch"}</span>
           <span className="ez-pill ez-pill-grey" data-testid="mz-status">{STAND_TEXT[view.stand]}</span>
           {speicher === "gespeichert" ? <span className="ez-pill ez-pill-green" data-testid="mz-gespeichert">✓ Gespeichert</span> : speicher === "speichert" ? <span className="ez-pill ez-pill-grey">Speichert …</span> : null}
         </div>
@@ -170,6 +192,40 @@ export function MonatForm({ token }: { token: string }) {
       ) : (
         <div className="ez-info" style={{ marginTop: "0.8rem" }}>Tippe auf einen Tag, an dem du gearbeitet hast. Nur Beginn und Ende sind Pflicht – alles andere ist freiwillig. Tage in der Zukunft sind gesperrt.</div>
       )}
+
+      {view.nameOffen ? (
+        <div className="ez-card" style={{ marginTop: "1rem" }} data-testid="mz-name-karte">
+          <p className="ez-eyebrow" style={{ marginBottom: "0.6rem" }}>Dein Name</p>
+          {view.nameAenderbar ? (
+            <>
+              <div className="ez-row">
+                <div>
+                  <label className="ez-label" htmlFor="mz-vorname">Vorname</label>
+                  <input id="mz-vorname" className="ez-input" autoComplete="given-name" value={name.vorname} onChange={(e) => setName((n) => ({ ...n, vorname: e.target.value }))} data-testid="mz-vorname" />
+                </div>
+                <div>
+                  <label className="ez-label" htmlFor="mz-nachname">Nachname</label>
+                  <input id="mz-nachname" className="ez-input" autoComplete="family-name" value={name.nachname} onChange={(e) => setName((n) => ({ ...n, nachname: e.target.value }))} data-testid="mz-nachname" />
+                </div>
+              </div>
+              <button type="button" className="ez-btn ez-btn-small" style={{ marginTop: "0.7rem" }} disabled={nameSpeichert || nameGespeichert || name.vorname.trim().length < 2 || name.nachname.trim().length < 2} onClick={speichereName} data-testid="mz-name-speichern">
+                {nameSpeichert ? "Speichert …" : nameGespeichert ? "✓ Name gespeichert" : "Namen speichern"}
+              </button>
+              <p className="ez-muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+                {view.person.vorname ? "Du kannst deinen Namen ändern, bis der Kunde unterschrieben hat." : "Bitte trage zuerst deinen Vor- und Nachnamen ein – so steht er später auf dem Zettel."}
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: "0.95rem" }} data-testid="mz-name-anzeige">
+              <strong>{view.person.vorname} {view.person.nachname}</strong>
+              <span className="ez-muted" style={{ display: "block", marginTop: "0.3rem", fontSize: "0.85rem" }}>
+                {view.gesperrt ? "Der Name lässt sich nicht mehr ändern. Bitte melde dich bei der Dispo." : "Zum Ändern des Namens wähle oben „Doch noch etwas ändern“. Bis der Kunde unterschrieben hat, geht das jederzeit."}
+              </span>
+            </p>
+          )}
+          {nameFehler ? <div className="ez-error" style={{ marginTop: "0.6rem" }} role="alert" data-testid="mz-name-fehler">{nameFehler}</div> : null}
+        </div>
+      ) : null}
 
       <div className="ez-card" style={{ marginTop: "1rem" }}>
         <p className="ez-eyebrow" style={{ marginBottom: "0.6rem" }}>Tage eintragen</p>
@@ -246,9 +302,10 @@ export function MonatForm({ token }: { token: string }) {
             <SignaturePad ref={sig} onChange={setLeer} label="Deine Unterschrift" testId="mz-signatur" />
             <button type="button" className="ez-btn ez-btn-ghost ez-btn-small" style={{ marginTop: "0.4rem" }} onClick={() => sig.current?.clear()}>Neu unterschreiben</button>
           </div>
-          <button type="button" className="ez-btn" style={{ marginTop: "0.9rem" }} disabled={!haken || leer || !abschluss.ok || sendet} onClick={unterschreiben} data-testid="mz-abschliessen">
+          <button type="button" className="ez-btn" style={{ marginTop: "0.9rem" }} disabled={!haken || leer || !abschluss.ok || sendet || !nameGespeichert} onClick={unterschreiben} data-testid="mz-abschliessen">
             {sendet ? "Wird gesendet …" : "Unterschreiben und an den Kunden weitergeben"}
           </button>
+          {!nameGespeichert ? <p className="ez-muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }} data-testid="mz-name-hinweis">Zum Unterschreiben bitte oben deinen Namen eintragen und speichern.</p> : null}
         </div>
       ) : null}
 

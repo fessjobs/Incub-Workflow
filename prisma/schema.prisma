@@ -1144,7 +1144,13 @@ model MonthSheet {
   id                 String          @id @default(cuid())
   organizationId     String
   batchId            String
-  employeeId         String
+  // Leer, solange die Person ihren Namen noch nicht eingetragen hat (Link ohne vorab gewählte Person)
+  employeeId         String?
+  // Die Person trägt ihren Namen selbst ein und darf ihn ändern, bis der Kunde bestätigt hat
+  nameOffen          Boolean         @default(false)
+  // Eingetragener Name, der noch nicht auf die Person übertragen ist (das passiert bei der Unterschrift)
+  vorname            String?
+  nachname           String?
   token              String          @unique @default(uuid())
   tokenExpiresAt     DateTime
   // Tageseinträge (Entwurf und zuletzt unterschriebener Stand); je Eintrag steht nach der Unterschrift die
@@ -1167,7 +1173,7 @@ model MonthSheet {
   organization Organization @relation(fields: [organizationId], references: [id])
   batch        MonthBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
   // Wird eine Person gelöscht (nur ohne Einteilungen möglich), gehen ihre leeren Zettel mit
-  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee     Employee?    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([batchId, employeeId])
   @@index([organizationId, employeeId])

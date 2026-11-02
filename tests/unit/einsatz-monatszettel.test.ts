@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EintragSchema, STANDARD_VORLAGE, TageSchema, bruttoMinuten, datumAnzeige, eintragMinuten, eintragNotiz, endeDatum, formatStunden, fuelleVorlage, istMonat, kalenderWochen, kannAbschliessen, kundenNachricht, monatErsterTag, monatLetzterTag,
-  monatsAuswahl, monatsName, neuerEintragId, pruefeEintrag, schichtBezeichnung, sortiert, stundenDezimal, stundenMinuten, summe, tageImMonat, ueberschneidungen, waLinkAn, waNummer, wochentagIndex, wochentagKurz, zettelStand,
+  monatsAuswahl, monatsName, NAMEN_HINWEIS, neuerEintragId, pruefeEintrag, schichtBezeichnung, sortiert, stundenDezimal, stundenMinuten, summe, tageImMonat, ueberschneidungen, vollerName, waLinkAn, waNummer, wochentagIndex, wochentagKurz, zettelNamen, zettelStand,
   type MonatsEintrag,
 } from "@/lib/einsatz/monatszettel";
 
@@ -138,5 +138,42 @@ describe("Monatszettel (Einsatzmodul): Nachrichten und Übernahme", () => {
     expect(schichtBezeichnung("2026-10-05", 1)).toBe("Monatszettel 05.10.");
     expect(schichtBezeichnung("2026-10-05", 2)).toBe("Monatszettel 05.10. (2)");
     expect(neuerEintragId()).not.toBe(neuerEintragId());
+  });
+});
+
+describe("Monatszettel (Einsatzmodul): Namen und Links ohne Namen", () => {
+  const stamm = { vorname: "Eva", nachname: "Stamm" };
+
+  it("ein eingetragener Name hat Vorrang, sonst gilt der Name im Stamm", () => {
+    expect(zettelNamen({ vorname: "Mia", nachname: "Neu", employee: stamm })).toEqual({ vorname: "Mia", nachname: "Neu" });
+    expect(zettelNamen({ vorname: null, nachname: null, employee: stamm })).toEqual(stamm);
+    // Ein halber Eintrag zählt nicht
+    expect(zettelNamen({ vorname: "Mia", nachname: null, employee: stamm })).toEqual(stamm);
+  });
+
+  it("ohne Person und ohne Eintrag bleibt der Name leer", () => {
+    expect(zettelNamen({ vorname: null, nachname: null, employee: null })).toEqual({ vorname: "", nachname: "" });
+    expect(vollerName({ vorname: "", nachname: "" })).toBe("");
+    expect(vollerName({ vorname: "Mia", nachname: "Neu" })).toBe("Mia Neu");
+  });
+
+  it("die Nachricht kommt ohne Vornamen ohne Anrede aus und bittet um den Namen", () => {
+    const werte = { kunde: "Nordlicht", monat: "Oktober 2026", link: "https://app.example/e/m/abc" };
+    const ohne = fuelleVorlage(STANDARD_VORLAGE, { ...werte, vorname: "" }, { namenHinweis: true });
+    expect(ohne.startsWith("Hallo, bitte trage hier")).toBe(true);
+    expect(ohne).not.toContain("Hallo ,");
+    expect(ohne.endsWith(NAMEN_HINWEIS)).toBe(true);
+    expect(ohne).not.toMatch(/\{\w+\}/);
+    // Mit Namen bleibt alles wie gehabt, auch mit Hinweis-Option
+    const mit = fuelleVorlage(STANDARD_VORLAGE, { ...werte, vorname: "Anna" }, { namenHinweis: true });
+    expect(mit.startsWith("Hallo Anna, bitte trage")).toBe(true);
+    expect(mit).not.toContain(NAMEN_HINWEIS);
+    // Ohne die Option wird nichts angehängt
+    expect(fuelleVorlage(STANDARD_VORLAGE, { ...werte, vorname: "" })).not.toContain(NAMEN_HINWEIS);
+  });
+
+  it("Platzhalter mitten im Text behalten ihren Abstand", () => {
+    expect(fuelleVorlage("({vorname}) {kunde}/{monat}", { vorname: "Anna", kunde: "K", monat: "M", link: "" })).toBe("(Anna) K/M");
+    expect(fuelleVorlage("Hallo {vorname}!", { vorname: "", kunde: "", monat: "", link: "" })).toBe("Hallo!");
   });
 });

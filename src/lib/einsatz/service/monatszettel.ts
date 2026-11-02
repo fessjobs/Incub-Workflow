@@ -2,6 +2,7 @@
 // Einsatz „Monatszettel <Monat>“ Schichten, Einteilungen und Zeiteinträge wie bei jedem anderen Einsatz), Bestätigung
 // des Kunden und das PDF in der Dokumentenablage (Kategorie „stundennachweis“).
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { decodeSignatureDataUrl, getBlob, putBlob } from "../blob";
@@ -9,8 +10,9 @@ import { safeFilename, storeDocument } from "../documents";
 import { netHours } from "../hours";
 import { appBaseUrl } from "../mail";
 import { nextEinsatznummer } from "../numbering";
+import { nameKey, teileEingabe } from "./besetzung";
 import {
-  TageSchema, datumAnzeige, eintragMinuten, eintragNotiz, endeDatum, formatStunden, kannAbschliessen, monatErsterTag, monatLetzterTag, monatsName, schichtBezeichnung, sortiert, stundenDezimal, summe, zettelStand,
+  TageSchema, datumAnzeige, eintragMinuten, eintragNotiz, endeDatum, formatStunden, kannAbschliessen, monatErsterTag, monatLetzterTag, monatsName, schichtBezeichnung, sortiert, stundenDezimal, summe, vollerName, zettelNamen, zettelStand,
   type KundeStatus, type MonatsEintrag, type ZettelStand,
 } from "../monatszettel";
 import { berlinDateKey, berlinTime, formatKeyDE, fromBerlin, keyToDateOnly, nowBerlinKey } from "../tz";
@@ -42,7 +44,10 @@ export function leseTage(json: Prisma.JsonValue): MonatsEintrag[] {
 export type ZettelZeile = {
   id: string;
   token: string;
-  employeeId: string;
+  // Leer bei Links ohne vorab gewählte Person, solange sich niemand eingetragen hat
+  employeeId: string | null;
+  // Die Person trägt ihren Namen selbst ein
+  nameOffen: boolean;
   name: string;
   personalnummer: string | null;
   mobil: string | null;
@@ -84,14 +89,16 @@ export async function ladeStapel(orgId: string, customerId: string, monat: strin
     zettel: batch.sheets.map((s) => {
       const tage = leseTage(s.tage);
       const su = summe(tage);
+      const namen = zettelNamen(s);
       return {
         id: s.id,
         token: s.token,
         employeeId: s.employeeId,
-        name: `${s.employee.vorname} ${s.employee.nachname}`.trim(),
-        personalnummer: s.employee.personalnummer,
-        mobil: s.employee.mobil,
-        vorname: s.employee.vorname,
+        nameOffen: s.nameOffen,
+        name: vollerName(namen),
+        personalnummer: s.employee?.personalnummer ?? null,
+        mobil: s.employee?.mobil ?? null,
+        vorname: namen.vorname,
         stand: zettelStand({ anzahlTage: tage.length, personSigniert: s.personSignedAt !== null, kundeStatus: s.kundeStatus }),
         tage: su.tage,
         stunden: su.stunden,
@@ -105,22 +112,31 @@ export async function ladeStapel(orgId: string, customerId: string, monat: strin
   };
 }
 
-// Legt (falls nötig) den Kundenlink für den Monat an und je Person einen eigenen Link
-export async function erstelleLinks(actor: Actor, input: { customerId: string; monat: string; employeeIds: string[] }): Promise<{ neu: number; vorhanden: number }> {
+// Legt (falls nötig) den Kundenlink für den Monat an und je Person einen eigenen Link. Mit `ohneNamen` entstehen Links, die
+// keiner Person gehören: Wer so einen Link bekommt, trägt seinen Namen selbst ein.
+export const MAX_LINKS_OHNE_NAMEN = 50;
+
+export async function erstelleLinks(
+  actor: Actor,
+  input: { customerId: string; monat: string; employeeIds: string[]; ohneNamen?: number }
+): Promise<{ neu: number; vorhanden: number; ohneNamen: number }> {
+  const ohneNamen = Math.max(0, Math.min(MAX_LINKS_OHNE_NAMEN, Math.floor(input.ohneNamen ?? 0)));
   const customer = await db.customer.findFirst({ where: { id: input.customerId, organizationId: actor.organizationId }, select: { id: true } });
   if (!customer) throw new MonatsError("Kunde nicht gefunden.", 404);
   const employees = await db.employee.findMany({ where: { id: { in: input.employeeIds }, organizationId: actor.organizationId }, select: { id: true } });
-  if (employees.length === 0) throw new MonatsError("Bitte mindestens eine Person auswählen.");
+  if (employees.length === 0 && ohneNamen === 0) throw new MonatsError("Bitte mindestens eine Person auswählen oder Links ohne Namen anlegen.");
   const batch =
     (await db.monthBatch.findUnique({ where: { organizationId_customerId_monat: { organizationId: actor.organizationId, customerId: customer.id, monat: input.monat } } })) ??
     (await db.monthBatch.create({ data: { organizationId: actor.organizationId, customerId: customer.id, monat: input.monat, tokenExpiresAt: ablauf(input.monat), createdById: actor.id } }));
   const schon = new Set((await db.monthSheet.findMany({ where: { batchId: batch.id }, select: { employeeId: true } })).map((s) => s.employeeId));
   const neu = employees.filter((e) => !schon.has(e.id));
-  if (neu.length > 0) {
-    await db.monthSheet.createMany({ data: neu.map((e) => ({ organizationId: actor.organizationId, batchId: batch.id, employeeId: e.id, tokenExpiresAt: ablauf(input.monat), createdById: actor.id })) });
-  }
-  await logAudit({ organizationId: actor.organizationId, userId: actor.id, action: "monatszettel.links", entityType: "month_batch", entityId: batch.id, data: { monat: input.monat, neu: neu.length, vorhanden: schon.size } });
-  return { neu: neu.length, vorhanden: employees.length - neu.length };
+  const daten = [
+    ...neu.map((e) => ({ organizationId: actor.organizationId, batchId: batch.id, employeeId: e.id, tokenExpiresAt: ablauf(input.monat), createdById: actor.id })),
+    ...Array.from({ length: ohneNamen }, () => ({ organizationId: actor.organizationId, batchId: batch.id, employeeId: null, nameOffen: true, tokenExpiresAt: ablauf(input.monat), createdById: actor.id })),
+  ];
+  if (daten.length > 0) await db.monthSheet.createMany({ data: daten });
+  await logAudit({ organizationId: actor.organizationId, userId: actor.id, action: "monatszettel.links", entityType: "month_batch", entityId: batch.id, data: { monat: input.monat, neu: neu.length, vorhanden: schon.size, ohneNamen } });
+  return { neu: neu.length, vorhanden: employees.length - neu.length, ohneNamen };
 }
 
 export async function setzeKontakt(actor: Actor, batchId: string, kontakt: string): Promise<void> {
@@ -178,6 +194,9 @@ export async function ladeZettelPerToken(token: string): Promise<SheetMitStapel 
 
 export type PersonAnsicht = {
   person: { vorname: string; nachname: string };
+  // Die Person trägt ihren Namen selbst ein; ändern lässt er sich, solange sie nicht unterschrieben hat und der Kunde nicht bestätigt hat
+  nameOffen: boolean;
+  nameAenderbar: boolean;
   kunde: string;
   monat: string;
   monatLabel: string;
@@ -193,8 +212,11 @@ export type PersonAnsicht = {
 
 export async function personAnsicht(sheet: SheetMitStapel): Promise<PersonAnsicht> {
   const tage = leseTage(sheet.tage);
+  const gesperrt = await sperrgrund(sheet);
   return {
-    person: { vorname: sheet.employee.vorname, nachname: sheet.employee.nachname },
+    person: zettelNamen(sheet),
+    nameOffen: sheet.nameOffen,
+    nameAenderbar: sheet.nameOffen && sheet.personSignedAt === null && gesperrt === null,
     kunde: sheet.batch.customer.name,
     monat: sheet.batch.monat,
     monatLabel: monatsName(sheet.batch.monat),
@@ -205,7 +227,7 @@ export async function personAnsicht(sheet: SheetMitStapel): Promise<PersonAnsich
     personSigniert: sheet.personSignedAt !== null,
     kundeHinweis: sheet.kundeStatus === "ZURUECK" ? sheet.kundeHinweis : null,
     kundeName: sheet.kundeStatus === "BESTAETIGT" ? sheet.kundeName : null,
-    gesperrt: await sperrgrund(sheet),
+    gesperrt,
     pdf: sheet.kundeStatus === "BESTAETIGT",
   };
 }
@@ -235,6 +257,66 @@ export async function speichereEntwurf(token: string, roh: unknown): Promise<voi
   await db.monthSheet.update({ where: { id: sheet.id }, data: { tage: neu as unknown as Prisma.InputJsonValue } });
 }
 
+// Der Name, den die Person im Link einträgt (nur bei Links ohne vorab gewählte Person). Vor- und Nachname sind nötig, weil
+// der Name später auf dem Zettel und im Mitarbeiterstamm steht.
+const NamenSchema = z.object({
+  vorname: z.string().trim().min(2, "Vorname fehlt.").max(80, "Der Vorname ist zu lang."),
+  nachname: z.string().trim().min(2, "Nachname fehlt.").max(80, "Der Nachname ist zu lang."),
+});
+
+type NamensMeta = { ip: string | null };
+
+// Gibt es im Stamm schon jemanden mit diesem Namen? (Schreibweise und Reihenfolge egal)
+async function findePerson(client: Prisma.TransactionClient | typeof db, orgId: string, vorname: string, nachname: string): Promise<{ id: string } | null> {
+  const exakt = await client.employee.findFirst({
+    where: { organizationId: orgId, vorname: { equals: vorname, mode: "insensitive" }, nachname: { equals: nachname, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (exakt) return exakt;
+  const key = nameKey(vorname, nachname);
+  const alle = await client.employee.findMany({ where: { organizationId: orgId, status: "AKTIV" }, select: { id: true, vorname: true, nachname: true } });
+  return alle.find((e) => nameKey(e.vorname, e.nachname) === key) ?? null;
+}
+
+const DOPPELT = (name: string) => `Für ${name} gibt es in diesem Monat schon einen Zettel. Bitte melde dich bei der Dispo, wenn du das bist.`;
+
+export async function speichereName(token: string, roh: unknown, meta: NamensMeta): Promise<void> {
+  const sheet = await ladeZettelPerToken(token);
+  if (!sheet) throw new MonatsError("Link ungültig.", 404);
+  if (!sheet.nameOffen) throw new MonatsError("Dein Name ist bei der Dispo hinterlegt. Wenn er nicht stimmt, melde dich bitte dort.", 403);
+  // Zuerst die harten Sperren (Kunde hat bestätigt, abgelaufen, freigegeben), dann der Hinweis, erst wieder zu öffnen
+  const grund = await sperrgrund(sheet);
+  if (grund) throw new MonatsError(grund, 409);
+  if (sheet.personSignedAt) throw new MonatsError("Du hast schon unterschrieben. Zum Ändern bitte erst „Doch noch etwas ändern“ wählen.", 409);
+  const p = NamenSchema.safeParse(roh);
+  if (!p.success) throw new MonatsError(p.error.errors[0]?.message ?? "Bitte Vor- und Nachnamen eintragen.");
+  const { vorname, nachname } = teileEingabe(p.data.vorname, p.data.nachname);
+  const orgId = sheet.organizationId;
+
+  // Zwei Zettel desselben Monats dürfen nicht dieselbe Person meinen
+  const key = nameKey(vorname, nachname);
+  const ziel = await findePerson(db, orgId, vorname, nachname);
+  const andere = await db.monthSheet.findMany({ where: { batchId: sheet.batchId, NOT: { id: sheet.id } }, include: { employee: true } });
+  const doppelt = andere.some((o) => {
+    if (ziel && o.employeeId === ziel.id) return true;
+    const n = zettelNamen(o);
+    return Boolean(n.vorname) && nameKey(n.vorname, n.nachname) === key;
+  });
+  if (doppelt) throw new MonatsError(DOPPELT(`${vorname} ${nachname}`), 409);
+
+  const alt = zettelNamen(sheet);
+  // Entspricht der Name dem im Stamm, gibt es nichts Offenes zu übertragen
+  const imStamm = sheet.employee && sheet.employee.vorname === vorname && sheet.employee.nachname === nachname;
+  await db.monthSheet.update({ where: { id: sheet.id }, data: imStamm ? { vorname: null, nachname: null } : { vorname, nachname } });
+  await logAudit({
+    organizationId: orgId,
+    action: "monatszettel.name_gesetzt",
+    entityType: "month_sheet",
+    entityId: sheet.id,
+    data: { alt: vollerName(alt) || null, neu: `${vorname} ${nachname}`, ip: meta.ip, quelle: "monats-link" },
+  });
+}
+
 // Die Person nimmt ihre Unterschrift zurück, solange der Kunde nicht bestätigt hat und nichts freigegeben ist
 export async function oeffneWieder(token: string): Promise<void> {
   const sheet = await ladeZettelPerToken(token);
@@ -250,6 +332,75 @@ async function sperreStapel(tx: Prisma.TransactionClient, batchId: string): Prom
   await tx.$queryRaw`SELECT id FROM month_batches WHERE id = ${batchId} FOR UPDATE`;
 }
 
+// Ein Datensatz, der nur durch diesen Zettel entstanden ist (keine Stammdaten, keine Einteilungen außerhalb des Monatseinsatzes,
+// kein anderer Zettel), darf umbenannt werden. Sonst bekommt die Person mit dem neuen Namen einen eigenen Datensatz.
+async function istNurFuerDiesenZettel(tx: Prisma.TransactionClient, employeeId: string, sheetId: string, assignmentId: string): Promise<boolean> {
+  const e = await tx.employee.findUnique({ where: { id: employeeId }, select: { personalnummer: true, email: true, mobil: true, geburtsdatum: true } });
+  if (!e || e.personalnummer || e.email || e.mobil || e.geburtsdatum) return false;
+  const fremde = await tx.shiftAssignment.count({ where: { employeeId, shift: { assignmentId: { not: assignmentId } } } });
+  if (fremde > 0) return false;
+  return (await tx.monthSheet.count({ where: { employeeId, NOT: { id: sheetId } } })) === 0;
+}
+
+type PersonErgebnis = { employeeId: string; verwaist: string | null };
+
+async function bestimmePerson(tx: Prisma.TransactionClient, sheet: SheetMitStapel, gewuenscht: { vorname: string; nachname: string }, assignmentId: string): Promise<PersonErgebnis> {
+  const orgId = sheet.organizationId;
+  // Vorab gewählte Person: der Name ist Sache der Dispo
+  if (!sheet.nameOffen) {
+    if (!sheet.employeeId) throw new MonatsError("Diesem Zettel ist keine Person zugeordnet. Bitte melde dich bei der Dispo.", 409);
+    return { employeeId: sheet.employeeId, verwaist: null };
+  }
+  const { vorname, nachname } = gewuenscht;
+  const aktuell = sheet.employee;
+  if (aktuell && aktuell.vorname === vorname && aktuell.nachname === nachname) return { employeeId: aktuell.id, verwaist: null };
+
+  const ziel = await findePerson(tx, orgId, vorname, nachname);
+  if (ziel && ziel.id !== aktuell?.id) {
+    const belegt = await tx.monthSheet.findFirst({ where: { batchId: sheet.batchId, employeeId: ziel.id, NOT: { id: sheet.id } }, select: { id: true } });
+    if (belegt) throw new MonatsError(DOPPELT(`${vorname} ${nachname}`), 409);
+  }
+
+  let employeeId: string;
+  let verwaist: string | null = null;
+  let weg: "angelegt" | "zugeordnet" | "umbenannt";
+  if (!aktuell) {
+    if (ziel) {
+      employeeId = ziel.id;
+      weg = "zugeordnet";
+    } else {
+      employeeId = (await tx.employee.create({ data: { organizationId: orgId, vorname, nachname } })).id;
+      weg = "angelegt";
+    }
+  } else if (ziel && ziel.id === aktuell.id) {
+    // Nur die Schreibweise (Groß-/Kleinschreibung) unterscheidet sich vom Stamm: dort bleibt es, wie die Dispo es führt
+    return { employeeId: aktuell.id, verwaist: null };
+  } else {
+    const nurDieser = await istNurFuerDiesenZettel(tx, aktuell.id, sheet.id, assignmentId);
+    if (!ziel && nurDieser) {
+      await tx.employee.update({ where: { id: aktuell.id }, data: { vorname, nachname } });
+      employeeId = aktuell.id;
+      weg = "umbenannt";
+    } else {
+      employeeId = ziel ? ziel.id : (await tx.employee.create({ data: { organizationId: orgId, vorname, nachname } })).id;
+      weg = ziel ? "zugeordnet" : "angelegt";
+      // Die bereits entstandenen Einteilungen im Monatseinsatz wechseln mit
+      await tx.shiftAssignment.updateMany({ where: { employeeId: aktuell.id, shift: { assignmentId } }, data: { employeeId } });
+      if (nurDieser) verwaist = aktuell.id;
+    }
+  }
+  await tx.auditLog.create({
+    data: {
+      organizationId: orgId,
+      action: "monatszettel.person_bestimmt",
+      entityType: "month_sheet",
+      entityId: sheet.id,
+      data: { alt: aktuell ? `${aktuell.vorname} ${aktuell.nachname}` : null, neu: `${vorname} ${nachname}`, weg, employeeId } as Prisma.InputJsonValue,
+    },
+  });
+  return { employeeId, verwaist };
+}
+
 // Unterschrift der Person: erst jetzt entstehen die Zeiteinträge im Einsatzmodul
 export async function unterschreibe(token: string, roh: unknown, unterschrift: string, meta: RequestMeta): Promise<{ einsatznummer: string }> {
   const sheet = await ladeZettelPerToken(token);
@@ -258,6 +409,8 @@ export async function unterschreibe(token: string, roh: unknown, unterschrift: s
   if (grund) throw new MonatsError(grund, 409);
   const orgId = sheet.organizationId;
   const monat = sheet.batch.monat;
+  const gewuenscht = zettelNamen(sheet);
+  if (sheet.nameOffen && (!gewuenscht.vorname || !gewuenscht.nachname)) throw new MonatsError("Bitte trage zuerst deinen Vor- und Nachnamen ein und speichere ihn.");
   const tage = sortiert(pruefeTage(monat, roh));
   const abschluss = kannAbschliessen(monat, tage);
   if (!abschluss.ok) throw new MonatsError(abschluss.gruende[0]);
@@ -307,6 +460,11 @@ export async function unterschreibe(token: string, roh: unknown, unterschrift: s
       await tx.assignment.update({ where: { id: assignment.id }, data: { status: "LAUFEND" } });
     }
 
+    // Wer ist die Person? Bei Links ohne vorab gewählte Person entscheidet der eingetragene Name: Er wird dem Stamm
+    // zugeordnet, oder die Person wird neu angelegt. Hat sie ihren Namen nachträglich geändert, wird sie umbenannt bzw.
+    // die Person gewechselt – solange der Kunde nicht bestätigt hat.
+    const { employeeId, verwaist } = await bestimmePerson(tx, sheet, gewuenscht, assignment.id);
+
     const verwendet = new Set<string>();
     const lfdJeTag = new Map<string, number>();
     const neueTage: MonatsEintrag[] = [];
@@ -322,11 +480,11 @@ export async function unterschreibe(token: string, roh: unknown, unterschrift: s
           data: { organizationId: orgId, assignmentId: assignment.id, bezeichnung, taetigkeit: e.taetigkeit || "Monatszettel", datum: keyToDateOnly(e.datum), planStart: istStart, planEnde: istEnde, sortOrder: lfd },
         });
       }
-      const vorhanden = await tx.shiftAssignment.findUnique({ where: { shiftId_employeeId: { shiftId: shift.id, employeeId: sheet.employeeId } }, include: { timeEntries: { where: { aktuell: true }, include: { trips: true } } } });
+      const vorhanden = await tx.shiftAssignment.findUnique({ where: { shiftId_employeeId: { shiftId: shift.id, employeeId } }, include: { timeEntries: { where: { aktuell: true }, include: { trips: true } } } });
       const sa = vorhanden
         ? await tx.shiftAssignment.update({ where: { id: vorhanden.id }, data: { planStart: istStart, planEnde: istEnde, status: "ERFASST", tokenUsedAt: jetzt } })
         : await tx.shiftAssignment.create({
-            data: { organizationId: orgId, shiftId: shift.id, employeeId: sheet.employeeId, planStart: istStart, planEnde: istEnde, tokenExpiresAt: sheet.tokenExpiresAt, status: "ERFASST", tokenUsedAt: jetzt },
+            data: { organizationId: orgId, shiftId: shift.id, employeeId, planStart: istStart, planEnde: istEnde, tokenExpiresAt: sheet.tokenExpiresAt, status: "ERFASST", tokenUsedAt: jetzt },
           });
       verwendet.add(sa.id);
       const alt = vorhanden?.timeEntries[0] ?? null;
@@ -387,21 +545,35 @@ export async function unterschreibe(token: string, roh: unknown, unterschrift: s
     }
     // Tage, die die Person gestrichen hat: Einteilung stornieren (die Zeiteinträge bleiben nachvollziehbar)
     const weg = [...alteIds].filter((id) => !verwendet.has(id));
-    if (weg.length > 0) await tx.shiftAssignment.updateMany({ where: { id: { in: weg }, employeeId: sheet.employeeId }, data: { status: "STORNIERT" } });
+    if (weg.length > 0) await tx.shiftAssignment.updateMany({ where: { id: { in: weg }, employeeId }, data: { status: "STORNIERT" } });
 
     await tx.monthSheet.update({
       where: { id: sheet.id },
-      data: { tage: neueTage as unknown as Prisma.InputJsonValue, personSignedAt: jetzt, personSignatureUrl: blob.url, personIp: meta.ip, personUserAgent: meta.userAgent?.slice(0, 300) ?? null, kundeStatus: "OFFEN", kundeHinweis: null },
+      data: { employeeId, vorname: null, nachname: null, tage: neueTage as unknown as Prisma.InputJsonValue, personSignedAt: jetzt, personSignatureUrl: blob.url, personIp: meta.ip, personUserAgent: meta.userAgent?.slice(0, 300) ?? null, kundeStatus: "OFFEN", kundeHinweis: null },
     });
-    return assignment;
+    return { ...assignment, employeeId, verwaist };
+  }).catch((err: unknown) => {
+    // Die Person hat im Monatseinsatz schon Zeiten (z. B. von der Dispo eingetragen): das entscheidet die Dispo
+    if (typeof err === "object" && err !== null && (err as { code?: unknown }).code === "P2002") {
+      throw new MonatsError("Für diese Person gibt es im Monatseinsatz schon Zeiten. Bitte melde dich bei der Dispo.", 409);
+    }
+    throw err;
   });
 
+  // Ein Datensatz, den der Namenswechsel überflüssig gemacht hat, wird aufgeräumt – scheitert das (weil doch etwas
+  // darauf verweist), bleibt er einfach bestehen.
+  if (ergebnis.verwaist) {
+    await db.employee
+      .delete({ where: { id: ergebnis.verwaist } })
+      .then(() => logAudit({ organizationId: orgId, action: "employee.delete", entityType: "employee", entityId: ergebnis.verwaist ?? undefined, data: { quelle: "monatszettel", grund: "Name im Link geändert" } }))
+      .catch(() => undefined);
+  }
   await logAudit({
     organizationId: orgId,
     action: "monatszettel.person_signiert",
     entityType: "month_sheet",
     entityId: sheet.id,
-    data: { employeeId: sheet.employeeId, monat, einsatznummer: ergebnis.einsatznummer, tage: tage.length, stunden: summe(tage).stunden, unterschrift: blob.url, ip: meta.ip },
+    data: { employeeId: ergebnis.employeeId, monat, einsatznummer: ergebnis.einsatznummer, tage: tage.length, stunden: summe(tage).stunden, unterschrift: blob.url, ip: meta.ip },
   });
   return { einsatznummer: ergebnis.einsatznummer };
 }
@@ -455,7 +627,7 @@ export async function kundenAnsicht(batch: NonNullable<Awaited<ReturnType<typeof
     const sichtbar = s.personSignedAt !== null || s.kundeStatus === "BESTAETIGT";
     zettel.push({
       id: s.id,
-      name: `${s.employee.vorname} ${s.employee.nachname}`.trim(),
+      name: vollerName(zettelNamen(s)) || "Name noch nicht eingetragen",
       stand: zettelStand({ anzahlTage: tage.length, personSigniert: s.personSignedAt !== null, kundeStatus: s.kundeStatus }),
       tage: sichtbar ? tage : [],
       summe: summe(sichtbar ? tage : []),
@@ -558,13 +730,14 @@ export async function erzeugeMonatsPdf(orgId: string, sheetId: string, opt: { us
   const su = summe(tage);
   const personSig = s.personSignatureUrl ? (await getBlob(s.personSignatureUrl))?.bytes ?? null : null;
   const kundeSig = s.kundeSignatureUrl ? (await getBlob(s.kundeSignatureUrl))?.bytes ?? null : null;
-  const name = `${s.employee.vorname} ${s.employee.nachname}`.trim();
+  const namen = zettelNamen(s);
+  const name = vollerName(namen) || "Name noch nicht eingetragen";
   const bestaetigt = s.kundeStatus === "BESTAETIGT" && s.kundeAm !== null;
   const bytes = await renderMonatsstundenzettel({
     einsatznummer: s.batch.assignment?.einsatznummer ?? "–",
     monatLabel: monatsName(s.batch.monat),
     person: name,
-    personalnummer: s.employee.personalnummer,
+    personalnummer: s.employee?.personalnummer ?? null,
     kunde: { name: s.batch.customer.name, adresse: s.batch.customer.adresse },
     zeilen: pdfZeilen(tage),
     summe: { stunden: formatStunden(su.stunden), tage: su.tage, km: String(su.km).replace(".", ","), spesen: `${su.spesen.toFixed(2).replace(".", ",")} €` },
@@ -572,7 +745,7 @@ export async function erzeugeMonatsPdf(orgId: string, sheetId: string, opt: { us
     person_unterschrift: { bytes: personSig, zeitpunkt: s.personSignedAt ? stamp(s.personSignedAt) : null },
     kunde_unterschrift: bestaetigt ? { name: s.kundeName ?? "", bytes: kundeSig, zeitpunkt: stamp(s.kundeAm as Date) } : null,
   });
-  const filename = `${safeFilename(`Monatsstundenzettel_${s.batch.customer.name}_${s.employee.nachname}_${s.employee.vorname}_${s.batch.monat}`)}.pdf`;
+  const filename = `${safeFilename(`Monatsstundenzettel_${s.batch.customer.name}_${namen.nachname || "ohne-Namen"}_${namen.vorname}_${s.batch.monat}`)}.pdf`;
   if (opt.vorschau || !bestaetigt) return { bytes, filename, documentId: null };
 
   // Frühere Fassung dieses Zettels ersetzen (nicht die anderer Personen im selben Einsatz)
@@ -585,7 +758,7 @@ export async function erzeugeMonatsPdf(orgId: string, sheetId: string, opt: { us
     bytes,
     meta: { monthSheetId: s.id, monat: s.batch.monat, einsatznummer: s.batch.assignment?.einsatznummer ?? null, stunden: su.stunden, tage: su.tage },
     createdById: opt.userId,
-    links: [{ assignmentId: s.batch.assignmentId, customerId: s.batch.customerId, employeeId: s.employeeId, datum: monatErsterTag(s.batch.monat) }],
+    links: [{ assignmentId: s.batch.assignmentId, customerId: s.batch.customerId, employeeId: s.employeeId ?? undefined, datum: monatErsterTag(s.batch.monat) }],
   });
   if (frueher.length > 0) await db.document.deleteMany({ where: { id: { in: frueher.map((d) => d.id) } } });
   return { bytes, filename, documentId: doc.id };

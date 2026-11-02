@@ -1,10 +1,11 @@
-// Personenlink des Monatszettels (ohne Login): GET liefert den eigenen Zettel, PUT speichert den Entwurf,
+// Personenlink des Monatszettels (ohne Login): GET liefert den eigenen Zettel, PUT speichert den Entwurf (oder, mit
+// aktion "name", den von der Person eingetragenen Namen),
 // POST unterschreibt, PATCH nimmt die Unterschrift zurück (solange der Kunde nicht bestätigt hat).
 // Schutz: unerratbarer UUID-Token, Rate-Limit je IP, Zählung von Fehlversuchen.
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkRateLimit, clientIp, registerTokenMiss, tooManyTokenMisses } from "@/lib/einsatz/rate-limit";
-import { ladeZettelPerToken, MonatsError, oeffneWieder, personAnsicht, speichereEntwurf, unterschreibe } from "@/lib/einsatz/service/monatszettel";
+import { ladeZettelPerToken, MonatsError, oeffneWieder, personAnsicht, speichereEntwurf, speichereName, unterschreibe } from "@/lib/einsatz/service/monatszettel";
 
 export const dynamic = "force-dynamic";
 
@@ -40,13 +41,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
 }
 
 const Entwurf = z.object({ tage: z.unknown() });
+const NameBody = z.object({ aktion: z.literal("name"), vorname: z.string().max(200), nachname: z.string().max(200) });
 const Signiert = z.object({ tage: z.unknown(), unterschrift: z.string().max(700_000) });
 
 export async function PUT(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { ip, res } = limited(req, "m-put", 120);
   if (res) return res;
   const { token } = await params;
-  const body = Entwurf.safeParse(await req.json().catch(() => null));
+  const roh: unknown = await req.json().catch(() => null);
+  const name = NameBody.safeParse(roh);
+  if (name.success) {
+    try {
+      await speichereName(token, { vorname: name.data.vorname, nachname: name.data.nachname }, { ip });
+      return NextResponse.json({ ok: true, view: await ansicht(token) });
+    } catch (err) {
+      if (err instanceof MonatsError && err.status === 404) registerTokenMiss(ip);
+      return fehler(err);
+    }
+  }
+  const body = Entwurf.safeParse(roh);
   if (!body.success) return NextResponse.json({ error: "Ungültige Daten." }, { status: 400 });
   try {
     await speichereEntwurf(token, body.data.tage);
@@ -58,7 +71,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ token: s
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
-  const { ip, res } = limited(req, "m-post", 10);
+  const { ip, res } = limited(req, "m-post", 30);
   if (res) return res;
   const { token } = await params;
   const body = Signiert.safeParse(await req.json().catch(() => null));

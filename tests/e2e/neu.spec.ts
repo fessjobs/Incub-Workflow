@@ -913,8 +913,11 @@ test.describe("Neues System: Benutzer und Rollen", () => {
     const danach = await (await admin.request.get("/api/neu/state")).json();
     expect(danach.records.crew.find((c: { id: string }) => c.id === person.id).data.contract.stundenlohn).toBe(13.9);
 
-    // Zugang wieder entziehen
+    // Zugang wieder entziehen. Der Hinweis „Rolle gespeichert“ der vorigen Änderung steht noch gut drei Sekunden da; deshalb auf
+    // die Antwort des Servers warten und nicht nur auf den Hinweis.
+    const entzogen = admin.waitForResponse((r) => r.url().includes("/api/neu/benutzer") && r.request().method() === "POST");
     await admin.getByLabel(`Rolle für ${MEMBER_NAME}`).selectOption("keine");
+    expect((await entzogen).status()).toBe(200);
     await expect(admin.locator(".pv-toast")).toContainText("Rolle gespeichert");
     expect((await ctx.request.get("/api/neu/state")).status()).toBe(403);
     await ctx.close();

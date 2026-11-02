@@ -216,6 +216,21 @@ export function zettelStand(z: { anzahlTage: number; personSigniert: boolean; ku
   return z.anzahlTage === 0 ? "leer" : "in_arbeit";
 }
 
+// ─── Name ───────────────────────────────────────────────────────────────────
+
+export type Namen = { vorname: string; nachname: string };
+
+// Wie heißt die Person auf dem Zettel? Ein eingetragener, noch nicht übernommener Name hat Vorrang, sonst gilt der Name im
+// Mitarbeiterstamm. Ohne beides (Link ohne Person, noch nichts eingetragen) bleibt der Name leer.
+export function zettelNamen(z: { vorname: string | null; nachname: string | null; employee: Namen | null }): Namen {
+  if (z.vorname && z.nachname) return { vorname: z.vorname, nachname: z.nachname };
+  return z.employee ? { vorname: z.employee.vorname, nachname: z.employee.nachname } : { vorname: "", nachname: "" };
+}
+
+export function vollerName(n: Namen): string {
+  return `${n.vorname} ${n.nachname}`.trim();
+}
+
 // ─── Nachrichten ────────────────────────────────────────────────────────────
 
 export const STANDARD_VORLAGE =
@@ -224,8 +239,16 @@ export const STANDARD_VORLAGE =
   "Am Monatsende prüfst du alles und unterschreibst. Danach unterschreibt der Kunde.\n" +
   "Der Link gehört nur dir. Bei Fragen melde dich bei der Dispo. Dein fess.jobs Team";
 
-export function fuelleVorlage(vorlage: string, werte: { vorname: string; kunde: string; monat: string; link: string }): string {
-  return vorlage.replace(/\{(vorname|kunde|monat|link)\}/g, (_, k: keyof typeof werte) => werte[k]);
+// Ohne Vornamen (Link ohne vorab gewählte Person) entfällt die Anrede, und ein Hinweis bittet darum, zuerst den Namen
+// einzutragen.
+export const NAMEN_HINWEIS = "Trage oben zuerst deinen Vor- und Nachnamen ein.";
+
+export function fuelleVorlage(vorlage: string, werte: { vorname: string; kunde: string; monat: string; link: string }, optionen: { namenHinweis?: boolean } = {}): string {
+  const text = vorlage.replace(/(\s?)\{(vorname|kunde|monat|link)\}/g, (_, abstand: string, k: keyof typeof werte) => {
+    if (k === "vorname") return werte.vorname ? `${abstand}${werte.vorname}` : "";
+    return `${abstand}${werte[k]}`;
+  });
+  return optionen.namenHinweis && !werte.vorname ? `${text}\n${NAMEN_HINWEIS}` : text;
 }
 
 export function kundenNachricht(werte: { anrede: string; kunde: string; monat: string; link: string }): string {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireDispo } from "@/lib/einsatz/access";
-import { STAND_TEXT, datumAnzeige, eintragMinuten, formatStunden, monatsName, sortiert, stundenDezimal, summe, zettelStand } from "@/lib/einsatz/monatszettel";
+import { STAND_TEXT, datumAnzeige, eintragMinuten, formatStunden, monatsName, sortiert, stundenDezimal, summe, vollerName, zettelNamen, zettelStand } from "@/lib/einsatz/monatszettel";
 import { ladeZettel, leseTage } from "@/lib/einsatz/service/monatszettel";
 import { formatDateTime } from "@/lib/format";
 
@@ -17,7 +17,7 @@ export default async function MonatszettelDetail({ params }: { params: Promise<{
   const tage = sortiert(leseTage(z.tage));
   const su = summe(tage);
   const stand = zettelStand({ anzahlTage: tage.length, personSigniert: z.personSignedAt !== null, kundeStatus: z.kundeStatus });
-  const name = `${z.employee.vorname} ${z.employee.nachname}`.trim();
+  const name = vollerName(zettelNamen(z)) || "Name noch nicht eingetragen";
   const zurueck = `/einsaetze/monatszettel?kunde=${z.batch.customerId}&monat=${z.batch.monat}`;
 
   return (
@@ -28,7 +28,8 @@ export default async function MonatszettelDetail({ params }: { params: Promise<{
           <p className="eyebrow">{z.batch.customer.name} · {monatsName(z.batch.monat)}</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">{name}</h1>
           <p className="mt-1 text-sm text-navy-400">
-            {z.employee.personalnummer ? `Personalnummer ${z.employee.personalnummer} · ` : ""}
+            {z.employee?.personalnummer ? `Personalnummer ${z.employee.personalnummer} · ` : ""}
+            {z.nameOffen ? "Name selbst eingetragen · " : ""}
             {STAND_TEXT[stand]}
             {z.personSignedAt ? ` · Person unterschrieben ${formatDateTime(z.personSignedAt)}` : ""}
             {z.kundeAm && z.kundeStatus === "BESTAETIGT" ? ` · Kunde ${z.kundeName ?? ""} bestätigt ${formatDateTime(z.kundeAm)}` : ""}

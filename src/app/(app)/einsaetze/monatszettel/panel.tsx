@@ -20,6 +20,7 @@ const STAND_FARBE: Record<ZettelStand, string> = {
 };
 
 const VORLAGE_KEY = "mz-vorlage-v1";
+const MAX_OHNE_NAMEN = 50;
 
 async function kopiere(text: string): Promise<boolean> {
   try {
@@ -52,7 +53,8 @@ export function MonatszettelPanel({ kunden, mitarbeiter, monate, kundeId, monat,
 
   const kunde = kunden.find((k) => k.id === kundeId) ?? null;
   const base = basis || (typeof window !== "undefined" ? window.location.origin : "");
-  const hatLink = useMemo(() => new Set(stapel.zettel.map((z) => z.employeeId)), [stapel.zettel]);
+  const hatLink = useMemo(() => new Set(stapel.zettel.map((z) => z.employeeId).filter((x): x is string => x !== null)), [stapel.zettel]);
+  const [ohneNamen, setOhneNamen] = useState(1);
   const sichtbar = mitarbeiter.filter((m) => !suche.trim() || `${m.vorname} ${m.nachname} ${m.personalnummer ?? ""}`.toLowerCase().includes(suche.trim().toLowerCase()));
   const zaehler = {
     offen: stapel.zettel.filter((z) => ["leer", "in_arbeit", "zurueck"].includes(z.stand)).length,
@@ -81,7 +83,7 @@ export function MonatszettelPanel({ kunden, mitarbeiter, monate, kundeId, monat,
       }
     });
 
-  const nachricht = (vorname: string, token: string) => fuelleVorlage(vorlage, { vorname, kunde: kunde?.name ?? "", monat: monatsName(monat), link: `${base}/e/m/${token}` });
+  const nachricht = (vorname: string, token: string) => fuelleVorlage(vorlage, { vorname, kunde: kunde?.name ?? "", monat: monatsName(monat), link: `${base}/e/m/${token}` }, { namenHinweis: true });
   const kundenText = stapel.batch ? kundenNachricht({ anrede: kontakt.split("(")[0].trim(), kunde: kunde?.name ?? "", monat: monatsName(monat), link: `${base}/e/k/${stapel.batch.token}` }) : "";
 
   return (
@@ -164,6 +166,22 @@ export function MonatszettelPanel({ kunden, mitarbeiter, monate, kundeId, monat,
             </button>
             <span className="text-xs text-navy-400">Jede Person bekommt einen eigenen Link für {kunde.name} im {monatsName(monat)}.</span>
           </div>
+          <div className="space-y-2 rounded-md bg-navy-50 p-4 dark:bg-navy-900" data-testid="mz-ohne-namen">
+            <p className="font-medium">Oder: Links ohne Namen</p>
+            <p className="text-xs text-navy-400">
+              Für Leute, die noch nicht im System stehen oder bei denen du den Namen nicht vorab wählen willst. Wer so einen Link bekommt, trägt Vor- und Nachnamen selbst ein und kann sie ändern, bis der Kunde unterschrieben hat. Mit der Unterschrift
+              wird die Person im Mitarbeiterstamm gefunden oder neu angelegt.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="label" htmlFor="mz-ohne-anzahl">Anzahl Links</label>
+                <input id="mz-ohne-anzahl" className="input-accent w-24" type="number" min={1} max={MAX_OHNE_NAMEN} value={ohneNamen} onChange={(e) => setOhneNamen(Math.max(1, Math.min(MAX_OHNE_NAMEN, Math.floor(Number(e.target.value)) || 1)))} data-testid="mz-ohne-anzahl" />
+              </div>
+              <button type="button" className="btn-secondary" disabled={pending} onClick={() => lauf(() => erstelleLinksAction({ customerId: kundeId, monat, employeeIds: [], ohneNamen }))} data-testid="mz-links-ohne-namen">
+                Links ohne Namen erstellen ({ohneNamen})
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
         <p className="text-sm text-navy-400">Wähle oben einen Kunden, dann kannst du Personen auswählen und Links erstellen.</p>
@@ -192,14 +210,17 @@ export function MonatszettelPanel({ kunden, mitarbeiter, monate, kundeId, monat,
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-100 dark:divide-navy-800">
-                {stapel.zettel.map((z) => (
-                  <tr key={z.id} data-testid={`mz-zeile-${z.employeeId}`}>
+                {stapel.zettel.map((z) => {
+                  // Bei Links ohne Namen gibt es erst nach der Unterschrift eine Person; bis dahin gilt die ID des Zettels
+                  const sk = z.employeeId ?? z.id;
+                  return (
+                  <tr key={z.id} data-testid={`mz-zeile-${sk}`}>
                     <td className="py-2 pr-3">
-                      <p className="font-medium">{z.name}</p>
-                      <p className="text-xs text-navy-400">{z.personalnummer ?? ""}</p>
+                      <p className="font-medium" data-testid={`mz-name-${sk}`}>{z.name || <span className="italic text-navy-400">Noch kein Name</span>}</p>
+                      <p className="text-xs text-navy-400">{[z.personalnummer, z.nameOffen ? "Name selbst eingetragen" : ""].filter(Boolean).join(" · ")}</p>
                     </td>
                     <td className="py-2 pr-3">
-                      <span className={`badge ${STAND_FARBE[z.stand]}`} data-testid={`mz-stand-${z.employeeId}`}>{STAND_TEXT[z.stand]}</span>
+                      <span className={`badge ${STAND_FARBE[z.stand]}`} data-testid={`mz-stand-${sk}`}>{STAND_TEXT[z.stand]}</span>
                       <p className="mt-1 text-xs text-navy-400">{z.linkSentAt ? "Link versendet" : "Link noch nicht versendet"}</p>
                       {z.stand === "zurueck" && z.kundeHinweis ? <p className="mt-1 text-xs text-red-600">„{z.kundeHinweis}“</p> : null}
                     </td>
@@ -214,32 +235,33 @@ export function MonatszettelPanel({ kunden, mitarbeiter, monate, kundeId, monat,
                             setMeldung({ ok, text: ok ? "Nachricht kopiert." : "Kopieren nicht möglich." });
                             if (ok) lauf(() => markiereGesendetAction(z.id));
                           }}
-                          data-testid={`mz-kopieren-${z.employeeId}`}
+                          data-testid={`mz-kopieren-${sk}`}
                         >
                           Kopieren
                         </button>
-                        <a className="btn-secondary" href={waLinkAn(z.mobil, nachricht(z.vorname, z.token))} target="_blank" rel="noreferrer" onClick={() => lauf(() => markiereGesendetAction(z.id))} data-testid={`mz-wa-${z.employeeId}`}>
+                        <a className="btn-secondary" href={waLinkAn(z.mobil, nachricht(z.vorname, z.token))} target="_blank" rel="noreferrer" onClick={() => lauf(() => markiereGesendetAction(z.id))} data-testid={`mz-wa-${sk}`}>
                           WhatsApp
                         </a>
                       </div>
                     </td>
                     <td className="py-2">
                       <div className="flex flex-wrap gap-2">
-                        <a className="btn-secondary" href={`/e/m/${z.token}`} target="_blank" rel="noreferrer" data-testid={`mz-person-oeffnen-${z.employeeId}`}>
+                        <a className="btn-secondary" href={`/e/m/${z.token}`} target="_blank" rel="noreferrer" data-testid={`mz-person-oeffnen-${sk}`}>
                           Als Person öffnen
                         </a>
-                        <a className="btn-secondary" href={`/einsaetze/monatszettel/${z.id}`} data-testid={`mz-detail-${z.employeeId}`}>
+                        <a className="btn-secondary" href={`/einsaetze/monatszettel/${z.id}`} data-testid={`mz-detail-${sk}`}>
                           Details / PDF
                         </a>
                         {z.stand === "leer" ? (
-                          <button type="button" className="btn-secondary" disabled={pending} onClick={() => lauf(() => entferneZettelAction(z.id))} aria-label={`Link für ${z.name} entfernen`}>
+                          <button type="button" className="btn-secondary" disabled={pending} onClick={() => lauf(() => entferneZettelAction(z.id))} aria-label={`Link für ${z.name || "ohne Namen"} entfernen`}>
                             ✕
                           </button>
                         ) : null}
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -302,7 +324,7 @@ export function MonatszettelPanel({ kunden, mitarbeiter, monate, kundeId, monat,
               <button type="button" className="btn-secondary" onClick={() => { setVorlage(STANDARD_VORLAGE); try { window.localStorage.removeItem(VORLAGE_KEY); } catch { /* egal */ } }}>Standardtext</button>
             </div>
           ) : (
-            <p className="whitespace-pre-wrap text-sm text-navy-500">{fuelleVorlage(vorlage, { vorname: stapel.zettel[0]?.vorname ?? "Anna", kunde: kunde.name, monat: monatsName(monat), link: `${base}/e/m/…` })}</p>
+            <p className="whitespace-pre-wrap text-sm text-navy-500">{fuelleVorlage(vorlage, { vorname: stapel.zettel.find((z) => z.vorname)?.vorname ?? "Anna", kunde: kunde.name, monat: monatsName(monat), link: `${base}/e/m/…` })}</p>
           )}
         </div>
       ) : null}

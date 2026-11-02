@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireDispo } from "@/lib/einsatz/access";
 import { istMonat } from "@/lib/einsatz/monatszettel";
-import { entferneLeerenZettel, erstelleLinks, markiereGesendet, MonatsError, setzeKontakt } from "@/lib/einsatz/service/monatszettel";
+import { entferneLeerenZettel, erstelleLinks, markiereGesendet, MAX_LINKS_OHNE_NAMEN, MonatsError, setzeKontakt } from "@/lib/einsatz/service/monatszettel";
 
 export type MzResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -15,7 +15,15 @@ function fail(err: unknown): MzResult {
   return { ok: false, error: "Das hat nicht geklappt. Bitte noch einmal versuchen." };
 }
 
-const LinksSchema = z.object({ customerId: z.string().min(1).max(60), monat: z.string().refine(istMonat, "Ungültiger Monat."), employeeIds: z.array(z.string().max(60)).min(1, "Bitte mindestens eine Person auswählen.").max(200) });
+const LinksSchema = z
+  .object({
+    customerId: z.string().min(1).max(60),
+    monat: z.string().refine(istMonat, "Ungültiger Monat."),
+    employeeIds: z.array(z.string().max(60)).max(200).default([]),
+    // Links, die keiner Person gehören: Wer sie bekommt, trägt seinen Namen selbst ein
+    ohneNamen: z.number().int().min(0).max(MAX_LINKS_OHNE_NAMEN).default(0),
+  })
+  .refine((v) => v.employeeIds.length > 0 || v.ohneNamen > 0, "Bitte mindestens eine Person auswählen oder Links ohne Namen anlegen.");
 
 export async function erstelleLinksAction(input: unknown): Promise<MzResult> {
   const user = await requireDispo();
@@ -24,7 +32,14 @@ export async function erstelleLinksAction(input: unknown): Promise<MzResult> {
   try {
     const r = await erstelleLinks({ id: user.id, organizationId: user.organizationId }, p.data);
     revalidatePath("/einsaetze/monatszettel");
-    return { ok: true, message: r.neu > 0 ? `${r.neu} Monatslink${r.neu === 1 ? "" : "s"} erstellt.` : "Für alle Gewählten gibt es schon einen Link." };
+    const gesamt = r.neu + r.ohneNamen;
+    return {
+      ok: true,
+      message:
+        gesamt > 0
+          ? `${gesamt} Monatslink${gesamt === 1 ? "" : "s"} erstellt${r.ohneNamen > 0 ? ` (${r.ohneNamen} ohne Namen)` : ""}.`
+          : "Für alle Gewählten gibt es schon einen Link.",
+    };
   } catch (err) {
     return fail(err);
   }
