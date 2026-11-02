@@ -114,6 +114,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/bewerber", label: "Bewerber", badge: neueBewerbungen + offeneBewerber },
     { href: "/admin/freigaben", label: "Freigaben", badge: wartenAufFreigabe },
     { href: "/admin/stunden", label: "Stundentabelle", gruppe: "Abrechnung" },
+    // Klick-Prototyp: nur in der Testversion, noch nicht im echten System
+    ...(echtSystem ? [] : [{ href: "/admin/monatszettel", label: "Monatszettel" }]),
     { href: "/admin/unterlagen", label: "Unterlagen" },
     { href: "/admin/crew", label: "Crew", gruppe: "Personal" },
     { href: "/admin/kleidung", label: "Arbeitskleidung" },

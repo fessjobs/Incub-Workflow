@@ -40,7 +40,7 @@ der Seitenleiste „Testversion“. Gedacht für eine **eigene Railway-Umgebung
 `PREVIEW_ENABLED=1 PREVIEW_PASSWORD=test AUTH_SECRET=irgendwas npm run dev` →
 `http://localhost:3000/preview`.
 
-## Rundgang in acht Stationen
+## Rundgang in neun Stationen
 
 | # | Bereich | Wo | Was du probieren kannst |
 | --- | --- | --- | --- |
@@ -52,6 +52,7 @@ der Seitenleiste „Testversion“. Gedacht für eine **eigene Railway-Umgebung
 | 6 | B Unterlagen | Dashboard | alle Dokumente je Person und Auftrag, Suche und Filter |
 | 7 | A Beleg-Link | Handy-Link | Beleg „fotografieren“, Betrag eintragen, Beiblatt prüfen; gelbe Abweichungen sehen („Beispiel mit Abweichung“) |
 | 8 | C Unterweisung | beide | Module lesen, Quiz (ab 80 %), bei falscher Antwort erscheint die Karte erneut, Nachweis |
+| 9 | H Monatszettel | Dashboard + Handy-Links | Kunde und Personen wählen, Zettel als Person ausfüllen und unterschreiben, als Kunde bestätigen oder zurückgeben, PDF-Blatt, Übernahme in die Stundentabelle (siehe `docs/monatszettel-entwurf.md`) |
 
 Im Banner gibt es **Notizen**: Stichpunkte beim Durchklicken, am Ende kopieren.
 

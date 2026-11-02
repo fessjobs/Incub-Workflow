@@ -13,6 +13,7 @@ const RUNDGANG: Array<{ bereich: string; titel: string; wo: string; href: string
   { bereich: "B", titel: "Unterlagen-Archiv", wo: "Dashboard", href: "/admin/unterlagen", probier: "Alle Dokumente je Person und Auftrag, Suche, Filter." },
   { bereich: "A", titel: "Beleg-Link", wo: "Handy-Link", href: "/b/demo-token", probier: "Foto wählen, Betrag und Datum eintragen, Beiblatt prüfen, absenden – gelb markierte Abweichungen sehen." },
   { bereich: "C", titel: "Unterweisungen verwalten", wo: "Dashboard", href: "/admin/unterweisungen", probier: "Wer ist gültig, wer läuft ab, Texte in Deutsch und Englisch." },
+  { bereich: "H", titel: "Monatszettel (neu)", wo: "Dashboard und Handy-Links", href: "/admin/monatszettel", probier: "Kunde und Personen wählen, Links erstellen, den Zettel als Person ausfüllen und unterschreiben, als Kunde bestätigen oder zurückgeben, PDF-Blatt, Übernahme in die Stundentabelle." },
 ];
 
 const OFFENE_PUNKTE: Array<{ nr: number; titel: string; annahme: string }> = [

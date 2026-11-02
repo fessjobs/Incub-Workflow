@@ -16,6 +16,9 @@ import { CrewFragebogen } from "./crew-fragebogen";
 import { CrewBewerben, CrewJobDetail, CrewJobs } from "./crew-jobs";
 import { CrewModul, CrewUnterweisungen } from "./crew-unterweisung";
 import { CrewVorstellung } from "./crew-vorstellung";
+import { AdminMonatszettel, AdminMonatszettelDetail } from "./admin-monatszettel";
+import { MonatPerson } from "./monat-person";
+import { MonatKunde } from "./monat-kunde";
 import { BelegLink } from "./beleg";
 import { AdminFreigaben } from "./admin-freigaben";
 import { AdminKleidung } from "./admin-kleidung";
@@ -66,6 +69,10 @@ export const ROUTEN: Route[] = [
   { muster: "/crew/vorstellung", rahmen: "crew", render: () => <CrewVorstellung /> },
   { muster: "/crew/profil", rahmen: "crew", render: () => <CrewProfil /> },
   { muster: "/b/:token", rahmen: "frei", render: (p) => <BelegLink token={p.token} /> },
+  { muster: "/m/:token", rahmen: "frei", render: (p) => <MonatPerson token={p.token} /> },
+  { muster: "/k/:token", rahmen: "frei", render: (p) => <MonatKunde token={p.token} /> },
+  { muster: "/admin/monatszettel", rahmen: "admin", render: () => <AdminMonatszettel /> },
+  { muster: "/admin/monatszettel/:id", rahmen: "admin", render: (p) => <AdminMonatszettelDetail id={p.id} /> },
   { muster: "/admin/stunden", rahmen: "admin", render: () => <AdminStunden /> },
   { muster: "/admin/einstellungen", rahmen: "admin", render: () => <AdminEinstellungen /> },
   { muster: "/admin/freigaben", rahmen: "admin", render: () => <AdminFreigaben /> },

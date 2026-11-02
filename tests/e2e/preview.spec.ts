@@ -358,6 +358,153 @@ test.describe("Testversion: Mitarbeiterlink", () => {
   });
 });
 
+// Mit der Maus im Unterschriftenfeld ein paar Striche ziehen
+async function zeichne(page: Page) {
+  const feld = page.getByTestId("signatur").first();
+  await feld.scrollIntoViewIfNeeded();
+  const box = await feld.boundingBox();
+  if (!box) throw new Error("Unterschriftenfeld nicht sichtbar");
+  await page.mouse.move(box.x + 30, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 14; i++) await page.mouse.move(box.x + 30 + i * 12, box.y + box.height / 2 + Math.sin(i) * 26);
+  await page.mouse.up();
+}
+
+test.describe("Testversion: Monatszettel", () => {
+  test("Kunde und Personen wählen, Zettel am Handy ausfüllen und unterschreiben, Kunde bestätigt oder gibt zurück, PDF und Stundentabelle", async ({ page }) => {
+    await oeffnen(page, "/preview/admin/monatszettel");
+    await expect(page.getByTestId("admin-monatszettel")).toBeVisible();
+    // Beispiel: drei Personen in drei Zuständen
+    const zeilen = page.locator('[data-testid^="mz-zeile-"]');
+    await expect(zeilen).toHaveCount(3);
+    const pnrs = await zeilen.evaluateAll((els) => els.map((el) => (el.getAttribute("data-testid") ?? "").replace("mz-zeile-", "")));
+    const [pnrA, pnrB, pnrC] = pnrs;
+    await expect(zeilen.nth(0)).toContainText("wartet auf den Kunden");
+    await expect(zeilen.nth(1)).toContainText("wird ausgefüllt");
+    await expect(zeilen.nth(2)).toContainText("noch nichts eingetragen");
+
+    // Eine weitere Person auswählen und den Link erstellen
+    await expect(page.getByTestId("mz-links-erstellen")).toBeDisabled();
+    await page.locator('[data-testid^="mz-wahl-"]:not([disabled])').first().check();
+    await page.getByTestId("mz-links-erstellen").click();
+    await expect(zeilen).toHaveCount(4);
+    // Nachricht je Person: kopieren markiert den Link als versendet
+    await expect(zeilen.nth(3)).toContainText("Link noch nicht versendet");
+    await zeilen.nth(3).getByRole("button", { name: "Kopieren" }).click();
+    await expect(zeilen.nth(3)).toContainText("Link versendet");
+
+    // ─── Person C am Handy: Tag eintragen ───
+    await page.getByTestId(`mz-person-oeffnen-${pnrC}`).click();
+    await expect(page.getByTestId("mz-person")).toBeVisible();
+    await expect(page.getByTestId("mz-tag-2026-10-10")).toBeDisabled(); // Zukunft
+    await expect(page.getByTestId("mz-abschliessen")).toBeDisabled();
+    await page.getByTestId("mz-tag-2026-10-05").click();
+    await page.getByTestId("mz-start").fill("07:30");
+    await page.getByTestId("mz-ende").fill("16:00");
+    await page.getByTestId("mz-pause").fill("45");
+    await page.getByTestId("mz-taetigkeit").fill("Stagehand");
+    await page.getByTestId("mz-fahrt-neu").click();
+    await page.getByTestId("mz-fahrt-von-0").fill("Stuttgart");
+    await page.getByTestId("mz-fahrt-nach-0").fill("Porsche-Arena");
+    await page.getByTestId("mz-fahrt-km-0").fill("14,5");
+    await page.getByTestId("mz-privat-pkw").check();
+    await page.getByTestId("mz-spesen").fill("12,50");
+    await page.getByTestId("mz-sonderabsprache").fill("Früherer Beginn mit dem Hallenmeister abgesprochen");
+    await page.getByTestId("mz-getan").fill("Aufbau Bühne");
+    await page.getByTestId("mz-speichern").click();
+    await expect(page.getByTestId("mz-summe")).toContainText("1 Tage");
+    await expect(page.getByTestId("mz-summe")).toContainText("7,75 h");
+    await expect(page.getByTestId("mz-summe")).toContainText("14,5 km");
+    await expect(page.getByTestId("mz-tag-2026-10-05")).toContainText("7:45");
+
+    // Ungültige Eingabe wird erklärt, nichts wird gespeichert
+    await page.getByTestId("mz-tag-2026-10-06").click();
+    await page.getByTestId("mz-ende").fill("07:30");
+    await page.getByTestId("mz-start").fill("07:30");
+    await page.getByTestId("mz-speichern").click();
+    await expect(page.getByTestId("mz-fehler")).toContainText("gleich");
+    // „Wie letzter Eintrag“ übernimmt Zeiten, Pause und Fahrt
+    await page.getByTestId("mz-wie-letzter").click();
+    await expect(page.getByTestId("mz-start")).toHaveValue("07:30");
+    await expect(page.getByTestId("mz-ende")).toHaveValue("16:00");
+    await expect(page.getByTestId("mz-fahrt-von-0")).toHaveValue("Stuttgart");
+    await page.getByTestId("mz-speichern").click();
+    await expect(page.getByTestId("mz-summe")).toContainText("2 Tage");
+
+    // Erst Haken und Unterschrift, dann geht es weiter
+    await expect(page.getByTestId("mz-abschliessen")).toBeDisabled();
+    await page.getByTestId("mz-haken").check();
+    await expect(page.getByTestId("mz-abschliessen")).toBeDisabled();
+    await zeichne(page);
+    await page.getByTestId("mz-abschliessen").click();
+    await expect(page.getByText("Du hast unterschrieben.")).toBeVisible();
+    await expect(page.getByTestId("mz-wieder-oeffnen")).toBeVisible();
+    await expect(page.getByTestId("mz-tag-2026-10-07")).toBeDisabled(); // gesperrt
+
+    // ─── Kunde: sieht A und C, gibt A mit Hinweis zurück ───
+    await oeffnen(page, "/preview/admin/monatszettel");
+    await expect(page.locator('[data-testid^="mz-zeile-"]').filter({ hasText: "wartet auf den Kunden" })).toHaveCount(2);
+    await page.getByTestId("mz-kundenlink-oeffnen").click();
+    await expect(page.getByTestId("mz-kunde")).toBeVisible();
+    await expect(page.getByTestId(`mk-zettel-${pnrB}`)).toContainText("wird ausgefüllt");
+    await page.getByTestId(`mk-ansehen-${pnrA}`).click();
+    await expect(page.getByTestId(`mk-detail-${pnrA}`)).toContainText("Summe");
+    await page.getByTestId(`mk-zurueckgeben-${pnrA}`).click();
+    await expect(page.getByTestId(`mk-zurueck-senden-${pnrA}`)).toBeDisabled();
+    await page.getByTestId(`mk-hinweis-${pnrA}`).fill("Am 06.10. war der Feierabend früher.");
+    await page.getByTestId(`mk-zurueck-senden-${pnrA}`).click();
+    await expect(page.getByTestId(`mk-zettel-${pnrA}`)).toContainText("zurückgegeben");
+
+    // ─── Person A korrigiert und unterschreibt erneut ───
+    await oeffnen(page, "/preview/admin/monatszettel");
+    await page.getByTestId(`mz-person-oeffnen-${pnrA}`).click();
+    await expect(page.getByTestId("mz-rueckgabe-hinweis")).toContainText("Feierabend früher");
+    await page.getByTestId("mz-haken").check();
+    await zeichne(page);
+    await page.getByTestId("mz-abschliessen").click();
+    await expect(page.getByText("Du hast unterschrieben.")).toBeVisible();
+
+    // ─── Kunde bestätigt beide in einem Rutsch ───
+    await oeffnen(page, "/preview/admin/monatszettel");
+    await page.getByTestId("mz-kundenlink-oeffnen").click();
+    await expect(page.getByTestId("mk-unterschreiben")).toBeDisabled();
+    await page.getByTestId("mk-name").fill("Frau Berger");
+    await page.getByTestId("mk-funktion").fill("Hallenleitung");
+    await page.getByTestId("mk-haken").check();
+    await zeichne(page);
+    await page.getByTestId("mk-unterschreiben").click();
+    await expect(page.getByTestId("mk-fertig")).toContainText("2 Personen");
+
+    // ─── Dashboard: fertig, PDF-Blatt mit beiden Unterschriften, Übernahme in die Stundentabelle ───
+    await oeffnen(page, "/preview/admin/monatszettel");
+    await expect(page.locator('[data-testid^="mz-zeile-"]').filter({ hasText: "von beiden unterschrieben" })).toHaveCount(2);
+    await page.getByTestId(`mz-detail-${pnrA}`).click();
+    await expect(page.getByTestId("mz-blatt")).toContainText("Monatsstundenzettel Oktober 2026");
+    await expect(page.getByTestId("mz-blatt").locator("img")).toHaveCount(2);
+    await expect(page.getByTestId("mz-blatt")).toContainText("Frau Berger, Hallenleitung");
+    await page.getByTestId("mz-uebernehmen").click();
+    await expect(page.getByTestId("mz-uebernommen")).toContainText("Stundentabelle");
+    await expect(page.getByTestId("mz-uebernehmen")).toHaveCount(0);
+    await page.getByRole("link", { name: "Stundentabelle", exact: true }).first().click();
+    await expect(page.getByText("Stunden").first()).toBeVisible();
+  });
+
+  test("Falscher Link, Zurücksetzen und Hinweis in der Navigation", async ({ page }) => {
+    await oeffnen(page, "/preview/m/gibt-es-nicht");
+    await expect(page.getByText("Link nicht gefunden")).toBeVisible();
+    await oeffnen(page, "/preview/k/gibt-es-nicht");
+    await expect(page.getByText("Link nicht gefunden")).toBeVisible();
+    await oeffnen(page, "/preview/admin");
+    await page.getByRole("link", { name: "Monatszettel" }).click();
+    await expect(page.getByTestId("admin-monatszettel")).toBeVisible();
+    await page.locator('[data-testid^="mz-wahl-"]:not([disabled])').first().check();
+    await page.getByTestId("mz-links-erstellen").click();
+    await expect(page.locator('[data-testid^="mz-zeile-"]')).toHaveCount(4);
+    await page.getByTestId("mz-zuruecksetzen").click();
+    await expect(page.locator('[data-testid^="mz-zeile-"]')).toHaveCount(3);
+  });
+});
+
 test.describe("Testversion: Beleg-Link", () => {
   test("Beleg einreichen, Abweichung wird gelb markiert", async ({ page }) => {
     await oeffnen(page, "/preview/b/demo-token");

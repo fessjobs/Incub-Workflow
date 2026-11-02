@@ -278,3 +278,24 @@
 /* Ohne Banner (Mitarbeiterlink im echten System) */
 .pv.nobanner .pvc { min-height: 100vh; }
 .pv.nobanner .pvc-top { top: 0; }
+
+/* Monatszettel (Klick-Prototyp): Kalender, Tageszeilen, Personenliste, Druckblatt */
+.mz-kal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.mz-kopf { text-align: center; font-family: var(--head); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.74rem; font-weight: 700; color: var(--muted); padding: 0.2rem 0; }
+.mz-tag { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; border: 1.5px solid var(--line); background: #fff; border-radius: 10px; font: inherit; color: var(--ink); cursor: pointer; padding: 0.2rem 0; }
+.mz-tag .nr { font-weight: 700; font-size: 0.95rem; }
+.mz-tag .std { font-family: var(--mono); font-size: 0.62rem; color: var(--ok); }
+.mz-tag.we { background: #f7f8fb; color: var(--muted); }
+.mz-tag.belegt { background: var(--ok-soft); border-color: #a9dcc0; }
+.mz-tag.heute { border-color: var(--orange); box-shadow: 0 0 0 2px rgba(255, 90, 0, 0.18); }
+.mz-tag:disabled { opacity: 0.4; cursor: not-allowed; }
+.mz-tag:not(:disabled):hover { border-color: var(--orange); }
+.mz-zeile { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; text-align: left; width: 100%; background: #fff; border: 0; border-bottom: 1px solid var(--line); padding: 0.6rem 0.2rem; font: inherit; color: var(--ink); cursor: pointer; }
+.mz-zeile:hover { background: var(--mist); }
+.mz-personen { max-height: 300px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 0.3rem 0.7rem; background: #fff; }
+.mz-person-zeile { align-items: center; padding: 0.4rem 0; border-bottom: 1px solid var(--mist); }
+.mz-blatt { background: #fff; }
+@media print {
+  .pv-noprint { display: none !important; }
+  .mz-blatt { border: 0; padding: 0; }
+}
