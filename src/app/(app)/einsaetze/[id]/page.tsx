@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ladeOffeneStunden } from "@/lib/einsatz/service/stunden-offen";
 import { notFound } from "next/navigation";
 import { canBillingNotes, canDispo, canInvoice, canRate, canReview, canSeeMoney, requireModuleUser } from "@/lib/einsatz/access";
 import { DOCUMENT_CATEGORY_LABELS } from "@/lib/einsatz/documents";
@@ -83,6 +84,7 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
     (n, s) => n + s.assignments.filter((sa) => sa.status !== "STORNIERT" && sa.timeEntries.some((t) => t.unterschriftZeitpunkt && t.review !== "FREIGEGEBEN")).length,
     0
   );
+  const wartet = darfFreigeben ? (await ladeOffeneStunden(user.organizationId, a.id))[0] ?? null : null;
   // Abrechnung: Stunden (Buchhaltung) → Angaben (Admin) → Rechnung (Buchhaltung)
   const abrechnung = pruefeAbrechnungsfreigabe(a);
   const darfAbrechnen = canInvoice(user);
@@ -135,6 +137,17 @@ export default async function EinsatzDetailPage({ params }: { params: Promise<{ 
         </div>
         <ActionButtons assignmentId={a.id} status={a.status} dispo={dispo} freigeben={darfFreigeben} offeneZeiten={offeneZeiten} />
       </div>
+
+      {darfFreigeben && wartet ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="dispo-kasten">
+          <p className="font-semibold">Stunden eingetragen – bitte prüfen und freigeben</p>
+          <p className="mt-1">
+            {wartet.personen} {wartet.personen === 1 ? "Person hat" : "Personen haben"} unterschrieben, zusammen {wartet.stunden.toFixed(2).replace(".", ",")} h.
+            {wartet.nachFreigabe > 0 ? <strong> {wartet.nachFreigabe === 1 ? "Ein Eintrag wurde" : `${wartet.nachFreigabe} Einträge wurden`} nach der Freigabe noch geändert und braucht eine neue Freigabe.</strong> : null} Mit „Stundenzettel freigeben“ oben gibst du alles auf einmal frei,
+            oder du gehst die Zeilen in der <Link href="/einsaetze/freigabe" className="underline">Freigabeliste</Link> einzeln durch.
+          </p>
+        </div>
+      ) : null}
 
       {dispo ? (
         <EditKopf

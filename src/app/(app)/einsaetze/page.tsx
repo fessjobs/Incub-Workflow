@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { canDispo, canSeeMoney, requireModuleUser } from "@/lib/einsatz/access";
+import { canDispo, canReview, canSeeMoney, requireModuleUser } from "@/lib/einsatz/access";
+import { ladeOffeneStunden } from "@/lib/einsatz/service/stunden-offen";
 import { dateOnlyKey, formatKeyDE, keyToDateOnly, isValidDateKey } from "@/lib/einsatz/tz";
 import { StatusBadge, ASSIGNMENT_STATUS_LABELS, AbrechnungBadge } from "./status-badge";
 import { JobsButton } from "./jobs-button";
@@ -52,6 +53,8 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
     db.customer.findMany({ where: { organizationId: user.organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.job.groupBy({ by: ["status"], where: { organizationId: user.organizationId }, _count: true }),
   ]);
+  // Kasten für die Dispo: Stunden sind eingetragen und warten auf Prüfung und Freigabe (unabhängig von den Filtern)
+  const wartetAufDispo = canReview(user) ? await ladeOffeneStunden(user.organizationId) : [];
   const offeneJobs = jobStats.find((j) => j.status === "OFFEN")?._count ?? 0;
   const fehlerJobs = jobStats.find((j) => j.status === "FEHLER")?._count ?? 0;
 
@@ -72,6 +75,36 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
           ) : null}
         </div>
       </div>
+
+      {wartetAufDispo.length > 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="dispo-kasten">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-semibold">
+              Stunden eingetragen – bitte prüfen und freigeben ({wartetAufDispo.length} {wartetAufDispo.length === 1 ? "Einsatz" : "Einsätze"})
+            </p>
+            <Link href="/einsaetze/freigabe" className="underline">
+              Zur Freigabeliste
+            </Link>
+          </div>
+          <ul className="mt-2 max-h-72 divide-y divide-amber-200 overflow-auto dark:divide-amber-900">
+            {wartetAufDispo.map((o) => (
+              <li key={o.assignmentId} data-testid={`dispo-kasten-${o.assignmentId}`}>
+                <Link href={`/einsaetze/${o.assignmentId}`} className="flex flex-wrap items-center justify-between gap-2 py-1.5 hover:underline">
+                  <span>
+                    <span className="font-mono text-xs opacity-70">{o.einsatznummer}</span> <span className="font-medium">{o.projekt}</span> · {o.kunde} · {formatKeyDE(o.datum)}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    {o.nachFreigabe > 0 ? <span className="badge bg-amber-200 text-amber-900">nach Freigabe geändert</span> : null}
+                    <span className="tabular-nums">
+                      {o.personen} {o.personen === 1 ? "Person" : "Personen"} · {o.stunden.toFixed(2).replace(".", ",")} h
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <form className="card grid gap-3 p-4 md:grid-cols-6" method="get">
         <input name="q" defaultValue={q} placeholder="Suche: Projekt, Kunde, Ort, Person, Nr." className="input md:col-span-2" />

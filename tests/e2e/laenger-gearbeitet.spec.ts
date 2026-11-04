@@ -129,13 +129,35 @@ test.describe.serial("Länger gearbeitet als geplant", () => {
     await expect(einsatzUrl).toBeTruthy();
   });
 
+  test("Sind die Stunden eingetragen, steht ein Kasten für die Dispo in der Übersicht und im Einsatz", async ({ page }) => {
+    await login(page);
+    const id = einsatzUrl.split("/").pop()!;
+    await page.goto("/einsaetze");
+    const zeile = page.getByTestId(`dispo-kasten-${id}`);
+    await expect(page.getByTestId("dispo-kasten").first()).toContainText("Stunden eingetragen – bitte prüfen und freigeben");
+    await expect(zeile).toContainText("2 Personen");
+    await expect(zeile).toContainText("18,50 h");
+    await expect(zeile).not.toContainText("nach Freigabe geändert");
+    // Ein Klick führt in den Einsatz; dort steht derselbe Hinweis samt Weg zur Freigabe
+    await zeile.click();
+    await expect(page.getByTestId("dispo-kasten")).toContainText("2 Personen haben unterschrieben, zusammen 18,50 h");
+    await expect(page.getByTestId("freigeben-button")).toContainText("(2)");
+  });
+
   test("Die Dispo gibt die Zeiten frei – der Link bleibt trotzdem offen", async ({ page }) => {
     await login(page);
     await page.goto(`/einsaetze/freigabe?review=ERFASST&from=${TAG}&to=${TAG}`);
     await page.locator('thead input[type="checkbox"]').check();
     await page.getByRole("button", { name: "Direkt freigeben" }).click();
-    await expect(page.getByText(/freigegeben\./)).toBeVisible();
+    // Auf die Meldung der Aktion warten, nicht auf den Erklärtext der Seite („… → freigegeben. Nur freigegebene Zeiten …“)
+    await expect(page.getByText(/\d+ Eintrag\/Einträge → freigegeben\./)).toBeVisible();
     expect(await db.timeEntry.count({ where: { aktuell: true, review: "FREIGEGEBEN", shiftAssignment: { employee: { nachname: { in: [NAME, NAME2] } } } } })).toBe(2);
+    // Alles freigegeben: für diesen Einsatz bleibt kein Kasten
+    const id = einsatzUrl.split("/").pop()!;
+    await page.goto("/einsaetze");
+    await expect(page.getByTestId(`dispo-kasten-${id}`)).toHaveCount(0);
+    await page.goto(einsatzUrl);
+    await expect(page.getByTestId("dispo-kasten")).toHaveCount(0);
   });
 
   test("Nach der Freigabe trägt die erste Person noch 18:00 ein und unterschreibt neu", async ({ browser }) => {
@@ -183,6 +205,13 @@ test.describe.serial("Länger gearbeitet als geplant", () => {
     await page.goto(`/einsaetze/freigabe?review=ERFASST&from=${TAG}&to=${TAG}`);
     await expect(page.getByText("nach Freigabe geändert")).toHaveCount(2);
     await expect(page.getByText("v2")).toHaveCount(2);
+    // …und der Kasten ist wieder da, mit demselben Hinweis
+    const id = einsatzUrl.split("/").pop()!;
+    await page.goto("/einsaetze");
+    await expect(page.getByTestId(`dispo-kasten-${id}`)).toContainText("nach Freigabe geändert");
+    await expect(page.getByTestId(`dispo-kasten-${id}`)).toContainText("2 Personen");
+    await page.goto(einsatzUrl);
+    await expect(page.getByTestId("dispo-kasten")).toContainText("2 Einträge wurden nach der Freigabe noch geändert");
   });
 
   test("Erst die Unterschrift des Kunden schließt die Links", async ({ page }) => {
