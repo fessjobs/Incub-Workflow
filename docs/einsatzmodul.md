@@ -186,19 +186,20 @@ Gemerkt wird das im `localStorage` des Browsers (`fess.einsatz.tutorial.v1`, ver
 
 Eine Schicht läuft selten so ab wie geplant: jemand bleibt länger, die Pause fällt aus, der Beginn verschiebt sich. Die **eigene Unterschrift ist deshalb kein Schlussstrich** – im Link lässt sich ändern, bis der Kunde gezeichnet hat.
 
-Die Grenze zieht `linkSperre()` in `service/time-entries.ts`, und zwar an drei Stellen gleich (Einzellink, Gruppenlink, Namenskorrektur):
+Die Grenze zieht `linkSperre()` in `service/time-entries.ts`, und zwar an allen Stellen gleich (Einzellink, Gruppenlink):
 
 | Sperre | wann |
 |---|---|
 | `kunde` | der Kunde hat **diese Schicht** oder den **ganzen Einsatz** bestätigt |
-| `freigegeben` | die Buchhaltung hat die Stunden dieses Eintrags freigegeben – sie sind Grundlage für Lohn und Rechnung |
 | `storniert` | die Einteilung ist storniert |
 
-Solange nichts davon greift, bleibt der Zustand des Einzellinks `offen`, auch nach der eigenen Unterschrift. In der Oberfläche heißt das:
+Mehr sperrt nicht. Insbesondere gibt es **keine Grenze an der Planzeit** (wer bis 17:30 arbeitet statt bis 16:30, trägt 17:30 ein; die Freigabeliste markiert Abweichungen über 30 Minuten), und **auch eine Freigabe durch die Dispo schließt den Link nicht**. Ändert jemand nach der Freigabe noch seine Zeiten, entsteht wie immer eine neue Version, die alte (freigegebene) bleibt nachvollziehbar, und der Eintrag steht wieder auf „erfasst". Die Dispo findet ihn in der Freigabeliste mit dem Hinweis **„nach Freigabe geändert"** und gibt ihn neu frei; im Audit-Log steht `nachFreigabeGeaendert`. Ein gesperrter Monat (`month_locks`) nimmt weiterhin nichts mehr an.
+
+Solange keine Sperre greift, bleibt der Zustand des Einzellinks `offen`, auch nach der eigenen Unterschrift. In der Oberfläche heißt das:
 
 - **Gruppenlink**: Der Knopf bleibt stehen und heißt „Zeiten ändern"; daneben steht der grüne Haken. Das Formular ist mit den **eigenen** Zeiten vorbelegt (vor der Schichtvorgabe und vor den Planzeiten), inklusive Fahrten, Spesen und Notiz – nichts muss neu getippt werden.
 - **Einzellink**: dasselbe, dazu ein Hinweis mit dem Zeitpunkt der letzten Unterschrift; der Absendeknopf heißt „Geänderte Zeiten absenden".
-- **Namen** folgen derselben Grenze: „Name falsch?" bleibt offen, bis der Kunde zeichnet.
+- **Namen**: „Name falsch?" bleibt offen, bis der Kunde zeichnet – bei schon freigegebenen Stunden aber zu, weil ein Namenswechsel ändert, wer bezahlt wird.
 - Nach der Bestätigung des Kunden verschwinden beide Knöpfe; die Leseansicht nennt den Grund.
 
 **Unterschrieben wird jedes Mal neu** – die Signatur gilt den Zeiten, die danebenstehen, und die Unterweisung wird erneut bestätigt. Intern entsteht wie bisher eine neue Version (`version + 1`, `korrigiertVonId`), jede Einreichung steht mit IP und Gerät im Audit-Log.
@@ -488,6 +489,7 @@ Railway: Migration läuft wie bisher beim Start (`docker-entrypoint.sh`), der Se
   - `schichtlink.spec.ts`: Einsatz über zwei Tage mit zwei Schichten → je Schicht ein eigener Abschnitt mit eigenem Token (keiner davon der Token des Einsatzes) → die Nachricht nennt nur die eigene Schicht → der Link zeigt nur deren Personen, mit Hinweis auf die Schicht, und verweist für die Kundenbestätigung auf den Einsatzlink → unterschreiben über den Schichtlink, die zweite Schicht bleibt unberührt → das Backend zeigt den Stand je Schicht und weiterhin „1 von 2" am Einsatzlink → eine Person der anderen Schicht über den fremden Token einzureichen ergibt 403. Dazu die Kundenbestätigung je Schicht: der Kunde zeichnet die erste Schicht ab (das Formular zeigt nur deren Zeilen), nur sie ist danach zu, die Sammelbestätigung entfällt, je Schicht entsteht ein eigener Nachweis (die noch offene Schicht liefert 404) – und ein bereits abgeschlossener Einsatz lässt sich nachträglich je Schicht abzeichnen, obwohl Namen und Besetzung gesperrt sind.
   - `disponent.spec.ts` (erweitert): die Dispo hat keine Menüpunkte in die Zahlenwelt, `/einsaetze/abrechnung`, `/einsaetze/projekte` und `/einsaetze/lohnarten` leiten um, die Einsatzliste zeigt keine Abrechnungsspalte, die Auswertung weder Lohnarten noch Export (die Route antwortet mit 403), Exporte fehlen in den Dokumenten – und am Einsatz selbst steht keine Abrechnungskarte, während Links und Disposition normal funktionieren.
   - `projekte.spec.ts`: zwei fertige Einsätze → zu einem Projekt zusammenfassen (Summe beider Stunden) → am Einsatz steht der Verweis aufs Projekt statt eigener Felder → Angaben einmal im Projekt, dann eine Rechnungsnummer für beide (steht danach an beiden Einsätzen und in der Liste) → Rücknahme löst sie bei beiden → ein Einsatz lässt sich wieder herauslösen. Dazu der Aushang: erzeugte Suchmeldung mit Artist, Stadt, Call, Ort und „Gesucht“ aus Soll minus Besetzung, bearbeitbar, der Teilen-Link folgt der Bearbeitung.
+  - `laenger-gearbeitet.spec.ts`: Plan bis 16:30, Eintrag bis 17:30 (Einzellink) bzw. 18:00 (Gruppenlink) – unterschreiben geht, die Freigabeliste markiert die Abweichung → die Dispo gibt frei, der Link bleibt trotzdem offen: neue Version (alte freigegebene bleibt), Eintrag wieder „erfasst", Hinweis „nach Freigabe geändert" → erst die Unterschrift des Kunden schließt beide Links (Server antwortet 409).
   - `abrechnung.spec.ts`: vor Schritt 1 sind Schritt 2 und 3 zu (Begründung im Klartext, Knöpfe inaktiv) → Bonus und Abzug aufnehmen, die Summe verrechnet beides → Stunden bestätigen und freigeben → der Admin ergänzt die Angaben (ohne Angebotsnummer bleibt „An die Buchhaltung" zu) und gibt sie weiter → der Einsatz wandert in den Korb „Rechnung offen" und aus den beiden davor heraus → die Buchhaltung trägt die Rechnungsnummer in der Liste ein → am Einsatz stehen Rechnung und Status „Abgerechnet", Angaben und Ergänzungen sind gesperrt → die Einsatzliste sagt den Stand im Klartext und filtert danach → Vermerk entfernen und dieselbe Nummer erneut eintragen.
   - `tutorial.spec.ts`: Kurzanleitung erscheint von selbst, nennt alle Schritte und den Unterweisungs-Hinweis, bleibt nach dem Wegklicken weg, ist über das ? wieder aufrufbar; Einzellink ohne den Namenslisten-Schritt.
   - `zeiten-uebernehmen.spec.ts`: erste Person erfasst abweichende Zeiten → für alle übernehmen → Gruppen- und Einzellink sind vorausgefüllt, Abweichen bleibt möglich → Dispo nimmt die Vorgabe zurück, danach wieder Planzeiten.

@@ -25,6 +25,8 @@ export type ReviewRow = {
   spesen: boolean;
   unterschrieben: boolean;
   version: number;
+  // Die vorige Fassung war schon freigegeben und wurde danach noch geändert
+  nachFreigabe: boolean;
   gesperrt: boolean;
   abweichung: boolean;
   // Interne Beurteilung: nur fürs Backend, nur für Rollen mit dem Recht dazu
@@ -147,6 +149,7 @@ export function ReviewTable({ rows, review, darfBewerten, darfLoeschen }: { rows
                   {!r.unterschrieben ? <span className="badge bg-red-100 text-red-700">ohne Unterschrift</span> : null}
                   {r.abweichung ? <span className="badge bg-amber-100 text-amber-700">Plan/Ist &gt; 30 min</span> : null}
                   {r.version > 1 ? <span className="badge bg-navy-100 text-navy-600">v{r.version}</span> : null}
+                  {r.nachFreigabe ? <span className="badge bg-amber-100 text-amber-700" data-testid={`nach-freigabe-${r.shiftAssignmentId}`}>nach Freigabe geändert</span> : null}
                   {r.gesperrt ? <span className="badge bg-navy-900 text-white">Monat gesperrt</span> : null}
                   {darfLoeschen ? (
                     <div className="mt-1">

@@ -74,7 +74,7 @@ function crewView(ctx: CrewKontext) {
           const entry = sa.timeEntries.find((t) => t.aktuell) ?? null;
           // Geändert werden darf, bis der Kunde zeichnet – die eigene
           // Unterschrift ist kein Schlussstrich.
-          const sperre = linkSperre({ status: sa.status, shiftId: s.id, review: entry?.review ?? null, confirmations: a.confirmations });
+          const sperre = linkSperre({ status: sa.status, shiftId: s.id, confirmations: a.confirmations });
           return {
             shiftAssignmentId: sa.id,
             name: `${sa.employee.vorname} ${sa.employee.nachname}`,

@@ -5,63 +5,52 @@ const SCHICHT = "shift-1";
 const morgen = new Date(Date.now() + 86400000);
 const gestern = new Date(Date.now() - 86400000);
 
-function sa(opts: { status?: string; review?: string | null; confirmations?: Array<{ shiftId: string | null }>; ablauf?: Date } = {}) {
+function sa(opts: { status?: string; confirmations?: Array<{ shiftId: string | null }>; ablauf?: Date } = {}) {
   return {
     status: opts.status ?? "ERFASST",
     shiftId: SCHICHT,
     tokenExpiresAt: opts.ablauf ?? morgen,
-    timeEntries: opts.review ? [{ review: opts.review }] : [],
     shift: { assignment: { confirmations: opts.confirmations ?? [] } },
   };
 }
 
 describe("Bis wann darf im Link geändert werden", () => {
   it("vor jeder Unterschrift: offen", () => {
-    expect(linkSperre({ status: "GEPLANT", shiftId: SCHICHT, review: null, confirmations: [] })).toBeNull();
+    expect(linkSperre({ status: "GEPLANT", shiftId: SCHICHT, confirmations: [] })).toBeNull();
   });
 
   it("die eigene Unterschrift sperrt nicht mehr", () => {
-    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, review: "ERFASST", confirmations: [] })).toBeNull();
-    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, review: "GEPRUEFT", confirmations: [] })).toBeNull();
+    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, confirmations: [] })).toBeNull();
   });
 
   it("die Bestätigung des Kunden für diese Schicht sperrt", () => {
-    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, review: "ERFASST", confirmations: [{ shiftId: SCHICHT }] })).toBe("kunde");
+    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, confirmations: [{ shiftId: SCHICHT }] })).toBe("kunde");
   });
 
   it("die Bestätigung für den ganzen Einsatz sperrt auch", () => {
-    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, review: null, confirmations: [{ shiftId: null }] })).toBe("kunde");
+    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, confirmations: [{ shiftId: null }] })).toBe("kunde");
   });
 
   it("die Bestätigung einer anderen Schicht sperrt nicht", () => {
-    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, review: "ERFASST", confirmations: [{ shiftId: "shift-2" }] })).toBeNull();
-  });
-
-  it("freigegebene Stunden sind die Grundlage für Lohn und Rechnung – gesperrt", () => {
-    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, review: "FREIGEGEBEN", confirmations: [] })).toBe("freigegeben");
+    expect(linkSperre({ status: "ERFASST", shiftId: SCHICHT, confirmations: [{ shiftId: "shift-2" }] })).toBeNull();
   });
 
   it("eine stornierte Einteilung geht vor allem anderen", () => {
-    expect(linkSperre({ status: "STORNIERT", shiftId: SCHICHT, review: "FREIGEGEBEN", confirmations: [{ shiftId: null }] })).toBe("storniert");
+    expect(linkSperre({ status: "STORNIERT", shiftId: SCHICHT, confirmations: [{ shiftId: null }] })).toBe("storniert");
   });
 
   it("jeder Grund hat einen Text für die Oberfläche", () => {
-    for (const grund of ["storniert", "kunde", "freigegeben"] as const) expect(SPERR_TEXT[grund]).toMatch(/\S/);
+    for (const grund of ["storniert", "kunde"] as const) expect(SPERR_TEXT[grund]).toMatch(/\S/);
   });
 });
 
 describe("Zustand des Einzellinks", () => {
   it("bleibt offen, solange nachgebessert werden darf", () => {
     expect(tokenState(sa())).toBe("offen");
-    expect(tokenState(sa({ review: "ERFASST" }))).toBe("offen");
   });
 
   it("wird erfasst, sobald der Kunde gezeichnet hat", () => {
-    expect(tokenState(sa({ review: "ERFASST", confirmations: [{ shiftId: SCHICHT }] }))).toBe("erfasst");
-  });
-
-  it("wird erfasst, sobald die Stunden freigegeben sind", () => {
-    expect(tokenState(sa({ review: "FREIGEGEBEN" }))).toBe("erfasst");
+    expect(tokenState(sa({ confirmations: [{ shiftId: SCHICHT }] }))).toBe("erfasst");
   });
 
   it("storniert und abgelaufen bleiben, wie sie waren", () => {

@@ -42,35 +42,32 @@ export async function loadByToken(token: string) {
 // gezeichnet hat**. Danach steht der Beleg, und Änderungen laufen über die
 // Dispo (mit Vermerk auf dem Stundenzettel).
 //
-// Zwei Dinge sperren vorher: eine stornierte Einteilung und Stunden, welche
-// die Buchhaltung schon freigegeben hat – die sind Grundlage für Lohn und
-// Rechnung.
-export type LinkSperre = "storniert" | "kunde" | "freigegeben" | null;
+// Davor sperrt nur eine stornierte Einteilung. Auch eine schon erfolgte
+// Freigabe sperrt den Link nicht: Wer danach noch etwas ändert, setzt seinen
+// Eintrag damit zurück auf „erfasst“, und die Dispo gibt ihn neu frei – in der
+// Freigabeliste steht er mit dem Hinweis „nach Freigabe geändert“. (Ein
+// gesperrter Monat nimmt weiterhin nichts an.)
+export type LinkSperre = "storniert" | "kunde" | null;
 
 export function linkSperre(input: {
   status: string;
   shiftId: string;
-  // Prüfstand des aktuellen Eintrags, null wenn noch nichts erfasst ist
-  review: string | null;
   // Bestätigungen des Kunden am Einsatz; shiftId null = ganzer Einsatz
   confirmations: Array<{ shiftId: string | null }>;
 }): LinkSperre {
   if (input.status === "STORNIERT") return "storniert";
   if (input.confirmations.some((c) => c.shiftId === null || c.shiftId === input.shiftId)) return "kunde";
-  if (input.review === "FREIGEGEBEN") return "freigegeben";
   return null;
 }
 
 export const SPERR_TEXT: Record<Exclude<LinkSperre, null>, string> = {
   storniert: "Diese Einteilung wurde storniert.",
   kunde: "Der Kunde hat bereits bestätigt – Änderungen bitte über die Dispo.",
-  freigegeben: "Diese Stunden sind schon freigegeben – Änderungen bitte über die Dispo.",
 };
 
 type SperrQuelle = {
   status: string;
   shiftId: string;
-  timeEntries: Array<{ review: string }>;
   shift: { assignment: { confirmations: Array<{ shiftId: string | null }> } };
 };
 
@@ -78,7 +75,6 @@ export function sperreVon(sa: SperrQuelle): LinkSperre {
   return linkSperre({
     status: sa.status,
     shiftId: sa.shiftId,
-    review: sa.timeEntries[0]?.review ?? null,
     confirmations: sa.shift.assignment.confirmations,
   });
 }
@@ -185,6 +181,8 @@ export async function submitTimeEntry(
       unterschrift: blob.url,
       ip: meta.ip,
       erfasstAm: input.erfasstAm ?? null,
+      // War der Eintrag schon freigegeben, steht er jetzt wieder auf „erfasst“ und braucht eine neue Freigabe
+      nachFreigabeGeaendert: current?.review === "FREIGEGEBEN",
     },
   });
 

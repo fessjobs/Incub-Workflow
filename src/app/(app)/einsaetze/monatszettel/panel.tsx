@@ -143,7 +143,7 @@ export function MonatszettelPanel({ kunden, mitarbeiter, monate, kundeId, monat,
             </button>
           </div>
           <div className="max-h-72 divide-y divide-navy-100 overflow-auto rounded-md border border-navy-100 dark:divide-navy-800 dark:border-navy-800" data-testid="mz-personen">
-            {sichtbar.slice(0, 80).map((m) => (
+            {sichtbar.map((m) => (
               <label key={m.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                 <input type="checkbox" checked={gewaehlt.includes(m.id)} disabled={hatLink.has(m.id)} onChange={() => setGewaehlt((g) => (g.includes(m.id) ? g.filter((x) => x !== m.id) : [...g, m.id]))} data-testid={`mz-wahl-${m.id}`} />
                 <span className="flex-1">

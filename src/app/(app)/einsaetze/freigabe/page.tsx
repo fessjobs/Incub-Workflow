@@ -39,6 +39,14 @@ export default async function FreigabePage({ searchParams }: { searchParams: Pro
   const darfBewerten = canRate(user);
   const erfahrung = darfBewerten ? await erfahrungFuer(user.organizationId, [...new Set(entries.map((e) => e.shiftAssignment.employeeId))]) : new Map();
 
+  // Hat jemand seine Zeiten nach der Freigabe noch einmal geändert (der Link bleibt bis zur Unterschrift des Kunden offen),
+  // steht der Eintrag wieder hier – mit Hinweis, damit die neue Fassung nicht untergeht.
+  const vorgaenger = await db.timeEntry.findMany({
+    where: { id: { in: entries.map((e) => e.korrigiertVonId).filter((x): x is string => Boolean(x)) }, review: "FREIGEGEBEN" },
+    select: { id: true },
+  });
+  const warFreigegeben = new Set(vorgaenger.map((v) => v.id));
+
   const rows: ReviewRow[] = entries.map((e) => {
     const sa = e.shiftAssignment;
     const key = berlinDateKey(e.istStart);
@@ -60,6 +68,7 @@ export default async function FreigabePage({ searchParams }: { searchParams: Pro
       spesen: e.spesen,
       unterschrieben: Boolean(e.unterschriftZeitpunkt),
       version: e.version,
+      nachFreigabe: e.korrigiertVonId !== null && warFreigegeben.has(e.korrigiertVonId),
       gesperrt: locks.some((l) => l.jahr === y && l.monat === m),
       abweichung: Math.abs(e.istStart.getTime() - sa.planStart.getTime()) / 60000 > 30 || Math.abs(e.istEnde.getTime() - sa.planEnde.getTime()) / 60000 > 30,
       shiftAssignmentId: sa.id,
