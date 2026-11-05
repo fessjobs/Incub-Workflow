@@ -755,6 +755,10 @@ model Assignment {
   rechnungsnummer    String?
   rechnungVon        String?
   rechnungAm         DateTime?
+  // Haken in der Einsatzliste: Die Stunden sind in zvoove übertragen (nur Vermerk, ändert sonst nichts)
+  zvooveErledigt     Boolean          @default(false)
+  zvooveVon          String?
+  zvooveAm           DateTime?
   notizen            String?
   rawInput           String?
   parsedJson         Json?

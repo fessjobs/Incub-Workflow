@@ -7,6 +7,8 @@ import { ladeOffeneStunden } from "@/lib/einsatz/service/stunden-offen";
 import { dateOnlyKey, formatKeyDE, keyToDateOnly, isValidDateKey } from "@/lib/einsatz/tz";
 import { StatusBadge, ASSIGNMENT_STATUS_LABELS, AbrechnungBadge } from "./status-badge";
 import { JobsButton } from "./jobs-button";
+import { ZvooveHaken } from "./zvoove-haken";
+import { formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Einsätze" };
 export const dynamic = "force-dynamic";
@@ -25,6 +27,8 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
   if (s(sp.status)) where.status = s(sp.status) as never;
   if (geldSichtbar && ["OFFEN", "FREIGEGEBEN", "BEREIT", "BERECHNET"].includes(s(sp.abrechnung))) where.abrechnung = s(sp.abrechnung) as never;
   if (s(sp.customer)) where.customerId = s(sp.customer);
+  if (s(sp.zvoove) === "offen") where.zvooveErledigt = false;
+  if (s(sp.zvoove) === "erledigt") where.zvooveErledigt = true;
   if (isValidDateKey(s(sp.from))) where.datumBis = { gte: keyToDateOnly(s(sp.from)) };
   if (isValidDateKey(s(sp.to))) where.datumVon = { ...(where.datumVon as object), lte: keyToDateOnly(s(sp.to)) };
   const q = s(sp.q).trim();
@@ -125,6 +129,11 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
             <option value="BERECHNET">Rechnung geschrieben</option>
           </select>
         ) : null}
+        <select name="zvoove" defaultValue={s(sp.zvoove)} className="input" aria-label="Stunden in zvoove">
+          <option value="">zvoove: alle</option>
+          <option value="offen">Stunden noch nicht in zvoove</option>
+          <option value="erledigt">Stunden in zvoove</option>
+        </select>
         <select name="customer" defaultValue={s(sp.customer)} className="input">
           <option value="">Alle Kunden</option>
           {customers.map((c) => (
@@ -174,6 +183,9 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                         {formatKeyDE(dateOnlyKey(a.datumVon))} · {p.erfasst}/{p.gesamt} unterschrieben
                       </p>
                     </Link>
+                    <div className="flex items-center gap-2 px-4 pb-3 text-xs text-navy-500">
+                      Stunden in zvoove <ZvooveHaken mobil assignmentId={a.id} einsatznummer={a.einsatznummer} erledigt={a.zvooveErledigt} info={a.zvooveAm ? `${a.zvooveVon ?? "–"} · ${formatDateTime(a.zvooveAm)}` : null} />
+                    </div>
                   </li>
                 );
               })}
@@ -190,6 +202,7 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                   <th className="px-4 py-2">Erfasst</th>
                   {geldSichtbar ? <th className="px-4 py-2">Abrechnung</th> : null}
                   <th className="px-4 py-2">Dokumente</th>
+                  <th className="px-4 py-2">Stunden in zvoove</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-100 dark:divide-navy-800">
@@ -232,6 +245,9 @@ export default async function EinsaetzePage({ searchParams }: { searchParams: Pr
                       <td className="px-4 py-2 text-xs text-navy-400">
                         {docs.has("konkretisierung") ? "Konkretisierung " : ""}
                         {docs.has("stundennachweis") ? "Stundennachweis" : ""}
+                      </td>
+                      <td className="px-4 py-2">
+                        <ZvooveHaken assignmentId={a.id} einsatznummer={a.einsatznummer} erledigt={a.zvooveErledigt} info={a.zvooveAm ? `${a.zvooveVon ?? "–"} · ${formatDateTime(a.zvooveAm)}` : null} />
                       </td>
                     </tr>
                   );
